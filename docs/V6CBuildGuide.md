@@ -97,3 +97,47 @@ Running `llc -march=v6c -o - trivial.ll` produces:
 empty:
         RET
 ```
+
+## Binary Emission
+
+`llc` can emit ELF object files which are then converted to flat binary:
+
+```bash
+# Step 1: Compile to ELF object
+llvm-build/bin/llc -march=v6c -mtriple=i8080-unknown-v6c -filetype=obj input.ll -o output.o
+
+# Step 2: Convert to flat binary (base address 0x0100)
+python scripts/elf2bin.py output.o -o output.bin --base 0x0100
+
+# Step 2b: Also produce Intel HEX alongside binary
+python scripts/elf2bin.py output.o -o output.bin --base 0x0100 --hex
+```
+
+### Start Address
+
+The binary start address (default `0x0100`) is configured in two places:
+
+1. **`-mv6c-start-address=<addr>`** — LLVM target option affecting code generation:
+   ```bash
+   llvm-build/bin/llc -march=v6c -mtriple=i8080-unknown-v6c -mv6c-start-address=0x8000 ...
+   ```
+
+2. **`--base <addr>`** — elf2bin.py parameter for relocation base:
+   ```bash
+   python scripts/elf2bin.py output.o -o output.bin --base 0x8000
+   ```
+
+Both must match. The accepted range is `0x0000`–`0xFFFF`.
+
+### Intel HEX Format
+
+Standalone conversion from flat binary to Intel HEX:
+```bash
+python scripts/bin2hex.py output.bin -o output.hex --base 0x0100
+```
+
+### Running in the Emulator
+
+```bash
+tools/v6emul/v6emul.exe --rom output.bin --load-addr 0x0100 --halt-exit --dump-cpu
+```

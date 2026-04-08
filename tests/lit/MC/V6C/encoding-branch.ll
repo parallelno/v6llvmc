@@ -1,0 +1,28 @@
+; RUN: llc -march=v6c -mtriple=i8080-unknown-v6c -filetype=obj %s -o %t.o
+; RUN: python %S/../../../../scripts/elf_text_hex.py %t.o | FileCheck %s
+
+; Branch encoding test: conditional branch uses JNZ/JZ (3-byte) with address fixups.
+; The .text section bytes will have branch targets as relocations (zeros before linking).
+; We verify the opcodes are correct.
+
+; CPI 0x00 = FE 00
+; JNZ = C2 xx xx
+; MVI A, 0x01 = 3E 01
+; RET = C9
+; MVI A, 0x02 = 3E 02
+; RET = C9
+
+; Verify opcodes: CPI(FE) 00, JNZ(C2), JMP(C3), MVI(3E) 02, RET(C9), MVI(3E) 01, RET(C9)
+; Branch addresses are zero (unresolved relocations in .o file)
+; CHECK: FE 00 C2 00 00 C3 00 00 3E 02 C9 3E 01 C9
+define i8 @branch(i8 %x) {
+entry:
+  %cmp = icmp eq i8 %x, 0
+  br i1 %cmp, label %then, label %else
+
+then:
+  ret i8 1
+
+else:
+  ret i8 2
+}

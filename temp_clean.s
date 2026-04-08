@@ -1,0 +1,2 @@
+MVI A, 0x2a
+RET

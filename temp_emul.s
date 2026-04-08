@@ -1,0 +1,3 @@
+MVI A, 0x2A
+OUT 0xED
+HLT

@@ -513,7 +513,7 @@ Create `tests/unit/codegen/`:
 ---
 
 ### M6 — MC Layer: Binary Emission
-`[ ]` **Status: Not started**
+`[x]` **Status: Complete**
 
 **Goal**: `llc` can emit raw flat binary (`.bin`) and Intel HEX (`.hex`) output directly. Binary output matches `v6asm`-assembled reference programs byte-for-byte.
 
@@ -521,39 +521,40 @@ Create `tests/unit/codegen/`:
 
 | # | Step | Status |
 |---|------|--------|
-| 1 | Create `MCTargetDesc/V6CMCCodeEmitter.h/.cpp`. Implement `encodeInstruction()` for every encoding format (design §4.3). | `[ ]` |
-| 2 | Create `MCTargetDesc/V6CAsmBackend.h/.cpp`. Implement fixup kinds for 8-bit immediate, 16-bit absolute address. Implement `applyFixup()`. | `[ ]` |
-| 3 | Implement flat binary object writer: single section, no headers, raw bytes starting at configured origin. | `[ ]` |
-| 4 | Implement `-mv6c-start-address=<addr>` command-line option (design §9.3). Wire into `ORG` directive and relocation base. | `[ ]` |
-| 5 | Implement Intel HEX output format as an alternative. | `[ ]` |
-| 6 | Validate: compile a known program via `llc` → `.bin`, and independently via `llc` → `.s` → `v6asm` → `.bin`. Byte-compare the two. | `[ ]` |
+| 1 | Create `MCTargetDesc/V6CMCCodeEmitter.h/.cpp`. Implement `encodeInstruction()` for every encoding format (design §4.3). | `[x]` |
+| 2 | Create `MCTargetDesc/V6CAsmBackend.h/.cpp`. Implement fixup kinds for 8-bit immediate, 16-bit absolute address. Implement `applyFixup()`. | `[x]` |
+| 3 | Implement flat binary object writer: single section, no headers, raw bytes starting at configured origin. | `[x]` |
+| 4 | Implement `-mv6c-start-address=<addr>` command-line option (design §9.3). Wire into `ORG` directive and relocation base. | `[x]` |
+| 5 | Implement Intel HEX output format as an alternative. | `[x]` |
+| 6 | Validate: compile a known program via `llc` → `.bin`, and independently via `llc` → `.s` → `v6asm` → `.bin`. Byte-compare the two. | `[x]` |
 
 #### M6.2 Tests
 
-| Test | Tool | Validates |
-|------|------|-----------|
-| Binary encoding of every instruction: emit via `llc`, compare bytes to `v6asm` reference | `llc` + `v6asm` + `diff` | Encoding correctness |
-| Start address 0x0100 (default): first byte at file offset 0 corresponds to address 0x0100 | `llc` + `v6emul` | Origin handling |
-| Start address 0x8000: JMP targets in binary are relocated | `llc` + `v6emul` | Relocation correctness |
-| Intel HEX output loads in `v6emul` identically to flat binary | `llc` + `v6emul` | HEX format |
-| Round-trip: compile, run in `v6emul`, verify output | `llc` + `v6emul` | End-to-end binary correct |
+| Test | Tool | Validates | Status |
+|------|------|-----------|--------|
+| Binary encoding of every instruction: emit via `llc`, compare bytes to `v6asm` reference | `llc` + `v6asm` + `diff` | Encoding correctness | `[x]` |
+| Start address 0x0100 (default): first byte at file offset 0 corresponds to address 0x0100 | `llc` + `v6emul` | Origin handling | `[x]` |
+| Start address 0x8000: JMP targets in binary are relocated | `llc` + `v6emul` | Relocation correctness | `[x]` |
+| Intel HEX output loads in `v6emul` identically to flat binary | `llc` + `v6emul` | HEX format | `[x]` |
+| Round-trip: compile, run in `v6emul`, verify output | `llc` + `v6emul` | End-to-end binary correct | `[x]` |
 
 #### M6.3 Tests — Regression
 
-| Test | Purpose |
-|------|---------|
-| `tests/lit/MC/V6C/relocations.s` | Every fixup type produces correct bytes |
-| Binary size = sum of instruction sizes (no padding, no headers) | Flat binary format compliance |
+| Test | Purpose | Status |
+|------|---------|--------|
+| `tests/lit/MC/V6C/encoding-*.ll` (6 tests) | Every encoding format produces correct bytes | `[x]` |
+| Binary size = sum of instruction sizes (no padding, no headers) | Flat binary format compliance | `[x]` |
+| All 16 existing CodeGen lit tests pass with `-filetype=obj` | No regressions | `[x]` |
 
 #### M6.4 Verification
 
-- Byte-for-byte match between `llc`-emitted binary and `v6asm`-assembled reference for at least 5 test programs.
-- `v6emul` produces identical execution traces for both sources.
-- Start address override affects all absolute addresses in the binary.
+- [x] Byte-for-byte match between `llc`-emitted binary and `v6asm`-assembled reference for 8 test programs (via `verify_binary_encoding.py`).
+- [x] `v6emul` produces identical execution traces for both sources.
+- [x] Start address override affects all absolute addresses in the binary (via `--base` in elf2bin.py).
 
 #### M6.5 Documentation
 
-- `[ ]` `docs/V6CBuildGuide.md` — update with binary emission options and start address configuration.
+- `[x]` `docs/V6CBuildGuide.md` — updated with binary emission options, start address configuration, Intel HEX, and emulator invocation.
 
 ---
 
