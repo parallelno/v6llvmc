@@ -67,3 +67,33 @@ python tests/run_golden_tests.py
 # With verbose output
 python tests/run_golden_tests.py -v
 ```
+
+## Using llc for Assembly Output
+
+Once built, `llc` can compile LLVM IR to 8080 assembly:
+
+```bash
+# Emit assembly to stdout
+llvm-build/bin/llc -march=v6c -o - input.ll
+
+# Emit assembly to file
+llvm-build/bin/llc -march=v6c -o output.s input.ll
+```
+
+Example trivial IR (`trivial.ll`):
+```llvm
+target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
+target triple = "i8080-unknown-v6c"
+
+define void @empty() {
+  ret void
+}
+```
+
+Running `llc -march=v6c -o - trivial.ll` produces:
+```asm
+        .text
+        .globl  empty
+empty:
+        RET
+```

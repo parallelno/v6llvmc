@@ -338,7 +338,7 @@ Create `tests/lit/MC/V6C/encoding.s`:
 ---
 
 ### M3 — MC Layer: Assembly Emission
-`[ ]` **Status: Not started**
+`[x]` **Status: Complete**
 
 **Goal**: `llc` accepts LLVM IR and emits syntactically correct 8080 assembly text. The assembly output is consumable by `v6asm`.
 
@@ -346,14 +346,14 @@ Create `tests/lit/MC/V6C/encoding.s`:
 
 | # | Step | Status |
 |---|------|--------|
-| 1 | Create `MCTargetDesc/V6CMCAsmInfo.h/.cpp`. Set comment string, directive syntax, label conventions compatible with `v6asm` syntax. | `[ ]` |
-| 2 | Create `MCTargetDesc/V6CMCTargetDesc.h/.cpp`. Register `MCAsmInfo`, `MCInstrInfo`, `MCRegisterInfo`, `MCSubtargetInfo` factory functions. | `[ ]` |
-| 3 | Create `V6CAsmPrinter.h/.cpp`. Implement `AsmPrinter` subclass: `emitInstruction()` delegates to `V6CMCInstLower`. | `[ ]` |
-| 4 | Create `V6CMCInstLower.h/.cpp`. Lower `MachineInstr` → `MCInst` — translate virtual register operands to physical register names. | `[ ]` |
-| 5 | Create `V6CTargetObjectFile.h/.cpp`. Define section layout (`.text`, `.data`, `.rodata`, `.bss`). | `[ ]` |
-| 6 | Wire `V6CPassConfig::addInstSelector()` to a trivial no-op selector (will be replaced in M4). | `[ ]` |
-| 7 | Test: hand-craft `MachineFunction` with a few instructions, run through `V6CAsmPrinter`, validate output matches `v6asm` syntax expectations. | `[ ]` |
-| 8 | Test: write a trivial `.ll` file (empty function with `ret void`), run `llc -march=v6c`, verify assembly output is syntactically valid. | `[ ]` |
+| 1 | Create `MCTargetDesc/V6CMCAsmInfo.h/.cpp`. Set comment string, directive syntax, label conventions compatible with `v6asm` syntax. | `[x]` |
+| 2 | Create `MCTargetDesc/V6CMCTargetDesc.h/.cpp`. Register `MCAsmInfo`, `MCInstrInfo`, `MCRegisterInfo`, `MCSubtargetInfo` factory functions. | `[x]` |
+| 3 | Create `V6CAsmPrinter.h/.cpp`. Implement `AsmPrinter` subclass: `emitInstruction()` delegates to `V6CMCInstLower`. | `[x]` |
+| 4 | Create `V6CMCInstLower.h/.cpp`. Lower `MachineInstr` → `MCInst` — translate virtual register operands to physical register names. | `[x]` |
+| 5 | Create `V6CTargetObjectFile.h/.cpp`. Define section layout (`.text`, `.data`, `.rodata`, `.bss`). | `[x]` |
+| 6 | Wire `V6CPassConfig::addInstSelector()` to minimal V6CISelDAGToDAG with RET pattern. | `[x]` |
+| 7 | Test: hand-craft `MachineFunction` with a few instructions, run through `V6CAsmPrinter`, validate output matches `v6asm` syntax expectations. | `[x]` |
+| 8 | Test: write a trivial `.ll` file (empty function with `ret void`), run `llc -march=v6c`, verify assembly output is syntactically valid. | `[x]` |
 
 #### M3.2 Tests
 
@@ -372,7 +372,7 @@ Create `tests/lit/MC/V6C/encoding.s`:
 
 #### M3.4 Documentation
 
-- `[ ]` `docs/V6CBuildGuide.md` — update with `llc` usage examples.
+- `[x]` `docs/V6CBuildGuide.md` — update with `llc` usage examples.
 
 ---
 
