@@ -13,6 +13,32 @@ target
 # Contains mutation testing data
 **/mutants.out*/
 
+# Build outputs
+build/
+*.bin
+*.rom
+*.lst
+*.symbols.json
+
+# LLVM build directory
+llvm-build/
+
+# LLVM monorepo (cloned separately, pinned to llvmorg-18.1.0)
+llvm-project/
+
+# Test temporaries
+tests/golden/*.bin
+tests/golden/*.rom
+tests/golden/*.lst
+
+# Build logs and temp files
+build.log
+BUILD_STEPS.txt
+
+# Python
+__pycache__/
+*.pyc
+
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore

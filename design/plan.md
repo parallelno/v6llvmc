@@ -198,7 +198,7 @@ M11 (runtime library) can proceed in parallel with M7–M8 once M5 (calling conv
 ---
 
 ### M0 — Project Bootstrap & Tool Validation
-`[ ]` **Status: Not started**
+`[x]` **Status: Complete**
 
 **Goal**: Establish the development environment, validate external tool dependencies, and create the project skeleton with build infrastructure.
 
@@ -206,13 +206,13 @@ M11 (runtime library) can proceed in parallel with M7–M8 once M5 (calling conv
 
 | # | Step | Status |
 |---|------|--------|
-| 1 | Clone LLVM monorepo at pinned release tag (e.g., `llvmorg-18.1.0`). Configure as submodule or external dependency. | `[ ]` |
-| 2 | Build stock LLVM (host target only) to confirm toolchain works: `cmake`, `ninja`, `llvm-tblgen`, `llc`, `llvm-mc`, `FileCheck`, `lit`. | `[ ]` |
-| 3 | Build or obtain `tools/v6emul`. Verify it runs a hand-written NOP+HLT program and reports halt state. | `[ ]` |
-| 4 | Build or obtain `tools/v6asm`. Assemble a trivial program (`NOP; HLT`), produce `.bin`, run in `v6emul`, confirm halt. | `[ ]` |
-| 5 | Create project directory structure per design §12. Stub `CMakeLists.txt` for `V6C` target (does not build yet, but is parseable). | `[ ]` |
-| 6 | Create the emulator golden test suite: 10–15 hand-written `.asm` programs with known outcomes. Assemble via `v6asm`, run via `v6emul`, verify results. Store in `tests/golden/`. | `[ ]` |
-| 7 | Set up CI configuration (or local Makefile target) that runs `v6asm` + `v6emul` golden tests. | `[ ]` |
+| 1 | Clone LLVM monorepo at pinned release tag (e.g., `llvmorg-18.1.0`). Configure as submodule or external dependency. | `[x]` |
+| 2 | Build stock LLVM (host target only) to confirm toolchain works: `cmake`, `ninja`, `llvm-tblgen`, `llc`, `llvm-mc`, `FileCheck`, `lit`. | `[x]` |
+| 3 | Build or obtain `tools/v6emul`. Verify it runs a hand-written NOP+HLT program and reports halt state. | `[x]` |
+| 4 | Build or obtain `tools/v6asm`. Assemble a trivial program (`NOP; HLT`), produce `.bin`, run in `v6emul`, confirm halt. | `[x]` |
+| 5 | Create project directory structure per design §12. Stub `CMakeLists.txt` for `V6C` target (does not build yet, but is parseable). | `[x]` |
+| 6 | Create the emulator golden test suite: 10–15 hand-written `.asm` programs with known outcomes. Assemble via `v6asm`, run via `v6emul`, verify results. Store in `tests/golden/`. | `[x]` |
+| 7 | Set up CI configuration (or local Makefile target) that runs `v6asm` + `v6emul` golden tests. | `[x]` |
 
 #### M0.2 Tests
 
@@ -231,8 +231,8 @@ M11 (runtime library) can proceed in parallel with M7–M8 once M5 (calling conv
 
 #### M0.4 Documentation
 
-- `[ ]` `docs/V6CBackendOverview.md` — initial version: project goals, tool dependencies, build instructions.
-- `[ ]` `tests/golden/README.md` — describes each golden test and its expected outcome.
+- `[x]` `docs/V6CBackendOverview.md` — initial version: project goals, tool dependencies, build instructions.
+- `[x]` `tests/golden/README.md` — describes each golden test and its expected outcome.
 
 ---
 
