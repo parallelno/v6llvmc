@@ -712,7 +712,10 @@ llvm-v6c/
 │       └── memcpy_benchmark.c
 │
 └── docs/
-    ├── V6CBackendOverview.md
+    ├── README.md
+    ├── V6CArchitecture.md
+    ├── V6CBuildGuide.md
+    ├── V6CProjectStructure.md
     ├── V6CCallingConvention.md
     ├── V6COptimization.md
     └── V6CInstructionTimings.md

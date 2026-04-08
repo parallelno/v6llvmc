@@ -16,10 +16,29 @@ This document translates the approved design into an ordered, test-driven implem
 |------|------|------|
 | `v6emul` | `tools/v6emul` | CLI Vector 06c emulator — executes flat binaries, inspects registers/memory, counts cycles |
 | `v6asm` | `tools/v6asm` | CLI 8080 assembler — reference assembly syntax, ASM→ROM conversion, intermediate output comparison |
-| LLVM source | `llvm/` | LLVM monorepo (cloned or submoduled at a pinned release tag) |
+| LLVM source | `llvm-project/` | Full LLVM monorepo (cloned at pinned `llvmorg-18.1.0`, **gitignored** — build reads from here) |
+| LLVM mirror | `llvm/` | Git-tracked mirror of all V6C-related changes (V6C target dir + modified upstream files) |
+| Mirror sync | `scripts/sync_llvm_mirror.ps1` | Copies changes from `llvm-project/` → `llvm/` after each build |
 | CMake ≥ 3.20 | System | Build system |
 | Ninja | System | Build executor |
 | Python 3 | System | LLVM lit test runner, test harness scripts |
+
+### 1.2.1 Source Mirror Workflow
+
+`llvm-project/` is gitignored because it is a large upstream clone. All V6C-related source is git-tracked under `llvm/`, which acts as a mirror.
+
+**After every successful build**, run:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1
+```
+
+The script syncs:
+- `llvm-project/llvm/lib/Target/V6C/` → `llvm/lib/Target/V6C/` (full directory mirror)
+- Individual modified upstream files (e.g. `Triple.h`, `Triple.cpp`) → corresponding paths under `llvm/`
+
+When a milestone modifies new upstream files, add `xcopy` lines to `scripts\sync_llvm_mirror.ps1`.
+
+If `llvm-project/` is re-cloned, restore changes by copying from `llvm/` back into `llvm-project/`.
 
 ### 1.3 Status Markers
 
@@ -353,7 +372,7 @@ Create `tests/lit/MC/V6C/encoding.s`:
 
 #### M3.4 Documentation
 
-- `[ ]` `docs/V6CBackendOverview.md` — update with `llc` usage examples.
+- `[ ]` `docs/V6CBuildGuide.md` — update with `llc` usage examples.
 
 ---
 
@@ -413,7 +432,7 @@ Create `tests/unit/codegen/`:
 
 #### M4.5 Documentation
 
-- `[ ]` `docs/V6CBackendOverview.md` — update with supported operations.
+- `[ ]` `docs/V6CArchitecture.md` — update with supported operations.
 
 ---
 
@@ -475,7 +494,7 @@ Create `tests/unit/codegen/`:
 #### M5.6 Documentation
 
 - `[ ]` `docs/V6CCallingConvention.md` — full description with examples.
-- `[ ]` `docs/V6CBackendOverview.md` — update with calling convention summary.
+- `[ ]` `docs/V6CArchitecture.md` — update with calling convention summary.
 
 ---
 
@@ -520,7 +539,7 @@ Create `tests/unit/codegen/`:
 
 #### M6.5 Documentation
 
-- `[ ]` `docs/V6CBackendOverview.md` — update with binary emission options and start address configuration.
+- `[ ]` `docs/V6CBuildGuide.md` — update with binary emission options and start address configuration.
 
 ---
 
@@ -577,7 +596,7 @@ Create `tests/unit/codegen/`:
 
 #### M7.5 Documentation
 
-- `[ ]` `docs/V6CBackendOverview.md` — update with supported type widths and limitations.
+- `[ ]` `docs/V6CArchitecture.md` — update with supported type widths and limitations.
 
 ---
 
@@ -703,7 +722,7 @@ Record baseline and optimized cycle counts in `tests/benchmarks/results.md`. Fai
 
 #### M9.5 Documentation
 
-- `[ ]` `docs/V6CBackendOverview.md` — update with Clang usage, intrinsics, language restrictions.
+- `[ ]` `docs/V6CBuildGuide.md` — update with Clang usage, intrinsics, language restrictions.
 
 ---
 
@@ -750,7 +769,7 @@ Record baseline and optimized cycle counts in `tests/benchmarks/results.md`. Fai
 
 #### M10.5 Documentation
 
-- `[ ]` `docs/V6CBackendOverview.md` — update with multi-file workflow and linker usage.
+- `[ ]` `docs/V6CBuildGuide.md` — update with multi-file workflow and linker usage.
 
 ---
 
@@ -819,7 +838,7 @@ Each runtime function gets a standalone test assembled with `v6asm` and executed
 
 #### M11.6 Documentation
 
-- `[ ]` `docs/V6CBackendOverview.md` — runtime library section: functions, ABI compliance, performance notes.
+- `[ ]` `docs/V6CArchitecture.md` — runtime library section: functions, ABI compliance, performance notes.
 
 ---
 
@@ -880,7 +899,7 @@ The following must hold for the milestone to be considered complete:
 
 #### M12.5 Documentation — Final
 
-- `[ ]` `docs/V6CBackendOverview.md` — finalize: architecture, usage, limitations, examples.
+- `[ ]` `docs/README.md` — finalize: architecture, usage, limitations, examples.
 - `[ ]` `docs/V6CCallingConvention.md` — finalize with tested examples.
 - `[ ]` `docs/V6COptimization.md` — finalize with measured performance data.
 - `[ ]` `docs/V6CInstructionTimings.md` — finalize, cross-reference with benchmark results.
@@ -960,7 +979,10 @@ python tests/run_emulator_tests.py --v6emul=tools/v6emul --v6asm=tools/v6asm
 
 | Document | Created | Updated | Finalized |
 |----------|---------|---------|-----------|
-| `docs/V6CBackendOverview.md` | M0 | M1, M3, M4, M5, M6, M7, M9, M10, M11 | M12 |
+| `docs/README.md` | M0 | M1, M3, M4, M5, M6, M7, M9, M10, M11 | M12 |
+| `docs/V6CArchitecture.md` | M0 | M4, M5, M9 | M12 |
+| `docs/V6CBuildGuide.md` | M0 | M1, M3, M6, M7 | M12 |
+| `docs/V6CProjectStructure.md` | M0 | M6, M7, M9 | M12 |
 | `docs/V6CInstructionTimings.md` | M2 | M8 | M12 |
 | `docs/V6CCallingConvention.md` | M5 | M9 | M12 |
 | `docs/V6COptimization.md` | M8 | M11 | M12 |
