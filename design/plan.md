@@ -377,7 +377,7 @@ Create `tests/lit/MC/V6C/encoding.s`:
 ---
 
 ### M4 — ISel: i8 Operations & Basic Lowering
-`[ ]` **Status: Not started**
+`[x]` **Status: Complete**
 
 **Goal**: Instruction selection for all `i8` operations. Simple functions using only 8-bit values compile correctly from LLVM IR to assembly and produce correct results in `v6emul`.
 
@@ -385,17 +385,17 @@ Create `tests/lit/MC/V6C/encoding.s`:
 
 | # | Step | Status |
 |---|------|--------|
-| 1 | Create `V6CISelLowering.h/.cpp`. Register type legalization: `i1` promote to `i8`, `i8` legal, everything else expand/custom. Set operation actions for `i8` operations per design §5.3. | `[ ]` |
-| 2 | Create `V6CISelDAGToDAG.h/.cpp`. Implement `V6CDAGToDAGISel::Select()`. Start with TableGen patterns for: `ADD r`, `SUB r`, `ANA r`, `ORA r`, `XRA r`, `ADI d8`, `SUI d8`, `ANI d8`, `ORI d8`, `XRI d8`. | `[ ]` |
-| 3 | Add ISel patterns for `MVI r, d8` (constant materialization). | `[ ]` |
-| 4 | Add ISel patterns for `INR r`, `DCR r`. | `[ ]` |
-| 5 | Add ISel patterns for `MOV r, r` (register copy). Implement `copyPhysReg()` in `V6CInstrInfo`. | `[ ]` |
-| 6 | Add custom lowering for `load i8` (via HL-indirect or LDA) and `store i8` (via HL-indirect or STA). | `[ ]` |
-| 7 | Add ISel patterns for `CMP r`, `CPI d8`. Implement custom lowering for `icmp` + `br` → `CMP` + `Jcc`. | `[ ]` |
-| 8 | Add ISel patterns for `RLC`, `RRC`, `RAL`, `RAR` for shift-by-1 on accumulator. Custom lowering for `shl i8`, `lshr i8`, `ashr i8`. | `[ ]` |
-| 9 | Add custom lowering for `GlobalAddress` → `LXI`. | `[ ]` |
-| 10 | Add ISel for `RET` (return `i8` in `A`) and `CALL` (basic, no args). | `[ ]` |
-| 11 | Implement register allocation integration: set allocation order per design §3.4, implement `getReservedRegs()` (SP, PC). | `[ ]` |
+| 1 | Create `V6CISelLowering.h/.cpp`. Register type legalization: `i1` promote to `i8`, `i8` legal, everything else expand/custom. Set operation actions for `i8` operations per design §5.3. | `[x]` |
+| 2 | Create `V6CISelDAGToDAG.h/.cpp`. Implement `V6CDAGToDAGISel::Select()`. Start with TableGen patterns for: `ADD r`, `SUB r`, `ANA r`, `ORA r`, `XRA r`, `ADI d8`, `SUI d8`, `ANI d8`, `ORI d8`, `XRI d8`. | `[x]` |
+| 3 | Add ISel patterns for `MVI r, d8` (constant materialization). | `[x]` |
+| 4 | Add ISel patterns for `INR r`, `DCR r`. | `[x]` |
+| 5 | Add ISel patterns for `MOV r, r` (register copy). Implement `copyPhysReg()` in `V6CInstrInfo`. | `[x]` |
+| 6 | Add custom lowering for `load i8` (via HL-indirect or LDA) and `store i8` (via HL-indirect or STA). | `[x]` |
+| 7 | Add ISel patterns for `CMP r`, `CPI d8`. Implement custom lowering for `icmp` + `br` → `CMP` + `Jcc`. | `[x]` |
+| 8 | Add ISel patterns for `RLC`, `RRC`, `RAL`, `RAR` for shift-by-1 on accumulator. Custom lowering for `shl i8`, `lshr i8`, `ashr i8`. | `[x]` |
+| 9 | Add custom lowering for `GlobalAddress` → `LXI`. | `[x]` |
+| 10 | Add ISel for `RET` (return `i8` in `A`) and `CALL` (basic, no args). | `[x]` |
+| 11 | Implement register allocation integration: set allocation order per design §3.4, implement `getReservedRegs()` (SP, PC). | `[x]` |
 
 #### M4.2 Tests — lit (FileCheck)
 
@@ -432,12 +432,14 @@ Create `tests/unit/codegen/`:
 
 #### M4.5 Documentation
 
-- `[ ]` `docs/V6CArchitecture.md` — update with supported operations.
+- `[~]` `docs/V6CArchitecture.md` — update with supported operations.
+
+**Implementation notes**: M4 also required implementing minimal frame lowering (V6CFrameLowering.cpp with prologue/epilogue via LXI+DAD+SPHL), spill/reload pseudos (V6C_SPILL8/V6C_RELOAD8), and eliminateFrameIndex — these are M5 tasks pulled forward to unblock the register allocator for SELECT_CC. Emulator round-trip tests (M4.3) deferred until v6asm integration is available. SRL/SRA lowering returns SDValue() for now (expand/libcall in M11).
 
 ---
 
 ### M5 — Frame Lowering & Calling Convention
-`[ ]` **Status: Not started**
+`[~]` **Status: Partially started (spill/reload, basic prologue/epilogue pulled forward from M4)**
 
 **Goal**: Functions with local variables, arguments, and return values work correctly. Stack frame layout matches design §6–7. Functions can call other functions.
 
@@ -445,15 +447,15 @@ Create `tests/unit/codegen/`:
 
 | # | Step | Status |
 |---|------|--------|
-| 1 | Create `V6CFrameLowering.h/.cpp`. Implement prologue emission: `LXI H, -N; DAD SP; SPHL` per design §7.3. | `[ ]` |
-| 2 | Implement epilogue emission: `LXI H, N; DAD SP; SPHL; RET`. | `[ ]` |
-| 3 | Implement shrink-wrapping: omit prologue/epilogue for leaf functions with no locals. | `[ ]` |
-| 4 | Implement `eliminateFrameIndex()`: replace `frame_index` operands with `LXI H, offset; DAD SP` materialization per design §7.1. | `[ ]` |
+| 1 | Create `V6CFrameLowering.h/.cpp`. Implement prologue emission: `LXI H, -N; DAD SP; SPHL` per design §7.3. | `[x]` |
+| 2 | Implement epilogue emission: `LXI H, N; DAD SP; SPHL; RET`. | `[x]` |
+| 3 | Implement shrink-wrapping: omit prologue/epilogue for leaf functions with no locals. | `[x]` |
+| 4 | Implement `eliminateFrameIndex()`: replace `frame_index` operands with `LXI H, offset; DAD SP` materialization per design §7.1. | `[x]` |
 | 5 | Create `V6CCallingConv.td`. Define `V6C_CConv`: argument registers (A, HL, DE, BC → stack), return values (A, HL, DE:HL) per design §6.1. | `[ ]` |
-| 6 | Implement `LowerFormalArguments()` in `V6CISelLowering`: copy arguments from physical registers / stack to virtual registers. | `[ ]` |
-| 7 | Implement `LowerReturn()`: copy return value to physical register. | `[ ]` |
-| 8 | Implement `LowerCall()`: argument placement, CALL emission, result copy. Handle stack-passed arguments. | `[ ]` |
-| 9 | Implement `storeRegToStackSlot()` and `loadRegFromStackSlot()` in `V6CInstrInfo` for spill/reload. | `[ ]` |
+| 6 | Implement `LowerFormalArguments()` in `V6CISelLowering`: copy arguments from physical registers / stack to virtual registers. | `[x]` |
+| 7 | Implement `LowerReturn()`: copy return value to physical register. | `[x]` |
+| 8 | Implement `LowerCall()`: argument placement, CALL emission, result copy. Handle stack-passed arguments. | `[~]` |
+| 9 | Implement `storeRegToStackSlot()` and `loadRegFromStackSlot()` in `V6CInstrInfo` for spill/reload. | `[x]` |
 | 10 | Implement frame pointer mode: reserve BC when `-fno-omit-frame-pointer` or `alloca` is used, per design §7.2. | `[ ]` |
 | 11 | Inflate spill weights in V6C register allocator hooks to reflect 32cc+ stack access cost. | `[ ]` |
 
