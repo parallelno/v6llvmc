@@ -50,8 +50,9 @@ R*      /N  8
 | POP rp       | Cheap |
 | XCHG         | Free — same as ALU op |
 | ORA r        | Preferred over CPI 0 (saves 4cc) |
+| RRC, RAR, RLC, RAL | cheapest ALU ops. Great for bits manipulation |
 
-The default start execution address is 0x100, but the compiler must provide an option to set any arbitrary address in a range of available RAM (64K).
+The default starting execution address is 0x100, but the compiler must provide an option to set any arbitrary address in a range of available RAM (64K).
 
 Frontend: It's your choice. It can be existing frontend that provides minimal C support or Clang as your frontend to parse C and generate the initial LLVM IR, which your new backend will then transform into 8080 machine code.
 Optimization: Because 8-bit registers are scarce, lean heavily on LLVM's optimization passes to minimize memory access and register pressure.
