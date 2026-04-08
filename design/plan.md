@@ -237,7 +237,7 @@ M11 (runtime library) can proceed in parallel with M7–M8 once M5 (calling conv
 ---
 
 ### M1 — Target Registration & Skeleton
-`[ ]` **Status: Not started**
+`[x]` **Status: Complete**
 
 **Goal**: Register `V6C` as an LLVM experimental target. After this milestone, `llc -march=v6c -version` prints the target name and `llvm-tblgen` processes an empty target description.
 
@@ -245,12 +245,12 @@ M11 (runtime library) can proceed in parallel with M7–M8 once M5 (calling conv
 
 | # | Step | Status |
 |---|------|--------|
-| 1 | Create `V6CTargetInfo.h/.cpp` in `TargetInfo/`. Register the target triple `i8080-unknown-v6c` via `RegisterTarget`. | `[ ]` |
-| 2 | Create `V6CTargetMachine.h/.cpp`. Implement a minimal `V6CTargetMachine` subclass returning the data layout string from design §2.2. | `[ ]` |
-| 3 | Create `V6CSubtarget.h/.cpp`. Stub all accessors (`getInstrInfo()`, etc.) to return `nullptr` or assert. | `[ ]` |
-| 4 | Create top-level `V6C.td` with an empty target definition. Verify `llvm-tblgen` parses it. | `[ ]` |
-| 5 | Create `CMakeLists.txt` for the V6C target. Wire into LLVM's build via `LLVM_EXPERIMENTAL_TARGETS_TO_BUILD`. | `[ ]` |
-| 6 | Build LLVM with V6C enabled. Verify `llc -march=v6c -version` lists the target. | `[ ]` |
+| 1 | Create `V6CTargetInfo.h/.cpp` in `TargetInfo/`. Register the target triple `i8080-unknown-v6c` via `RegisterTarget`. | `[x]` |
+| 2 | Create `V6CTargetMachine.h/.cpp`. Implement a minimal `V6CTargetMachine` subclass returning the data layout string from design §2.2. | `[x]` |
+| 3 | Create `V6CSubtarget.h/.cpp`. Stub all accessors (`getInstrInfo()`, etc.) to return `nullptr` or assert. | `[x]` |
+| 4 | Create top-level `V6C.td` with an empty target definition. Verify `llvm-tblgen` parses it. | `[x]` |
+| 5 | Create `CMakeLists.txt` for the V6C target. Wire into LLVM's build via `LLVM_EXPERIMENTAL_TARGETS_TO_BUILD`. | `[x]` |
+| 6 | Build LLVM with V6C enabled. Verify `llc -march=v6c -version` lists the target. | `[x]` |
 
 #### M1.2 Tests
 
@@ -267,12 +267,12 @@ M11 (runtime library) can proceed in parallel with M7–M8 once M5 (calling conv
 
 #### M1.4 Documentation
 
-- `[ ]` `docs/V6CBackendOverview.md` — update with build instructions for V6C target.
+- `[x]` `docs/V6CBackendOverview.md` — update with build instructions for V6C target.
 
 ---
 
 ### M2 — TableGen: Registers & Core Instructions
-`[ ]` **Status: Not started**
+`[x]` **Status: Complete**
 
 **Goal**: Define all registers (design §3) and the full 8080 instruction set (design §4) in TableGen. All instruction encodings validated against `v6asm` reference output.
 
@@ -280,15 +280,15 @@ M11 (runtime library) can proceed in parallel with M7–M8 once M5 (calling conv
 
 | # | Step | Status |
 |---|------|--------|
-| 1 | Create `V6CRegisterInfo.td`. Define all physical registers (A, B, C, D, E, H, L, SP, FLAGS, PC), register pairs (BC, DE, HL, PSW), sub-register indices (`sub_hi`, `sub_lo`), and all register classes from design §3.2. | `[ ]` |
-| 2 | Create `V6CRegisterInfo.h/.cpp`. Implement `V6CRegisterInfo` subclass: reserved registers (SP, PC), allocation order, callee-saved list (empty per design §6.1). | `[ ]` |
-| 3 | Run `llvm-tblgen -gen-register-info` → `V6CGenRegisterInfo.inc`. Verify generated register enum, classes, and sub-register tables. | `[ ]` |
-| 4 | Create `V6CInstrFormats.td`. Define encoding formats: `Implied`, `Reg`, `Imm8`, `Imm16`, `Direct`, `RST`, `IO` per design §4.3. | `[ ]` |
-| 5 | Create `V6CInstrInfo.td`. Define **all** 8080 instructions organized by category (design §4.2). Start with data-move (MOV, MVI, LDA, STA, LDAX, STAX, LXI, LHLD, SHLD), then ALU (ADD, SUB, ADC, SBB, ANA, ORA, XRA, CMP + immediate variants), then increment/decrement, rotate, branch, stack, misc, and I/O. Include `let Defs = [FLAGS]` / `let Uses = [A]` as appropriate. | `[ ]` |
-| 6 | Create `V6CSchedule.td`. Define `SchedMachineModel` and `SchedWriteRes` entries for every instruction class with Vector 06c cycle costs. | `[ ]` |
-| 7 | Create `V6CInstrInfo.h/.cpp`. Implement `V6CInstrInfo` subclass with `copyPhysReg()`, `storeRegToStackSlot()`, `loadRegFromStackSlot()` stubs. | `[ ]` |
-| 8 | Run `llvm-tblgen -gen-instr-info` → `V6CGenInstrInfo.inc`. Verify all instruction enums exist. | `[ ]` |
-| 9 | For every instruction, compare its encoding (opcode byte + operand structure) against the byte produced by `v6asm` for the same mnenomic. Document discrepancies and fix. | `[ ]` |
+| 1 | Create `V6CRegisterInfo.td`. Define all physical registers (A, B, C, D, E, H, L, SP, FLAGS, PC), register pairs (BC, DE, HL, PSW), sub-register indices (`sub_hi`, `sub_lo`), and all register classes from design §3.2. | `[x]` |
+| 2 | Create `V6CRegisterInfo.h/.cpp`. Implement `V6CRegisterInfo` subclass: reserved registers (SP, PC), allocation order, callee-saved list (empty per design §6.1). | `[x]` |
+| 3 | Run `llvm-tblgen -gen-register-info` → `V6CGenRegisterInfo.inc`. Verify generated register enum, classes, and sub-register tables. | `[x]` |
+| 4 | Create `V6CInstrFormats.td`. Define encoding formats: `Implied`, `Reg`, `Imm8`, `Imm16`, `Direct`, `RST`, `IO` per design §4.3. | `[x]` |
+| 5 | Create `V6CInstrInfo.td`. Define **all** 8080 instructions organized by category (design §4.2). Start with data-move (MOV, MVI, LDA, STA, LDAX, STAX, LXI, LHLD, SHLD), then ALU (ADD, SUB, ADC, SBB, ANA, ORA, XRA, CMP + immediate variants), then increment/decrement, rotate, branch, stack, misc, and I/O. Include `let Defs = [FLAGS]` / `let Uses = [A]` as appropriate. | `[x]` |
+| 6 | Create `V6CSchedule.td`. Define `SchedMachineModel` and `SchedWriteRes` entries for every instruction class with Vector 06c cycle costs. | `[x]` |
+| 7 | Create `V6CInstrInfo.h/.cpp`. Implement `V6CInstrInfo` subclass with `copyPhysReg()`, `storeRegToStackSlot()`, `loadRegFromStackSlot()` stubs. | `[x]` |
+| 8 | Run `llvm-tblgen -gen-instr-info` → `V6CGenInstrInfo.inc`. Verify all instruction enums exist. | `[x]` |
+| 9 | For every instruction, compare its encoding (opcode byte + operand structure) against the byte produced by `v6asm` for the same mnenomic. Document discrepancies and fix. | `[x]` |
 
 #### M2.2 Tests
 
@@ -314,7 +314,7 @@ Create `tests/lit/MC/V6C/encoding.s`:
 
 #### M2.5 Documentation
 
-- `[ ]` `docs/V6CInstructionTimings.md` — instruction timing table, cross-referenced with TableGen `SchedWriteRes` names.
+- `[x]` `docs/V6CInstructionTimings.md` — instruction timing table, cross-referenced with TableGen `SchedWriteRes` names.
 
 ---
 

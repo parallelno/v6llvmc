@@ -70,12 +70,20 @@ e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8
 ### Build LLVM with V6C Target
 
 ```bash
-# From the project root
-cd llvm
-cmake -G Ninja ../llvm \
-  -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="V6C" \
-  -DCMAKE_BUILD_TYPE=Release
-ninja
+# From the project root (using MSVC on Windows)
+cmake -G Ninja -S llvm-project\llvm -B llvm-build ^
+  -DCMAKE_BUILD_TYPE=Release ^
+  -DLLVM_TARGETS_TO_BUILD=X86 ^
+  -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=V6C
+
+ninja -C llvm-build llc llvm-tblgen
+```
+
+Verify the target is registered:
+
+```bash
+llvm-build/bin/llc --version
+# Should list: v6c    - Vector 06c (Intel 8080)
 ```
 
 ### Running Tests
@@ -120,7 +128,19 @@ v6llvmc/
   - v6emul and v6asm validated
   - Golden test suite: 15 tests, all passing
   - Project directory structure created
-  - Stub CMakeLists.txt for V6C target
+- **M1 (Target Registration & Skeleton)**: Complete
+  - `i8080` architecture added to LLVM Triple
+  - V6C registered as experimental target (`llc -march=v6c` works)
+  - V6CTargetMachine, V6CSubtarget, MCTargetDesc implemented
+  - Data layout: `e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8`
+  - TableGen processes V6C.td (minimal registers + NOP instruction)
+- **M2 (TableGen: Registers & Core Instructions)**: Complete
+  - All 8080 registers defined: A, B, C, D, E, H, L, FLAGS, SP + pairs BC, DE, HL, PSW
+  - 9 register classes: GR8, GR8NoA, Acc, GR16, GR16Ptr, GR16Idx, GR16SP, GR16All, FlagReg
+  - Complete 8080 instruction set (80+ instructions) with correct encoding formats
+  - Scheduling model: in-order, single-issue, 11 SchedWrite resources with cycle costs
+  - V6CRegisterInfo, V6CInstrInfo, V6CFrameLowering implemented
+  - All 154 instruction encodings validated against v6asm reference output
 
 ## References
 
