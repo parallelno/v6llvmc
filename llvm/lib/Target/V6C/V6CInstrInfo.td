@@ -76,6 +76,9 @@ def SDT_V6CShift16 : SDTypeProfile<1, 2, [SDTCisVT<0, i16>,
 def V6Csrl16 : SDNode<"V6CISD::SRL16", SDT_V6CShift16>;
 def V6Csra16 : SDNode<"V6CISD::SRA16", SDT_V6CShift16>;
 
+// DAD: 16-bit add constrained to HL pair (maps to physical DAD rp).
+def V6Cdad : SDNode<"V6CISD::DAD", SDTIntBinOp, [SDNPCommutative]>;
+
 //===----------------------------------------------------------------------===//
 // V6C condition codes (used in BRCOND and SELECT_CC)
 //===----------------------------------------------------------------------===//
@@ -648,6 +651,19 @@ def : Pat<(i16 imm:$val), (LXI imm:$val)>;
 
 // 16-bit arithmetic pseudos. These expand post-RA into 8-bit sequences via A.
 // All clobber A (used as temp) and FLAGS.
+
+// V6C_DAD: HL-constrained 16-bit add → physical DAD rp instruction.
+// Result and lhs are tied and constrained to GR16Ptr (HL only).
+// Does NOT clobber A — only FLAGS — giving better register pressure than
+// the general V6C_ADD16 which uses an 8-bit chain through A.
+// Selected via V6CISD::DAD from PerformDAGCombine when the add result
+// is used as a memory address (load/store pointer).
+let Defs = [FLAGS] in
+def V6C_DAD : V6CPseudo<(outs GR16Ptr:$dst), (ins GR16Ptr:$lhs, GR16All:$rp),
+    "# DAD $dst, $lhs, $rp",
+    [(set i16:$dst, (V6Cdad i16:$lhs, i16:$rp))]> {
+  let Constraints = "$dst = $lhs";
+}
 
 let Defs = [A, FLAGS] in {
   def V6C_ADD16 : V6CPseudo<(outs GR16:$dst), (ins GR16:$lhs, GR16:$rhs),

@@ -368,6 +368,18 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   // M7: i16 arithmetic pseudo expansions
   //===------------------------------------------------------------------===//
 
+  case V6C::V6C_DAD: {
+    // V6C_DAD: HL = HL + rp via physical DAD instruction.
+    // $dst and $lhs are tied and constrained to HL (GR16Ptr).
+    Register DstReg = MI.getOperand(0).getReg();
+    Register RpReg = MI.getOperand(2).getReg();
+    assert(DstReg == V6C::HL && "V6C_DAD operands must be HL");
+    (void)DstReg;
+    BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(RpReg);
+    MI.eraseFromParent();
+    return true;
+  }
+
   case V6C::V6C_ADD16: {
     // dst = lhs + rhs (16-bit)
     // Optimization: if dst==HL and one operand is HL, use DAD rp (12cc)

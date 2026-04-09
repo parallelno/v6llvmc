@@ -172,6 +172,9 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
 
   // Minimum function alignment (8080 has no alignment requirements).
   setMinFunctionAlignment(Align(1));
+
+  // Enable DAG combine for i16 ADD → DAD optimization.
+  setTargetDAGCombine(ISD::ADD);
 }
 
 //===----------------------------------------------------------------------===//
@@ -191,8 +194,49 @@ const char *V6CTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case V6CISD::SEXT:      return "V6CISD::SEXT";
   case V6CISD::SRL16:     return "V6CISD::SRL16";
   case V6CISD::SRA16:     return "V6CISD::SRA16";
+  case V6CISD::DAD:       return "V6CISD::DAD";
   }
   return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// PerformDAGCombine — target-specific DAG optimizations
+//===----------------------------------------------------------------------===//
+
+SDValue V6CTargetLowering::PerformDAGCombine(SDNode *N,
+                                              DAGCombinerInfo &DCI) const {
+  SelectionDAG &DAG = DCI.DAG;
+
+  switch (N->getOpcode()) {
+  default:
+    break;
+
+  case ISD::ADD:
+    // Convert i16 add to V6CISD::DAD when the result is used as a pointer
+    // for a memory operation. DAD uses the HL register pair (12cc, does not
+    // clobber A), which is exactly what loads/stores need for addressing.
+    if (N->getValueType(0) == MVT::i16) {
+      bool UsedAsPointer = false;
+      for (SDNode::use_iterator UI = N->use_begin(), UE = N->use_end();
+           UI != UE; ++UI) {
+        unsigned UseOpc = UI->getOpcode();
+        // Load: operands are (chain, ptr). We're the pointer if operand 1.
+        if (UseOpc == ISD::LOAD && UI.getOperandNo() == 1)
+          UsedAsPointer = true;
+        // Store: operands are (chain, val, ptr). We're the pointer if operand 2.
+        if (UseOpc == ISD::STORE && UI.getOperandNo() == 2)
+          UsedAsPointer = true;
+      }
+      if (UsedAsPointer) {
+        SDLoc DL(N);
+        return DAG.getNode(V6CISD::DAD, DL, MVT::i16, N->getOperand(0),
+                           N->getOperand(1));
+      }
+    }
+    break;
+  }
+
+  return SDValue();
 }
 
 //===----------------------------------------------------------------------===//

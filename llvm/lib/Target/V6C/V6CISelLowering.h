@@ -27,6 +27,7 @@ enum NodeType : unsigned {
   SEXT,       // Sign-extend i8 to i16 (pseudo, expands to RLC+SBB).
   SRL16,      // Logical right shift i16 by constant amount.
   SRA16,      // Arithmetic right shift i16 by constant amount.
+  DAD,        // 16-bit add constrained to HL (maps to DAD rp).
 };
 } // namespace V6CISD
 
@@ -88,6 +89,9 @@ private:
   SDValue LowerZERO_EXTEND(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSIGN_EXTEND(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerANY_EXTEND(SDValue Op, SelectionDAG &DAG) const;
+
+  SDValue PerformDAGCombine(SDNode *N,
+                            DAGCombinerInfo &DCI) const override;
 
   // Inline assembly support.
   ConstraintType getConstraintType(StringRef Constraint) const override;
