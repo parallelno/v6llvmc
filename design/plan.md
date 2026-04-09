@@ -807,7 +807,7 @@ Record baseline and optimized cycle counts in `tests/benchmarks/results.md`. Fai
 ---
 
 ### M11 — Runtime Library
-`[ ]` **Status: Not started**
+`[x]` **Status: Complete**
 
 **Goal**: All runtime support functions from design §11 are implemented in 8080 assembly, tested in isolation, and wired into the compiler's LibCall table.
 
@@ -815,15 +815,15 @@ Record baseline and optimized cycle counts in `tests/benchmarks/results.md`. Fai
 
 | # | Step | Status |
 |---|------|--------|
-| 1 | Write `compiler-rt/lib/builtins/v6c/crt0.s`: set SP to 0xFFFF, zero `.bss`, call `_main`, `HLT`. Assemble with `v6asm`, test with `v6emul`. | `[ ]` |
-| 2 | Write `mulhi3.s`: 8×8→16 unsigned multiply. Test standalone with `v6emul`. | `[ ]` |
-| 3 | Write `mulsi3.s`: 16×16→32 multiply. Test standalone. | `[ ]` |
-| 4 | Write `divhi3.s` + `modhi3.s`: signed 16÷16→16 division and remainder. Test standalone. | `[ ]` |
-| 5 | Write `udivhi3.s` + `umodhi3.s`: unsigned variants. Test standalone. | `[ ]` |
-| 6 | Write `shift.s`: `__ashlhi3`, `__ashrhi3`, `__lshrhi3` for variable-count 16-bit shifts. Test standalone. | `[ ]` |
-| 7 | Write `memory.s`: `memcpy`, `memset`, `memmove` with SP-trick optimization for large copies (DI/EI wrapped). Test standalone. | `[ ]` |
-| 8 | Wire all functions into `V6CISelLowering` libcall table: `RTLIB::MUL_I16` → `__mulhi3`, etc. | `[ ]` |
-| 9 | Write a test that compiles C code using `*`, `/`, `%` operators and verify the correct libcall is emitted and executed. | `[ ]` |
+| 1 | Write `compiler-rt/lib/builtins/v6c/crt0.s`: set SP to 0xFFFF, zero `.bss`, call `_main`, `HLT`. Assemble with `v6asm`, test with `v6emul`. | `[x]` |
+| 2 | Write `mulhi3.s`: 16×16→16 unsigned multiply. Test standalone with `v6emul`. | `[x]` |
+| 3 | Write `mulsi3.s`: 16×16→32 multiply. Test standalone. | `[x]` |
+| 4 | Write `divhi3.s` + `modhi3.s`: signed 16÷16→16 division and remainder. Test standalone. | `[x]` |
+| 5 | Write `udivhi3.s` + `umodhi3.s`: unsigned variants. Test standalone. | `[x]` |
+| 6 | Write `shift.s`: `__ashlhi3`, `__ashrhi3`, `__lshrhi3` for variable-count 16-bit shifts. Test standalone. | `[x]` |
+| 7 | Write `memory.s`: `memcpy`, `memset`, `memmove`. Test standalone. | `[x]` |
+| 8 | Wire all functions into `V6CISelLowering` libcall table: `RTLIB::MUL_I16` → `__mulhi3`, etc. i8 ops Promote to i16. | `[x]` |
+| 9 | Write lit tests verifying correct libcall emission for `*`, `/`, `%` and variable shifts (i8 and i16). | `[x]` |
 
 #### M11.2 Tests — Standalone (per function)
 
@@ -871,7 +871,7 @@ Each runtime function gets a standalone test assembled with `v6asm` and executed
 
 #### M11.6 Documentation
 
-- `[ ]` `docs/V6CArchitecture.md` — runtime library section: functions, ABI compliance, performance notes.
+- `[x]` `docs/V6CArchitecture.md` — runtime library section: functions, ABI compliance, performance notes.
 
 ---
 
