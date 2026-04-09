@@ -631,7 +631,7 @@ Create `tests/unit/codegen/`:
 ---
 
 ### M8 — Optimization Passes
-`[ ]` **Status: Not started**
+`[~]` **Status: In progress**
 
 **Goal**: Implement all custom optimization passes from design §8.2. Each pass is individually testable and toggleable. Total cycle count for benchmark programs decreases measurably.
 
@@ -639,15 +639,15 @@ Create `tests/unit/codegen/`:
 
 | # | Step | Status |
 |---|------|--------|
-| 1 | Implement `V6CZeroTestOpt`: replace `CPI 0` with `ORA A`. Add `-v6c-disable-zero-test-opt` flag. | `[ ]` |
-| 2 | Implement `V6CXchgOpt`: detect DE↔HL MOV pairs replaceable by XCHG. Add `-v6c-disable-xchg-opt` flag. | `[ ]` |
-| 3 | Implement `V6CPeephole`: pattern-based local optimizations (redundant MOV elimination, strength reduction `ADD A,A` for `shl 1`). Add `-v6c-disable-peephole` flag. | `[ ]` |
+| 1 | Implement `V6CZeroTestOpt`: replace `CPI 0` with `ORA A`. Add `-v6c-disable-zero-test-opt` flag. | `[x]` |
+| 2 | Implement `V6CXchgOpt`: detect DE↔HL MOV pairs replaceable by XCHG. Add `-v6c-disable-xchg-opt` flag. | `[x]` |
+| 3 | Implement `V6CPeephole`: pattern-based local optimizations (redundant MOV elimination, strength reduction `ADD A,A` for `shl 1`). Add `-v6c-disable-peephole` flag. | `[x]` |
 | 4 | Implement `V6CAccumulatorPlanning`: basic block data-flow reordering to minimize A save/restore traffic. Add `-v6c-disable-acc-planning` flag. | `[ ]` |
 | 5 | Implement `V6CLoadStoreOpt`: merge adjacent loads/stores to the same base address. Add `-v6c-disable-loadstore-opt` flag. | `[ ]` |
 | 6 | Implement `V6CBranchOpt`: branch relaxation, unreachable block elimination, tail call conversion. Add `-v6c-disable-branch-opt` flag. | `[ ]` |
 | 7 | Implement `V6CSPTrickOpt`: replace expanded memcpy/memset with SP-trick sequences (design §8.2.3). Add `-v6c-disable-sp-trick` flag. Wrap in DI/EI. Reject if inside ISR. | `[ ]` |
 | 8 | Implement `V6CTypeNarrowing` (IR pass): narrow provably-bounded `i16` to `i8`. Add `-v6c-disable-type-narrowing` flag. | `[ ]` |
-| 9 | Register all passes in `V6CPassConfig` at the positions from design §14.3. | `[ ]` |
+| 9 | Register all passes in `V6CPassConfig` at the positions from design §14.3. | `[x]` |
 | 10 | Run full lit test suite with `-verify-machineinstrs` to catch invariant violations. | `[ ]` |
 | 11 | Run full lit test suite with each pass individually disabled to detect ordering dependencies. | `[ ]` |
 
