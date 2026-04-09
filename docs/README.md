@@ -33,14 +33,16 @@ Goal: **C source → Clang → LLVM IR → V6C backend → flat binary → Vecto
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
-| M0 | Project Bootstrap | Complete |
+| M0 | Project Bootstrap & Tool Validation | Complete |
 | M1 | Target Registration & Skeleton | Complete |
-| M2 | TableGen: Registers & Core Instructions | In Progress |
-| M3 | MC Layer: Assembly Emission | Not started | |
-| M4 | Instruction Selection (ISel) | Not started | |
-| M5 | Register Allocation & Frame Lowering | Not started | |
-| M6 | Clang Integration | Not started | |
-| M7 | Linker (lld) | Not started | |
-| M8 | Runtime Library (compiler-rt) | Not started | |
-| M9 | Optimization Passes | Not started | |
-| M10 | End-to-End Validation | Not started | |
+| M2 | TableGen: Registers & Core Instructions | Complete |
+| M3 | MC Layer: Assembly Emission | Complete |
+| M4 | ISel: i8 Operations & Basic Lowering | Complete |
+| M5 | Frame Lowering & Calling Convention | Complete |
+| M6 | MC Layer: Binary Emission | Complete |
+| M7 | ISel: i16 & i32 Operations | Complete |
+| M8 | Optimization Passes | Complete |
+| M9 | Clang Frontend Integration | Complete |
+| M10 | Linker & Multi-File Compilation | Complete |
+| M11 | Runtime Library | Complete |
+| M12 | End-to-End Validation & Performance | Complete |

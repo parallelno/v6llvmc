@@ -432,7 +432,7 @@ Create `tests/unit/codegen/`:
 
 #### M4.5 Documentation
 
-- `[~]` `docs/V6CArchitecture.md` — update with supported operations.
+- `[x]` `docs/V6CArchitecture.md` — update with supported operations.
 
 **Implementation notes**: M4 also required implementing minimal frame lowering (V6CFrameLowering.cpp with prologue/epilogue via LXI+DAD+SPHL), spill/reload pseudos (V6C_SPILL8/V6C_RELOAD8), and eliminateFrameIndex — these are M5 tasks pulled forward to unblock the register allocator for SELECT_CC. Emulator round-trip tests (M4.3) deferred until v6asm integration is available. SRL/SRA lowering returns SDValue() for now (expand/libcall in M11).
 
@@ -937,11 +937,11 @@ The following must hold for the milestone to be considered complete:
 
 #### M12.5 Documentation — Final
 
-- `[ ]` `docs/README.md` — finalize: architecture, usage, limitations, examples.
-- `[ ]` `docs/V6CCallingConvention.md` — finalize with tested examples.
-- `[ ]` `docs/V6COptimization.md` — finalize with measured performance data.
-- `[ ]` `docs/V6CInstructionTimings.md` — finalize, cross-reference with benchmark results.
-- `[ ]` `README.md` — project root: quick start, build instructions, test instructions, supported C subset.
+- `[x]` `docs/README.md` — finalize: architecture, usage, limitations, examples.
+- `[x]` `docs/V6CCallingConvention.md` — finalize with tested examples.
+- `[x]` `docs/V6COptimization.md` — finalize with measured performance data.
+- `[x]` `docs/V6CInstructionTimings.md` — finalize, cross-reference with benchmark results.
+- `[x]` `README.md` — project root: quick start, build instructions, test instructions, supported C subset.
 
 ---
 
