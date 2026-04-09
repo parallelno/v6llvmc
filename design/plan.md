@@ -704,7 +704,7 @@ Record baseline and optimized cycle counts in `tests/benchmarks/results.md`. Fai
 ---
 
 ### M9 — Clang Frontend Integration
-`[ ]` **Status: Not started**
+`[x]` **Status: Complete**
 
 **Goal**: `clang -target i8080-unknown-v6c` compiles C source to 8080 assembly or binary. Built-in macros and intrinsics from design §10 are available.
 
@@ -712,14 +712,14 @@ Record baseline and optimized cycle counts in `tests/benchmarks/results.md`. Fai
 
 | # | Step | Status |
 |---|------|--------|
-| 1 | Create `clang/lib/Basic/Targets/V6C.h/.cpp`. Implement `V6CTargetInfo`: type sizes from design §2.3, unsigned `char`, pointer width 16. | `[ ]` |
-| 2 | Register the `i8080` architecture in Clang's triple parsing (`llvm::Triple`). | `[ ]` |
-| 3 | Define built-in macros: `__V6C__`, `__I8080__`, `__CHAR_UNSIGNED__` (design §10.1). | `[ ]` |
-| 4 | Implement `TargetCodeGenInfo` for V6C: ABI lowering that matches `V6C_CConv` (design §6.1). | `[ ]` |
+| 1 | Create `clang/lib/Basic/Targets/I8080.h/.cpp`. Implement `I8080TargetInfo`: type sizes from design §2.3, unsigned `char`, pointer width 16. | `[x]` |
+| 2 | Register the `i8080` architecture in Clang's triple parsing (`llvm::Triple`). | `[x]` |
+| 3 | Define built-in macros: `__V6C__`, `__I8080__`, `__CHAR_UNSIGNED__` (design §10.1). | `[x]` |
+| 4 | Implement `TargetCodeGenInfo` for V6C: ABI lowering that matches `V6C_CConv` (design §6.1). | `[x]` |
 | 5 | Add language restriction diagnostics: warn on `long long`, warn on `float`/`double` (design §10.2). | `[ ]` |
 | 6 | Implement `__builtin_v6c_in`, `__builtin_v6c_out`, `__builtin_v6c_di`, `__builtin_v6c_ei`, `__builtin_v6c_hlt`, `__builtin_v6c_nop` intrinsics (design §10.3). | `[ ]` |
 | 7 | Implement inline assembly support for 8080 syntax via `asm()`. | `[ ]` |
-| 8 | Wire Clang driver to produce flat binary output when `-o file.bin` is specified. | `[ ]` |
+| 8 | Wire Clang driver to produce flat binary output when `-o file.bin` is specified. | `[x]` |
 
 #### M9.2 Tests
 

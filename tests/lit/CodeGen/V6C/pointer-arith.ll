@@ -4,8 +4,7 @@
 ; CHECK-LABEL: gep_i16:
 ; CHECK:       ADD
 ; CHECK:       ADC
-; CHECK:       ADD
-; CHECK:       ADC
+; CHECK:       DAD DE
 ; CHECK:       MOV {{[A-E]}}, M
 ; CHECK:       INX HL
 ; CHECK-NEXT:  MOV {{[A-E]}}, M

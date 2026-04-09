@@ -5,27 +5,18 @@
 ;===----------------------------------------------------------------------===
 
 ; CHECK-LABEL: shl1_i16:
-; CHECK:       MOV A, L
-; CHECK-NEXT:  ADD L
-; CHECK-NEXT:  MOV L, A
-; CHECK-NEXT:  MOV A, H
-; CHECK-NEXT:  ADC H
-; CHECK-NEXT:  MOV H, A
+; CHECK:       DAD HL
 ; CHECK-NEXT:  RET
 define i16 @shl1_i16(i16 %a) {
   %r = shl i16 %a, 1
   ret i16 %r
 }
 
-; shl by 3 = three repeated ADD sequences
+; shl by 3 = three repeated DAD HL sequences
 ; CHECK-LABEL: shl3_i16:
-; CHECK:       ADD L
-; CHECK:       ADC H
-; CHECK:       ADD L
-; CHECK:       ADC H
-; CHECK:       ADD L
-; CHECK:       ADC H
-; CHECK-NEXT:  MOV H, A
+; CHECK:       DAD HL
+; CHECK-NEXT:  DAD HL
+; CHECK-NEXT:  DAD HL
 ; CHECK-NEXT:  RET
 define i16 @shl3_i16(i16 %a) {
   %r = shl i16 %a, 3
