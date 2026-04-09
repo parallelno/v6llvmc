@@ -716,9 +716,9 @@ Record baseline and optimized cycle counts in `tests/benchmarks/results.md`. Fai
 | 2 | Register the `i8080` architecture in Clang's triple parsing (`llvm::Triple`). | `[x]` |
 | 3 | Define built-in macros: `__V6C__`, `__I8080__`, `__CHAR_UNSIGNED__` (design §10.1). | `[x]` |
 | 4 | Implement `TargetCodeGenInfo` for V6C: ABI lowering that matches `V6C_CConv` (design §6.1). | `[x]` |
-| 5 | Add language restriction diagnostics: warn on `long long`, warn on `float`/`double` (design §10.2). | `[ ]` |
-| 6 | Implement `__builtin_v6c_in`, `__builtin_v6c_out`, `__builtin_v6c_di`, `__builtin_v6c_ei`, `__builtin_v6c_hlt`, `__builtin_v6c_nop` intrinsics (design §10.3). | `[ ]` |
-| 7 | Implement inline assembly support for 8080 syntax via `asm()`. | `[ ]` |
+| 5 | Add language restriction diagnostics: warn on `long long`, warn on `float`/`double` (design §10.2). | `[x]` |
+| 6 | Implement `__builtin_v6c_in`, `__builtin_v6c_out`, `__builtin_v6c_di`, `__builtin_v6c_ei`, `__builtin_v6c_hlt`, `__builtin_v6c_nop` intrinsics (design §10.3). | `[x]` |
+| 7 | Implement inline assembly support for 8080 syntax via `asm()` (IR-level constraint handling; no MC asm parser). | `[x]` |
 | 8 | Wire Clang driver to produce flat binary output when `-o file.bin` is specified. | `[x]` |
 
 #### M9.2 Tests
@@ -752,7 +752,7 @@ Record baseline and optimized cycle counts in `tests/benchmarks/results.md`. Fai
 
 #### M9.5 Documentation
 
-- `[ ]` `docs/V6CBuildGuide.md` — update with Clang usage, intrinsics, language restrictions.
+- `[x]` `docs/V6CBuildGuide.md` — update with Clang usage, intrinsics, language restrictions.
 
 ---
 

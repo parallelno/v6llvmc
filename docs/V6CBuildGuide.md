@@ -141,3 +141,121 @@ python scripts/bin2hex.py output.bin -o output.hex --base 0x0100
 ```bash
 tools/v6emul/v6emul.exe --rom output.bin --load-addr 0x0100 --halt-exit --dump-cpu
 ```
+
+## Clang Frontend (C Compiler)
+
+### Building with Clang
+
+To build Clang alongside the V6C backend, add `-DLLVM_ENABLE_PROJECTS=clang`:
+
+```bash
+cmake -G Ninja -S llvm-project\llvm -B llvm-build ^
+  -DCMAKE_BUILD_TYPE=Release ^
+  -DLLVM_TARGETS_TO_BUILD=X86 ^
+  -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=V6C ^
+  -DLLVM_ENABLE_PROJECTS=clang
+
+ninja -C llvm-build clang llc
+```
+
+### Compiling C Code
+
+```bash
+# C source → LLVM IR
+llvm-build/bin/clang -target i8080-unknown-v6c -S -emit-llvm hello.c -o hello.ll
+
+# C source → V6C assembly
+llvm-build/bin/clang -target i8080-unknown-v6c -S hello.c -o hello.s
+
+# C source → object file
+llvm-build/bin/clang -target i8080-unknown-v6c -c hello.c -o hello.o
+```
+
+The driver automatically forces `-ffreestanding` (no hosted C library).
+
+### Type Sizes
+
+| C Type | Size | Notes |
+|--------|------|-------|
+| `char` | 1 byte | **Unsigned** by default |
+| `short` | 2 bytes | |
+| `int` | 2 bytes | Same as pointer width |
+| `long` | 4 bytes | Software-emulated |
+| `long long` | 8 bytes | Warning: very expensive |
+| `float` | 4 bytes | Software-emulated (IEEE single) |
+| `double` | 4 bytes | Mapped to `float` (no 64-bit FP) |
+| `void *` | 2 bytes | 16-bit address space |
+
+### Built-in Macros
+
+| Macro | Description |
+|-------|-------------|
+| `__V6C__` | Always defined for V6C targets |
+| `__I8080__` | Always defined for i8080 |
+| `__CHAR_UNSIGNED__` | Indicates `char` is unsigned |
+
+### Language Restrictions
+
+The V6C target emits warnings (controlled by `-Wv6c-expensive-type`) when using types that require expensive software emulation:
+
+- **`long long`** (64-bit integer) — prohibitively expensive on 8-bit CPU
+- **`float` / `double`** — no FPU, all operations are software-emulated
+
+Suppress with `-Wno-v6c-expensive-type` if intentional.
+
+### Built-in Functions (Intrinsics)
+
+Hardware-specific operations available as built-in functions:
+
+| Intrinsic | Assembly | Purpose |
+|-----------|----------|---------|
+| `__builtin_v6c_in(port)` | `IN port` | Read I/O port (returns `unsigned char`) |
+| `__builtin_v6c_out(port, val)` | `OUT port` | Write `val` to I/O port |
+| `__builtin_v6c_di()` | `DI` | Disable interrupts |
+| `__builtin_v6c_ei()` | `EI` | Enable interrupts |
+| `__builtin_v6c_hlt()` | `HLT` | Halt processor |
+| `__builtin_v6c_nop()` | `NOP` | No-operation |
+
+Example:
+```c
+void write_port(unsigned char port, unsigned char val) {
+    __builtin_v6c_out(port, val);
+}
+
+unsigned char read_port(unsigned char port) {
+    return __builtin_v6c_in(port);
+}
+
+void critical_section(void) {
+    __builtin_v6c_di();
+    // ... critical code ...
+    __builtin_v6c_ei();
+}
+```
+
+### Inline Assembly
+
+The V6C target supports GCC-style inline assembly with 8080 mnemonics:
+
+```c
+void nop_sled(void) {
+    asm volatile("NOP");
+    asm volatile("NOP");
+}
+
+unsigned char read_a(void) {
+    unsigned char val;
+    asm volatile("" : "=a"(val));  // read accumulator
+    return val;
+}
+```
+
+**Constraint letters:**
+
+| Constraint | Meaning |
+|------------|---------|
+| `a` | Accumulator (A register) |
+| `r` | Any 8-bit general register |
+| `p` | Any 16-bit register pair (BC, DE, HL) |
+| `I` | 8-bit unsigned immediate (0–255) |
+| `J` | 16-bit unsigned immediate (0–65535) |

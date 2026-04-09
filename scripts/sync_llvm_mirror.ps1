@@ -36,5 +36,16 @@ xcopy /Y /I "$root\llvm-project\clang\lib\Driver\Driver.cpp" "$root\clang\lib\Dr
 xcopy /Y /I "$root\llvm-project\clang\lib\Driver\CMakeLists.txt" "$root\clang\lib\Driver\" > $null
 # Clang.cpp (unsigned char default)
 xcopy /Y /I "$root\llvm-project\clang\lib\Driver\ToolChains\Clang.cpp" "$root\clang\lib\Driver\ToolChains\" > $null
+# M9 step 5: Diagnostics
+xcopy /Y /I "$root\llvm-project\clang\include\clang\Basic\DiagnosticSemaKinds.td" "$root\clang\include\clang\Basic\" > $null
+xcopy /Y /I "$root\llvm-project\clang\lib\Sema\Sema.cpp" "$root\clang\lib\Sema\" > $null
+# M9 step 6: Builtin intrinsics
+xcopy /Y /I "$root\llvm-project\clang\include\clang\Basic\BuiltinsV6C.def" "$root\clang\include\clang\Basic\" > $null
+xcopy /Y /I "$root\llvm-project\clang\include\clang\Basic\TargetBuiltins.h" "$root\clang\include\clang\Basic\" > $null
+xcopy /Y /I "$root\llvm-project\llvm\include\llvm\IR\IntrinsicsV6C.td" "$root\llvm\include\llvm\IR\" > $null
+xcopy /Y /I "$root\llvm-project\llvm\include\llvm\IR\Intrinsics.td" "$root\llvm\include\llvm\IR\" > $null
+xcopy /Y /I "$root\llvm-project\llvm\include\llvm\IR\CMakeLists.txt" "$root\llvm\include\llvm\IR\" > $null
+# M9 step 6: Function.cpp (IntrinsicsV6C.h include)
+xcopy /Y /I "$root\llvm-project\llvm\lib\IR\Function.cpp" "$root\llvm\lib\IR\" > $null
 
 Write-Host "Mirror sync complete."

@@ -12,14 +12,26 @@
 
 #include "I8080.h"
 #include "clang/Basic/MacroBuilder.h"
+#include "clang/Basic/TargetBuiltins.h"
 
 using namespace clang;
 using namespace clang::targets;
+
+static constexpr Builtin::Info BuiltinInfo[] = {
+#define BUILTIN(ID, TYPE, ATTRS)                                               \
+  {#ID, TYPE, ATTRS, nullptr, HeaderDesc::NO_HEADER, ALL_LANGUAGES},
+#include "clang/Basic/BuiltinsV6C.def"
+};
 
 void I8080TargetInfo::getTargetDefines(const LangOptions &Opts,
                                        MacroBuilder &Builder) const {
   Builder.defineMacro("__I8080__");
   Builder.defineMacro("__V6C__");
+}
+
+ArrayRef<Builtin::Info> I8080TargetInfo::getTargetBuiltins() const {
+  return llvm::ArrayRef(BuiltinInfo, clang::V6C::LastTSBuiltin -
+                                         Builtin::FirstTSBuiltin);
 }
 
 ArrayRef<const char *> I8080TargetInfo::getGCCRegNames() const {
