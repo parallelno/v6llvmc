@@ -495,8 +495,8 @@ Create `tests/unit/codegen/`:
 
 #### M5.6 Documentation
 
-- `[ ]` `docs/V6CCallingConvention.md` — full description with examples.
-- `[ ]` `docs/V6CArchitecture.md` — update with calling convention summary.
+- `[x]` `docs/V6CCallingConvention.md` — full description with examples.
+- `[x]` `docs/V6CArchitecture.md` — update with calling convention summary.
 
 **Implementation notes**: M5 completion included:
 - `V6CCallingConv.td`: RetCC_V6C for return value assignment (i8→A, i16→HL, i32→HL+DE). Argument passing implemented in C++ due to position-based complexity.
@@ -570,14 +570,14 @@ Create `tests/unit/codegen/`:
 | 1 | Implement `i16` type legalization: `Legal` for loads, stores, register moves; `Custom` for arithmetic. | `[x]` |
 | 2 | Implement pseudo-instructions: `V6C_MOV16rr`, `V6C_LOAD16`, `V6C_STORE16`, `V6C_ADD16`, `V6C_SUB16`, `V6C_CMP16`, `V6C_SHIFT_L`, `V6C_SHIFT_R` per design §5.5. | `[x]` |
 | 3 | Implement pseudo-instruction expansion in `expandPostRAPseudo()` — expand each pseudo into the concrete 8080 sequences from design §5.5. | `[x]` |
-| 4 | Implement custom DAG combine for `(add HL, rp)` → `DAD rp` (design §5.4). | `[ ]` *(deferred to M8)* |
+| 4 | Implement custom DAG combine for `(add HL, rp)` → `DAD rp` (design §5.4). | `[x]` |
 | 5 | Implement `i16` comparison: custom lowering to 8-bit compare chain with correct flag handling. | `[x]` |
 | 6 | Implement `i16` shift: unrolled sequences for constant shift amounts; library call for variable. | `[x]` |
 | 7 | Implement `i32` type legalization: `Expand` to pair of `i16`. Verify add, sub, compare chains. | `[x]` |
 | 8 | Implement pointer arithmetic lowering: `getelementptr` → `DAD` or 8-bit add chain. | `[x]` |
 | 9 | Implement `LXI rp, imm16` for 16-bit constant materialization. | `[x]` |
 | 10 | Implement `LHLD` / `SHLD` selection for `i16` loads/stores to known addresses. | `[x]` |
-| 11 | Implement `LDAX` / `STAX` for loads/stores via BC/DE pointer pairs. | `[ ]` *(deferred to M8)* |
+| 11 | Implement `LDAX` / `STAX` for loads/stores via BC/DE pointer pairs. | `[x]` |
 
 #### M7.2 Tests — lit (FileCheck)
 
@@ -618,7 +618,7 @@ Create `tests/unit/codegen/`:
 #### M7.4 Verification
 
 - `[x]` Every `i16` operation produces the instruction sequence documented in design §5.3/§5.5.
-- `[ ]` `DAD` is selected when applicable — deferred to M8 (DAD combine optimization).
+- `[x]` `DAD` is selected when applicable.
 - `[x]` `i32` operations produce correct results for edge cases: `0xFFFFFFFF + 1`, `0x00000000 - 1`.
 - `[x]` Pointer arithmetic matches C semantics for `sizeof`-based offsets.
 - `[x]` 26 lit tests pass (0 regressions). 13 emulator round-trip tests pass.
@@ -626,7 +626,7 @@ Create `tests/unit/codegen/`:
 
 #### M7.5 Documentation
 
-- `[ ]` `docs/V6CArchitecture.md` — update with supported type widths and limitations. *(deferred to M8)*
+- `[x]` `docs/V6CArchitecture.md` — update with supported type widths and limitations.
 
 ---
 
@@ -699,7 +699,7 @@ Record baseline and optimized cycle counts in `tests/benchmarks/results.md`. Fai
 
 #### M8.6 Documentation
 
-- `[ ]` `docs/V6COptimization.md` — each pass described: purpose, patterns, toggle flag, measured impact.
+- `[x]` `docs/V6COptimization.md` — each pass described: purpose, patterns, toggle flag, measured impact.
 
 ---
 
