@@ -8,6 +8,7 @@
 ; Simple select: should compile correctly with a real CMP (not CMP A).
 ; CHECK-LABEL: select_simple:
 ; CHECK:       CMP
+; CHECK-NOT:   CMP	A
 ; CHECK:       RET
 define i8 @select_simple(i8 %a, i8 %b) {
 entry:
@@ -21,6 +22,7 @@ entry:
 ; from HL-based address computation clobbering reload intermediaries.
 ; CHECK-LABEL: bubble_swap:
 ; CHECK:       CMP
+; CHECK-NOT:   CMP	A
 ; CHECK:       RET
 define void @bubble_swap(ptr %arr) {
 entry:
