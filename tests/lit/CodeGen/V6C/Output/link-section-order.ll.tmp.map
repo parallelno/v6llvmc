@@ -1,0 +1,18 @@
+V6C Linker Map
+==============
+
+Base address: 0x0100
+Total size:   5 bytes
+End address:  0x0105
+
+Sections:
+ Address    Size      Type  Source                          Name
+--------  ------  --------  ------------------------------  --------------------
+0x0100         4  PROGBITS  link-section-order.ll.tmp.o     .text
+0x0104         1  PROGBITS  link-section-order.ll.tmp.o     .data
+
+Symbols:
+ Address    Bind  Name
+--------  ------  ------------------------------
+0x0100    GLOBAL  main
+0x0104    GLOBAL  mydata
