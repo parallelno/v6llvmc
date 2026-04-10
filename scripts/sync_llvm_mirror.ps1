@@ -36,6 +36,8 @@ xcopy /Y /I "$root\llvm-project\clang\lib\Driver\Driver.cpp" "$root\clang\lib\Dr
 xcopy /Y /I "$root\llvm-project\clang\lib\Driver\CMakeLists.txt" "$root\clang\lib\Driver\" > $null
 # Clang.cpp (unsigned char default)
 xcopy /Y /I "$root\llvm-project\clang\lib\Driver\ToolChains\Clang.cpp" "$root\clang\lib\Driver\ToolChains\" > $null
+# CommonArgs.cpp (frame pointer default)
+xcopy /Y /I "$root\llvm-project\clang\lib\Driver\ToolChains\CommonArgs.cpp" "$root\clang\lib\Driver\ToolChains\" > $null
 # M9 step 5: Diagnostics
 xcopy /Y /I "$root\llvm-project\clang\include\clang\Basic\DiagnosticSemaKinds.td" "$root\clang\include\clang\Basic\" > $null
 xcopy /Y /I "$root\llvm-project\clang\lib\Sema\Sema.cpp" "$root\clang\lib\Sema\" > $null

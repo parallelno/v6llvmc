@@ -79,7 +79,7 @@ Leaf functions with no local variables omit the prologue/epilogue entirely (shri
 
 ## Frame Pointer
 
-The 8080 has no dedicated frame pointer register. For functions requiring one (e.g., `alloca`, variable-length arrays, or `-fno-omit-frame-pointer`), `BC` is reserved as the frame pointer. This reduces allocatable registers.
+The 8080 has no dedicated frame pointer register. By default, frame pointers are **omitted** at all optimization levels — the V6C target returns `false` from `useFramePointerForTargetByDefault()` in `CommonArgs.cpp`, matching other register-constrained targets (xcore, wasm, msp430). For functions requiring a frame pointer (e.g., `alloca`, variable-length arrays, or `-fno-omit-frame-pointer`), `BC` is reserved as the frame pointer. This reduces allocatable register pairs from 3 to 2.
 
 ## Stack Slot Access
 
