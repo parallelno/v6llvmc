@@ -32,6 +32,9 @@ FunctionPass *createV6CSPTrickOptPass();
 /// IR-level optimization pass (M8).
 FunctionPass *createV6CTypeNarrowingPass();
 
+/// IR-level pass: convert loop base+counter to running pointer induction.
+FunctionPass *createV6CLoopPointerInductionPass();
+
 } // namespace llvm
 
 #endif // LLVM_LIB_TARGET_V6C_V6C_H

@@ -26,17 +26,20 @@ add_llvm_target(V6CCodeGen
   V6CISelLowering.cpp
   V6CInstrInfo.cpp
   V6CLoadStoreOpt.cpp
+  V6CLoopPointerInduction.cpp
   V6CMCInstLower.cpp
   V6CPeephole.cpp
   V6CRegisterInfo.cpp
   V6CSPTrickOpt.cpp
   V6CSubtarget.cpp
   V6CTargetMachine.cpp
+  V6CTargetTransformInfo.cpp
   V6CTypeNarrowing.cpp
   V6CXchgOpt.cpp
   V6CZeroTestOpt.cpp
 
   LINK_COMPONENTS
+    Analysis
     AsmPrinter
     CodeGen
     CodeGenTypes

@@ -6,6 +6,7 @@
 
 #include "V6CTargetMachine.h"
 #include "V6CTargetObjectFile.h"
+#include "V6CTargetTransformInfo.h"
 
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
@@ -90,6 +91,7 @@ public:
 
   void addIRPasses() override {
     TargetPassConfig::addIRPasses();
+    addPass(createV6CLoopPointerInductionPass());
     addPass(createV6CTypeNarrowingPass());
   }
 };
@@ -98,6 +100,11 @@ public:
 
 TargetPassConfig *V6CTargetMachine::createPassConfig(PassManagerBase &PM) {
   return new V6CPassConfig(*this, PM);
+}
+
+TargetTransformInfo
+V6CTargetMachine::getTargetTransformInfo(const Function &F) const {
+  return TargetTransformInfo(V6CTTIImpl(this, F));
 }
 
 const V6CSubtarget *V6CTargetMachine::getSubtargetImpl() const {

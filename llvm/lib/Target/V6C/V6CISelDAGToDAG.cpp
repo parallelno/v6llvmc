@@ -114,6 +114,9 @@ void V6CDAGToDAGISel::Select(SDNode *N) {
   case V6CISD::BR_CC16: {
     // Fused 16-bit compare + branch.
     // Operands: chain, lhs(i16), rhs(i16), cc(i8), dest(bb)
+    // V6C_BR_CC16 has a tied output ($lhs_wb = $lhs) because the EQ/NE
+    // expansion clobbers $lhs. The i16 result is dead but tells RA about
+    // the clobber.
     SDValue Chain = N->getOperand(0);
     SDValue LHS   = N->getOperand(1);
     SDValue RHS   = N->getOperand(2);
@@ -127,8 +130,9 @@ void V6CDAGToDAGISel::Select(SDNode *N) {
     Ops.push_back(Dest);
     Ops.push_back(Chain);
 
+    SDVTList VTs = CurDAG->getVTList(MVT::i16, MVT::Other);
     SDNode *BrCC = CurDAG->getMachineNode(V6C::V6C_BR_CC16, DL,
-                                           MVT::Other, Ops);
+                                           VTs, Ops);
     ReplaceNode(N, BrCC);
     return;
   }

@@ -509,10 +509,11 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   case V6C::V6C_BR_CC16: {
     // Fused 16-bit compare + conditional branch.
     // Different sequences depending on condition code.
-    Register LhsReg = MI.getOperand(0).getReg();
-    Register RhsReg = MI.getOperand(1).getReg();
-    int64_t CC = MI.getOperand(2).getImm();
-    MachineBasicBlock *Target = MI.getOperand(3).getMBB();
+    // Operand layout: 0=$lhs_wb(def, tied), 1=$lhs(use), 2=$rhs, 3=$cc, 4=$dst
+    Register LhsReg = MI.getOperand(1).getReg();
+    Register RhsReg = MI.getOperand(2).getReg();
+    int64_t CC = MI.getOperand(3).getImm();
+    MachineBasicBlock *Target = MI.getOperand(4).getMBB();
 
     MCRegister LhsLo = RI.getSubReg(LhsReg, V6C::sub_lo);
     MCRegister LhsHi = RI.getSubReg(LhsReg, V6C::sub_hi);
@@ -521,7 +522,9 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
 
     if (CC == V6CCC::COND_Z || CC == V6CCC::COND_NZ) {
       // EQ/NE: XOR each byte pair, OR results together, then Jcc.
-      // Uses LhsHi as temp (safe: LhsReg is killed).
+      // LhsReg hi byte is used as temp storage for the XOR result.
+      // The .td definition declares $lhs as a tied output, so RA ensures
+      // no live value is kept in $lhs across this instruction.
       //   MOV A, LhsHi; XRA RhsHi; MOV LhsHi, A   (hi XOR → temp)
       //   MOV A, LhsLo; XRA RhsLo; ORA LhsHi       (lo XOR | hi XOR)
       //   JZ/JNZ Target
