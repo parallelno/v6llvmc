@@ -758,15 +758,13 @@ def V6C_SELECT_CC16 : V6CPseudo<(outs GR16:$dst),
 
 // Fused 16-bit compare + conditional branch.
 // Expanded post-RA into 8-bit compare sequence + Jcc.
-// $lhs is clobbered by the EQ/NE expansion (XOR-based), so it is declared
-// as a tied output (early clobber) to let the register allocator know.
+// EQ/NE uses non-destructive CMP-based expansion with MBB splitting.
+// Other conditions use SUB/SBB. Neither path clobbers LHS or RHS.
 let isBranch = 1, isTerminator = 1, Defs = [A, FLAGS] in
-def V6C_BR_CC16 : V6CPseudo<(outs GR16:$lhs_wb),
+def V6C_BR_CC16 : V6CPseudo<(outs),
     (ins GR16:$lhs, GR16:$rhs, i8imm:$cc, brtarget:$dst),
     "# BR_CC16 $lhs, $rhs, $cc, $dst",
-    []> {
-  let Constraints = "$lhs = $lhs_wb";
-}
+    []>;
 
 // 16-bit comparison (for use in i16 BR_CC lowering).
 // Produces FLAGS via subtraction (SUB lo, SBB hi).

@@ -635,11 +635,11 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   case V6C::V6C_BR_CC16: {
     // Fused 16-bit compare + conditional branch.
     // Different sequences depending on condition code.
-    // Operand layout: 0=$lhs_wb(def, tied), 1=$lhs(use), 2=$rhs, 3=$cc, 4=$dst
-    Register LhsReg = MI.getOperand(1).getReg();
-    Register RhsReg = MI.getOperand(2).getReg();
-    int64_t CC = MI.getOperand(3).getImm();
-    MachineBasicBlock *Target = MI.getOperand(4).getMBB();
+    // Operand layout: 0=$lhs, 1=$rhs, 2=$cc, 3=$dst
+    Register LhsReg = MI.getOperand(0).getReg();
+    Register RhsReg = MI.getOperand(1).getReg();
+    int64_t CC = MI.getOperand(2).getImm();
+    MachineBasicBlock *Target = MI.getOperand(3).getMBB();
 
     MCRegister LhsLo = RI.getSubReg(LhsReg, V6C::sub_lo);
     MCRegister LhsHi = RI.getSubReg(LhsReg, V6C::sub_hi);
@@ -647,26 +647,97 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     MCRegister RhsHi = RI.getSubReg(RhsReg, V6C::sub_hi);
 
     if (CC == V6CCC::COND_Z || CC == V6CCC::COND_NZ) {
-      // EQ/NE: XOR each byte pair, OR results together, then Jcc.
-      // LhsReg hi byte is used as temp storage for the XOR result.
-      // The .td definition declares $lhs as a tied output, so RA ensures
-      // no live value is kept in $lhs across this instruction.
-      //   MOV A, LhsHi; XRA RhsHi; MOV LhsHi, A   (hi XOR → temp)
-      //   MOV A, LhsLo; XRA RhsLo; ORA LhsHi       (lo XOR | hi XOR)
-      //   JZ/JNZ Target
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(LhsHi);
-      BuildMI(MBB, MI, DL, get(V6C::XRAr), V6C::A)
-          .addReg(V6C::A).addReg(RhsHi);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), LhsHi).addReg(V6C::A);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(LhsLo);
-      BuildMI(MBB, MI, DL, get(V6C::XRAr), V6C::A)
-          .addReg(V6C::A).addReg(RhsLo);
-      BuildMI(MBB, MI, DL, get(V6C::ORAr), V6C::A)
-          .addReg(V6C::A).addReg(LhsHi);
-      unsigned JccOpc = (CC == V6CCC::COND_Z) ? V6C::JZ : V6C::JNZ;
-      BuildMI(MBB, MI, DL, get(JccOpc)).addMBB(Target);
+      // EQ/NE: CMP-based non-destructive expansion with MBB splitting.
+      // Each byte is compared independently with an early-exit branch.
+      // Neither LHS nor RHS is clobbered.
+      //
+      // IMPORTANT: We must NOT splice instructions from MBB to the new
+      // block — ExpandPostRAPseudos uses make_early_inc_range which
+      // pre-advances the iterator, and splicing would move that iterator
+      // into the new MBB, causing an infinite loop. Instead, we record
+      // MBB's successors, clear them, and set up both blocks from scratch.
 
-      MI.eraseFromParent();
+      // Record original successors before modifying.
+      SmallVector<MachineBasicBlock *, 2> OrigSuccessors(
+          MBB.successors().begin(), MBB.successors().end());
+
+      // Find the fallthrough successor (the one that's not Target).
+      MachineBasicBlock *FallthroughMBB = nullptr;
+      for (auto *Succ : OrigSuccessors) {
+        if (Succ != Target) {
+          FallthroughMBB = Succ;
+          break;
+        }
+      }
+      // If there's only one successor (Target == fallthrough), use it.
+      if (!FallthroughMBB && OrigSuccessors.size() == 1)
+        FallthroughMBB = OrigSuccessors[0];
+
+      // Remove all original successors from MBB.
+      while (!MBB.succ_empty())
+        MBB.removeSuccessor(MBB.succ_begin());
+
+      // Erase all terminators from MBB (V6C_BR_CC16 + any trailing JMP).
+      // We must not use MI after this since it gets erased here.
+      while (!MBB.empty() && MBB.back().isTerminator())
+        MBB.pop_back();
+
+      // Create CompareHiMBB for the second byte comparison.
+      MachineFunction *MF = MBB.getParent();
+      MachineBasicBlock *CompareHiMBB =
+          MF->CreateMachineBasicBlock(MBB.getBasicBlock());
+      MF->insert(std::next(MBB.getIterator()), CompareHiMBB);
+
+      if (CC == V6CCC::COND_NZ) {
+        // NE: both JNZ go to Target.
+        //   MBB: MOV A, LhsLo; CMP RhsLo; JNZ Target → fallthrough CompareHiMBB
+        //   CompareHiMBB: MOV A, LhsHi; CMP RhsHi; JNZ Target; JMP FallthroughMBB
+
+        BuildMI(&MBB, DL, get(V6C::MOVrr), V6C::A).addReg(LhsLo);
+        BuildMI(&MBB, DL, get(V6C::CMPr))
+            .addReg(V6C::A).addReg(RhsLo);
+        BuildMI(&MBB, DL, get(V6C::JNZ)).addMBB(Target);
+
+        MBB.addSuccessor(Target);
+        MBB.addSuccessor(CompareHiMBB);
+
+        BuildMI(CompareHiMBB, DL, get(V6C::MOVrr), V6C::A).addReg(LhsHi);
+        BuildMI(CompareHiMBB, DL, get(V6C::CMPr))
+            .addReg(V6C::A).addReg(RhsHi);
+        BuildMI(CompareHiMBB, DL, get(V6C::JNZ)).addMBB(Target);
+        // Explicit JMP so analyzeBranch sees Cond+Uncond (Jcc Target + JMP Fallthrough).
+        // BranchFolding will remove this JMP if FallthroughMBB is the layout successor.
+        BuildMI(CompareHiMBB, DL, get(V6C::JMP)).addMBB(FallthroughMBB);
+
+        CompareHiMBB->addSuccessor(Target);
+        CompareHiMBB->addSuccessor(FallthroughMBB);
+
+      } else {
+        // EQ: first JNZ skips to fallthrough, second JZ jumps to target.
+        //   MBB: MOV A, LhsLo; CMP RhsLo; JNZ FallthroughMBB → fallthrough CompareHiMBB
+        //   CompareHiMBB: MOV A, LhsHi; CMP RhsHi; JZ Target; JMP FallthroughMBB
+
+        BuildMI(&MBB, DL, get(V6C::MOVrr), V6C::A).addReg(LhsLo);
+        BuildMI(&MBB, DL, get(V6C::CMPr))
+            .addReg(V6C::A).addReg(RhsLo);
+        BuildMI(&MBB, DL, get(V6C::JNZ)).addMBB(FallthroughMBB);
+
+        MBB.addSuccessor(FallthroughMBB);
+        MBB.addSuccessor(CompareHiMBB);
+
+        BuildMI(CompareHiMBB, DL, get(V6C::MOVrr), V6C::A).addReg(LhsHi);
+        BuildMI(CompareHiMBB, DL, get(V6C::CMPr))
+            .addReg(V6C::A).addReg(RhsHi);
+        BuildMI(CompareHiMBB, DL, get(V6C::JZ)).addMBB(Target);
+        // Explicit JMP so analyzeBranch sees Cond+Uncond (Jcc Target + JMP Fallthrough).
+        // BranchFolding will remove this JMP if FallthroughMBB is the layout successor.
+        BuildMI(CompareHiMBB, DL, get(V6C::JMP)).addMBB(FallthroughMBB);
+
+        CompareHiMBB->addSuccessor(Target);
+        CompareHiMBB->addSuccessor(FallthroughMBB);
+      }
+
+      // MI was already erased by the pop_back loop above.
       return true;
     }
 

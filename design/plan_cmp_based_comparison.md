@@ -155,7 +155,7 @@ optional unconditional branch — the normal Jcc / JMP pattern that
 
 ## 3. Implementation Steps
 
-### Step 3.1 — Remove tied-output constraint from V6C_BR_CC16 [ ]
+### Step 3.1 — Remove tied-output constraint from V6C_BR_CC16 [x]
 
 **File**: `llvm/lib/Target/V6C/V6CInstrInfo.td`
 
@@ -186,7 +186,7 @@ def V6C_BR_CC16 : V6CPseudo<(outs),
 > and CMP sets FLAGS. This tells RA that A and FLAGS are clobbered
 > across the pseudo, so it won't keep live values in A.
 
-### Step 3.2 — Update ISel: remove i16 output from SDNode [ ]
+### Step 3.2 — Update ISel: remove i16 output from SDNode [x]
 
 **File**: `llvm/lib/Target/V6C/V6CISelDAGToDAG.cpp`
 
@@ -221,7 +221,7 @@ SDNode should only produce a chain (MVT::Other):
 > to model the tied output. Without the tied output, only the chain
 > result is needed for scheduling.
 
-### Step 3.3 — Update operand indices in expansion [ ]
+### Step 3.3 — Update operand indices in expansion [x]
 
 **File**: `llvm/lib/Target/V6C/V6CInstrInfo.cpp`
 
@@ -247,7 +247,7 @@ Update the `case V6C::V6C_BR_CC16:` block:
     // ... expansion code ...
 ```
 
-### Step 3.4 — Implement CMP-based EQ/NE expansion with MBB splitting [ ]
+### Step 3.4 — Implement CMP-based EQ/NE expansion with MBB splitting [x]
 
 **File**: `llvm/lib/Target/V6C/V6CInstrInfo.cpp`
 
@@ -396,7 +396,7 @@ expansion. The SUB/SBB path for other condition codes remains unchanged.
 >   (4cc) + `ORA hi` (4cc) + `JNZ` (12cc) = 48cc. Identical worst-case
 >   cost, but CMP has early-exit advantage and is non-destructive.
 
-### Step 3.5 — Build [ ]
+### Step 3.5 — Build [x]
 
 ```bash
 cmd /c "call vcvars64.bat >nul 2>&1 && ninja -C llvm-build clang llc"
@@ -405,7 +405,7 @@ cmd /c "call vcvars64.bat >nul 2>&1 && ninja -C llvm-build clang llc"
 Expected: clean build. The changes are confined to the V6C_BR_CC16
 expansion path plus the .td definition and ISel node.
 
-### Step 3.6 — Lit test: NE 16-bit comparison [ ]
+### Step 3.6 — Lit test: NE 16-bit comparison [x]
 
 **File**: `tests/lit/CodeGen/V6C/cmp-based-br-cc16.ll`
 
@@ -471,7 +471,7 @@ else:
 declare void @use()
 ```
 
-### Step 3.7 — Lit test: loop with pointer comparison [ ]
+### Step 3.7 — Lit test: loop with pointer comparison [x]
 
 **File**: `tests/lit/CodeGen/V6C/loop-cmp-no-spill.ll`
 
@@ -512,7 +512,7 @@ exit:
 ; CHECK:     JNZ
 ```
 
-### Step 3.8 — Run regression tests [ ]
+### Step 3.8 — Run regression tests [x]
 
 ```bash
 python tests/run_all.py
@@ -522,7 +522,7 @@ All existing tests must pass. The CMP expansion changes the output for
 any test that checks for XOR-based 16-bit EQ/NE comparison sequences.
 Update those CHECK lines accordingly.
 
-### Step 3.9 — Verify assembly on array copy benchmark [ ]
+### Step 3.9 — Verify assembly on array copy benchmark [x]
 
 ```bash
 llvm-build\bin\clang -target i8080-unknown-v6c -O2 -S ^
@@ -551,7 +551,7 @@ Verify:
 4. **CMP + JNZ** for exit condition
 5. **Three register pairs** used: BC=source, DE=dest, HL=constant
 
-### Step 3.10 — Sync mirror [ ]
+### Step 3.10 — Sync mirror [x]
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1

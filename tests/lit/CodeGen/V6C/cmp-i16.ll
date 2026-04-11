@@ -1,16 +1,14 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
 
 ; Comparison expansion uses fused compare+branch pseudo.
-; EQ/NE use XOR+OR to combine byte checks into a single flag.
+; EQ/NE use CMP-based non-destructive sequence with MBB splitting.
 
 ; CHECK-LABEL: cmp_ne_i16:
-; CHECK:       MOV A, H
-; CHECK-NEXT:  XRA D
-; CHECK-NEXT:  MOV H, A
-; CHECK-NEXT:  MOV A, L
-; CHECK-NEXT:  XRA E
-; CHECK-NEXT:  ORA H
-; CHECK-NEXT:  JZ
+; CHECK:       CMP
+; CHECK:       JNZ
+; CHECK:       CMP
+; CHECK:       JNZ
+; CHECK-NOT:   XRA
 define i8 @cmp_ne_i16(i16 %a, i16 %b) {
   %c = icmp ne i16 %a, %b
   br i1 %c, label %then, label %else
