@@ -114,23 +114,42 @@ void V6CDAGToDAGISel::Select(SDNode *N) {
   case V6CISD::BR_CC16: {
     // Fused 16-bit compare + branch.
     // Operands: chain, lhs(i16), rhs(i16), cc(i8), dest(bb)
-    // No register output — only the chain.
     SDValue Chain = N->getOperand(0);
     SDValue LHS   = N->getOperand(1);
     SDValue RHS   = N->getOperand(2);
     SDValue CC    = N->getOperand(3);
     SDValue Dest  = N->getOperand(4);
 
+    // Check if RHS is a constant or wrapped global address.
+    // If so, use V6C_BR_CC16_IMM to avoid allocating a register pair.
+    // Only for EQ/NE — other conditions use SUB/SBB and need registers.
+    unsigned Opc = V6C::V6C_BR_CC16;
+    SDValue RhsOp = RHS;
+
+    auto CCVal = cast<ConstantSDNode>(CC)->getZExtValue();
+    if (CCVal == V6CCC::COND_Z || CCVal == V6CCC::COND_NZ) {
+      if (RHS.getOpcode() == V6CISD::Wrapper &&
+          (isa<GlobalAddressSDNode>(RHS.getOperand(0)) ||
+           isa<ExternalSymbolSDNode>(RHS.getOperand(0)))) {
+        // RHS is V6CWrapper(tglobaladdr) → unwrap and use IMM variant.
+        Opc = V6C::V6C_BR_CC16_IMM;
+        RhsOp = RHS.getOperand(0);
+      } else if (auto *C = dyn_cast<ConstantSDNode>(RHS)) {
+        // RHS is a plain i16 constant.
+        Opc = V6C::V6C_BR_CC16_IMM;
+        RhsOp = CurDAG->getTargetConstant(C->getSExtValue(), DL, MVT::i16);
+      }
+    }
+
     SmallVector<SDValue, 5> Ops;
     Ops.push_back(LHS);
-    Ops.push_back(RHS);
+    Ops.push_back(RhsOp);
     Ops.push_back(CC);
     Ops.push_back(Dest);
     Ops.push_back(Chain);
 
     SDVTList VTs = CurDAG->getVTList(MVT::Other);
-    SDNode *BrCC = CurDAG->getMachineNode(V6C::V6C_BR_CC16, DL,
-                                           VTs, Ops);
+    SDNode *BrCC = CurDAG->getMachineNode(Opc, DL, VTs, Ops);
     ReplaceNode(N, BrCC);
     return;
   }

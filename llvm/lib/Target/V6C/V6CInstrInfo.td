@@ -766,6 +766,16 @@ def V6C_BR_CC16 : V6CPseudo<(outs),
     "# BR_CC16 $lhs, $rhs, $cc, $dst",
     []>;
 
+// Fused 16-bit compare + conditional branch with immediate RHS.
+// Selected when the comparison RHS is a known constant or global address.
+// Expanded post-RA into MVI + CMP sequence with lo8/hi8 splitting.
+// The immediate is embedded directly — no register pair needed for RHS.
+let isBranch = 1, isTerminator = 1, Defs = [A, FLAGS] in
+def V6C_BR_CC16_IMM : V6CPseudo<(outs),
+    (ins GR16:$lhs, imm16:$rhs, i8imm:$cc, brtarget:$dst),
+    "# BR_CC16_IMM $lhs, $rhs, $cc, $dst",
+    []>;
+
 // 16-bit comparison (for use in i16 BR_CC lowering).
 // Produces FLAGS via subtraction (SUB lo, SBB hi).
 let Defs = [A, FLAGS] in

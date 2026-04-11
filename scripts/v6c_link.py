@@ -38,6 +38,8 @@ SHN_COMMON = 0xFFF2
 R_V6C_NONE = 0
 R_V6C_8 = 1
 R_V6C_16 = 2
+R_V6C_LO8 = 3
+R_V6C_HI8 = 4
 
 
 class ELFSection:
@@ -365,6 +367,12 @@ def link(input_paths, output_path, base_addr=0x0100, map_path=None):
                 if patch_file_offset + 1 < total_size:
                     output[patch_file_offset] = value & 0xFF
                     output[patch_file_offset + 1] = (value >> 8) & 0xFF
+            elif rel.rtype == R_V6C_LO8:
+                if patch_file_offset < total_size:
+                    output[patch_file_offset] = value & 0xFF
+            elif rel.rtype == R_V6C_HI8:
+                if patch_file_offset < total_size:
+                    output[patch_file_offset] = (value >> 8) & 0xFF
             elif rel.rtype == R_V6C_NONE:
                 pass
             else:

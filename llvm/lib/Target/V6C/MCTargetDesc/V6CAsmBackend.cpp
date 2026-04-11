@@ -38,6 +38,8 @@ public:
         // name              offset  size  flags
         {"fixup_v6c_8",   0, 8, 0},
         {"fixup_v6c_16",  0, 16, 0},
+        {"fixup_v6c_lo8", 0, 8, 0},
+        {"fixup_v6c_hi8", 0, 8, 0},
     };
 
     if (Kind < FirstTargetFixupKind)
@@ -60,6 +62,20 @@ public:
       // 8-bit value, single byte.
       assert(Offset < Data.size() && "Fixup offset out of range");
       Data[Offset] = static_cast<char>(Value & 0xFF);
+      return;
+    }
+
+    if (Kind == static_cast<MCFixupKind>(V6C::fixup_v6c_lo8)) {
+      // Low byte of 16-bit value.
+      assert(Offset < Data.size() && "Fixup offset out of range");
+      Data[Offset] = static_cast<char>(Value & 0xFF);
+      return;
+    }
+
+    if (Kind == static_cast<MCFixupKind>(V6C::fixup_v6c_hi8)) {
+      // High byte of 16-bit value.
+      assert(Offset < Data.size() && "Fixup offset out of range");
+      Data[Offset] = static_cast<char>((Value >> 8) & 0xFF);
       return;
     }
 
@@ -127,6 +143,10 @@ public:
     case FK_Data_2:
     case V6C::fixup_v6c_16:
       return V6C::R_V6C_16;
+    case V6C::fixup_v6c_lo8:
+      return V6C::R_V6C_LO8;
+    case V6C::fixup_v6c_hi8:
+      return V6C::R_V6C_HI8;
     default:
       return V6C::R_V6C_NONE;
     }

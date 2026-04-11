@@ -5,6 +5,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "V6CMCInstLower.h"
+#include "V6CInstrInfo.h"
+#include "MCTargetDesc/V6CMCExpr.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineInstr.h"
@@ -24,6 +26,13 @@ MCOperand V6CMCInstLower::lowerSymbolOperand(const MachineOperand &MO,
   if (!MO.isJTI() && MO.getOffset())
     Expr = MCBinaryExpr::createAdd(
         Expr, MCConstantExpr::create(MO.getOffset(), Ctx), Ctx);
+
+  // Wrap in V6CMCExpr for lo8/hi8 byte extraction if target flags request it.
+  unsigned TF = MO.getTargetFlags();
+  if (TF & V6CII::MO_LO8)
+    Expr = V6CMCExpr::create(V6CMCExpr::VK_V6C_LO8, Expr, Ctx);
+  else if (TF & V6CII::MO_HI8)
+    Expr = V6CMCExpr::create(V6CMCExpr::VK_V6C_HI8, Expr, Ctx);
 
   return MCOperand::createExpr(Expr);
 }

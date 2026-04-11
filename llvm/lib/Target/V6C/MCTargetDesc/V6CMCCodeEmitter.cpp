@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "V6CFixupKinds.h"
+#include "V6CMCExpr.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 
 #include "llvm/ADT/Statistic.h"
@@ -22,6 +23,7 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/EndianStream.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "v6c-mccodeemitter"
@@ -99,13 +101,21 @@ uint64_t V6CMCCodeEmitter::getMachineOpValue(const MCInst &MI,
 
   assert(MO.isExpr() && "Expected expression operand");
 
-  // Determine fixup kind from instruction size.
+  const MCExpr *Expr = MO.getExpr();
   const MCInstrDesc &Desc = MCII.get(MI.getOpcode());
   unsigned Size = Desc.getSize();
 
   MCFixupKind Kind;
   unsigned Offset;
-  if (Size == 3) {
+
+  // Check for V6C lo8/hi8 expressions first.
+  if (auto *V6CExpr = dyn_cast<V6CMCExpr>(Expr)) {
+    assert(Size == 2 && "V6CMCExpr in non-MVI instruction");
+    Kind = static_cast<MCFixupKind>(
+        V6CExpr->getKind() == V6CMCExpr::VK_V6C_LO8 ? V6C::fixup_v6c_lo8
+                                                      : V6C::fixup_v6c_hi8);
+    Offset = 1;
+  } else if (Size == 3) {
     Kind = FK_Data_2;
     Offset = 1;
   } else if (Size == 2) {
@@ -115,7 +125,7 @@ uint64_t V6CMCCodeEmitter::getMachineOpValue(const MCInst &MI,
     llvm_unreachable("Expression operand in 1-byte instruction");
   }
 
-  Fixups.push_back(MCFixup::create(Offset, MO.getExpr(), Kind, MI.getLoc()));
+  Fixups.push_back(MCFixup::create(Offset, Expr, Kind, MI.getLoc()));
   return 0;
 }
 

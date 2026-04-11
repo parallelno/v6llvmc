@@ -16,6 +16,15 @@
 
 namespace llvm {
 
+/// V6C target operand flags for MachineOperand::getTargetFlags().
+namespace V6CII {
+enum {
+  MO_NO_FLAG = 0,
+  MO_LO8 = 1, // Low byte of 16-bit value
+  MO_HI8 = 2, // High byte of 16-bit value
+};
+} // namespace V6CII
+
 class V6CInstrInfo : public V6CGenInstrInfo {
   const V6CRegisterInfo RI;
 

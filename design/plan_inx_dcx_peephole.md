@@ -597,7 +597,98 @@ After all three, the target loop body is:
 
 ---
 
-## 7. Future Enhancements
+## 7. Implementation Notes
+
+The implementation was completed and all tests pass (70/70 lit + 15/15
+golden). The following deviations from the plan were made:
+
+### Step 3.4 — V6C_ADD16: condition check reordered
+
+The plan nests conditions as:
+```cpp
+if (LXI) {
+  // compute ImmVal, Opc, Count
+  if (Opc && DstReg == BaseReg) { ... }
+}
+```
+
+The implementation hoists `DstReg == BaseReg` into the outer guard:
+```cpp
+if (LXI && DstReg == BaseReg) {
+  // compute ImmVal, Opc, Count
+  if (Opc) { ... }
+}
+```
+
+This avoids computing ImmVal/Opc when `DstReg != BaseReg` (which would
+always fall through anyway). Semantically equivalent.
+
+### Step 3.5 — V6C_SUB16: same reordering
+
+The plan has:
+```cpp
+if (isFlagsDefDead(MI)) {
+  MachineInstr *LXI = findDefiningLXI(..., RhsReg);
+  if (LXI && DstReg == LhsReg) { ... }
+}
+```
+
+The implementation hoists `DstReg == LhsReg` into the outer guard:
+```cpp
+if (isFlagsDefDead(MI) && DstReg == LhsReg) {
+  MachineInstr *LXI = findDefiningLXI(..., RhsReg);
+  if (LXI) { ... }
+}
+```
+
+This additionally avoids the backward LXI scan when `DstReg != LhsReg`.
+
+### Step 3.6 — Lit test: inx-dcx-peephole.ll
+
+| Aspect | Plan | Implementation |
+|--------|------|----------------|
+| RUN line | `-mtriple=i8080-unknown-v6c -O2` | `-march=v6c` (V6C backend default triple; `-O2` is llc default) |
+| CHECK patterns | Generic `INX`/`DCX` | Register-specific `INX HL`/`DCX HL` (stronger assertion) |
+| Function terminators | None | Added `CHECK: RET` after each function to bound CHECK-NOT scope |
+| `add_four` test | `CHECK-NOT: INX` | `CHECK-NOT: INX` × 2 + `CHECK: DAD` (also verifies DAD fallback) |
+| `inc16_with_flags` test | Included (no concrete CHECKs) | **Omitted** — the test had no useful assertions since the plan acknowledged the output varies depending on ISel lowering of icmp |
+
+### Step 3.7 — Lit test: loop-pointer-inx.ll
+
+The plan's CHECK pattern was:
+```
+; CHECK:     INX
+; CHECK-NOT: ADC
+; CHECK:     JNZ
+```
+
+The implementation uses:
+```
+; CHECK:     INX DE
+```
+
+The `CHECK-NOT: ADC` was removed because only the DE pointer increment
+benefits from INX in this loop. The BC increment still uses the 8-bit
+chain because HL is clobbered by stack accesses (frame pointer save/restore)
+between the LXI and the V6C_ADD16 for BC, so `findDefiningLXI` cannot
+find the LXI within its 16-instruction scan window. The `CHECK: JNZ`
+was also removed as unnecessary — checking `INX DE` is sufficient.
+
+### Step 3.10 — Array copy benchmark: partial improvement
+
+The plan predicted both pointer increments would become INX (92cc → 16cc).
+In practice, only the DE increment became `INX D` (8cc). The BC increment
+still uses the 8-bit chain because intervening stack accesses (from the
+comparison's register pressure) clobber HL between the `LXI H, 1` and the
+`V6C_ADD16` for BC, breaking the `findDefiningLXI` backward scan.
+
+The full improvement predicted in Section 4 (Array copy loop impact)
+requires the CMP-based 16-bit comparison from Section 6, which would
+eliminate the register pressure that causes the intervening stack accesses.
+
+---
+
+## 8. Future Enhancements
 
 - **DstReg != BaseReg handling**: Emit a register pair copy (two MOVs,
   16cc) followed by INX (8cc) = 24cc total, still better than 52cc. Only

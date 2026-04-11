@@ -768,6 +768,128 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     }
   }
 
+  case V6C::V6C_BR_CC16_IMM: {
+    // Fused 16-bit compare + branch with immediate RHS.
+    // Operand layout: 0=$lhs(GR16), 1=$rhs(imm16), 2=$cc, 3=$dst
+    // Expansion: MVI A, lo8(rhs); CMP LhsLo; Jcc; MVI A, hi8(rhs); CMP LhsHi; Jcc
+    Register LhsReg = MI.getOperand(0).getReg();
+    MachineOperand &RhsOp = MI.getOperand(1);
+    int64_t CC = MI.getOperand(2).getImm();
+    MachineBasicBlock *Target = MI.getOperand(3).getMBB();
+
+    assert((CC == V6CCC::COND_Z || CC == V6CCC::COND_NZ) &&
+           "V6C_BR_CC16_IMM only supports EQ/NE");
+
+    MCRegister LhsLo = RI.getSubReg(LhsReg, V6C::sub_lo);
+    MCRegister LhsHi = RI.getSubReg(LhsReg, V6C::sub_hi);
+
+    // Build MVI operands: for plain integers, mask directly.
+    // For global addresses, use target flags (MO_LO8/MO_HI8) — the
+    // AsmPrinter wraps them in V6CMCExpr for lo8/hi8 assembly output.
+    auto addImmLo = [&](MachineInstrBuilder &MIB) {
+      if (RhsOp.isImm()) {
+        MIB.addImm(RhsOp.getImm() & 0xFF);
+      } else if (RhsOp.isGlobal()) {
+        MIB.addGlobalAddress(RhsOp.getGlobal(), RhsOp.getOffset(),
+                             V6CII::MO_LO8);
+      } else if (RhsOp.isSymbol()) {
+        MIB.addExternalSymbol(RhsOp.getSymbolName(), V6CII::MO_LO8);
+      } else {
+        llvm_unreachable("Unexpected operand type in V6C_BR_CC16_IMM");
+      }
+    };
+    auto addImmHi = [&](MachineInstrBuilder &MIB) {
+      if (RhsOp.isImm()) {
+        MIB.addImm((RhsOp.getImm() >> 8) & 0xFF);
+      } else if (RhsOp.isGlobal()) {
+        MIB.addGlobalAddress(RhsOp.getGlobal(), RhsOp.getOffset(),
+                             V6CII::MO_HI8);
+      } else if (RhsOp.isSymbol()) {
+        MIB.addExternalSymbol(RhsOp.getSymbolName(), V6CII::MO_HI8);
+      } else {
+        llvm_unreachable("Unexpected operand type in V6C_BR_CC16_IMM");
+      }
+    };
+
+    // Same MBB-splitting pattern as V6C_BR_CC16 EQ/NE path.
+    SmallVector<MachineBasicBlock *, 2> OrigSuccessors(
+        MBB.successors().begin(), MBB.successors().end());
+
+    MachineBasicBlock *FallthroughMBB = nullptr;
+    for (auto *Succ : OrigSuccessors) {
+      if (Succ != Target) {
+        FallthroughMBB = Succ;
+        break;
+      }
+    }
+    if (!FallthroughMBB && OrigSuccessors.size() == 1)
+      FallthroughMBB = OrigSuccessors[0];
+
+    while (!MBB.succ_empty())
+      MBB.removeSuccessor(MBB.succ_begin());
+
+    while (!MBB.empty() && MBB.back().isTerminator())
+      MBB.pop_back();
+
+    MachineFunction *MF = MBB.getParent();
+    MachineBasicBlock *CompareHiMBB =
+        MF->CreateMachineBasicBlock(MBB.getBasicBlock());
+    MF->insert(std::next(MBB.getIterator()), CompareHiMBB);
+
+    if (CC == V6CCC::COND_NZ) {
+      // NE: MVI A, lo8; CMP LhsLo; JNZ Target | MVI A, hi8; CMP LhsHi; JNZ Target
+      {
+        auto MIB = BuildMI(&MBB, DL, get(V6C::MVIr), V6C::A);
+        addImmLo(MIB);
+      }
+      BuildMI(&MBB, DL, get(V6C::CMPr))
+          .addReg(V6C::A).addReg(LhsLo);
+      BuildMI(&MBB, DL, get(V6C::JNZ)).addMBB(Target);
+
+      MBB.addSuccessor(Target);
+      MBB.addSuccessor(CompareHiMBB);
+
+      {
+        auto MIB = BuildMI(CompareHiMBB, DL, get(V6C::MVIr), V6C::A);
+        addImmHi(MIB);
+      }
+      BuildMI(CompareHiMBB, DL, get(V6C::CMPr))
+          .addReg(V6C::A).addReg(LhsHi);
+      BuildMI(CompareHiMBB, DL, get(V6C::JNZ)).addMBB(Target);
+      BuildMI(CompareHiMBB, DL, get(V6C::JMP)).addMBB(FallthroughMBB);
+
+      CompareHiMBB->addSuccessor(Target);
+      CompareHiMBB->addSuccessor(FallthroughMBB);
+    } else {
+      // EQ: MVI A, lo8; CMP LhsLo; JNZ Fallthrough | MVI A, hi8; CMP LhsHi; JZ Target
+      {
+        auto MIB = BuildMI(&MBB, DL, get(V6C::MVIr), V6C::A);
+        addImmLo(MIB);
+      }
+      BuildMI(&MBB, DL, get(V6C::CMPr))
+          .addReg(V6C::A).addReg(LhsLo);
+      BuildMI(&MBB, DL, get(V6C::JNZ)).addMBB(FallthroughMBB);
+
+      MBB.addSuccessor(FallthroughMBB);
+      MBB.addSuccessor(CompareHiMBB);
+
+      {
+        auto MIB = BuildMI(CompareHiMBB, DL, get(V6C::MVIr), V6C::A);
+        addImmHi(MIB);
+      }
+      BuildMI(CompareHiMBB, DL, get(V6C::CMPr))
+          .addReg(V6C::A).addReg(LhsHi);
+      BuildMI(CompareHiMBB, DL, get(V6C::JZ)).addMBB(Target);
+      BuildMI(CompareHiMBB, DL, get(V6C::JMP)).addMBB(FallthroughMBB);
+
+      CompareHiMBB->addSuccessor(Target);
+      CompareHiMBB->addSuccessor(FallthroughMBB);
+    }
+
+    // MI was already erased by the pop_back loop above.
+    return true;
+  }
+
   //===------------------------------------------------------------------===//
   // M7: i16 load/store pseudo expansions
   //===------------------------------------------------------------------===//
