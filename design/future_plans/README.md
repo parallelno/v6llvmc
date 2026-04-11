@@ -98,6 +98,8 @@ This means:
 
 ### Reference: llvm-mos (6502)
 
+See [llvm-mos analysis](llvm_mos_analysis.md) for detailed notes on 6502 backend techniques applicable to V6C.
+
 The **llvm-mos** project (https://github.com/llvm-mos/llvm-mos) targets the
 MOS 6502 — the closest architectural match to i8080 among LLVM backends.
 It is accumulator-only with even fewer registers (A, X, Y; no register pairs).

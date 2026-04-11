@@ -62,7 +62,7 @@ Emphasize a strong test strategy, with unit, integration, and regression tests.
 
 Test dependencies must include at least:
 * tools\v6emul - CLI emulator for Vector 06c machine. Great for debugging and gold unit testing. [CLI Reference](..\tools\v6emul\docs\cli.md)
-* tools\v6asm - CLI assembler for Vector 06c machine. Creat for ASM syntax documentation, intermidiate ASM output comparisen and testing, and for ASM to ROM assembling for testing purposes. [CLI Reference](..\tools\v6asm\docs\cli.md)
+* tools\v6asm - CLI assembler for Vector 06c machine. Great for ASM syntax documentation, intermediate ASM output comparison and testing, and for ASM to ROM assembling for testing purposes. [CLI Reference](..\tools\v6asm\docs\cli.md)
 
 
 ## Plan Format
