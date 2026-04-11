@@ -80,7 +80,7 @@ Key TTI hooks to implement:
 
 ## 3. Implementation Steps
 
-### Step 3.1 — Create V6CTargetTransformInfo.h [ ]
+### Step 3.1 — Create V6CTargetTransformInfo.h [x]
 
 **File**: `llvm/lib/Target/V6C/V6CTargetTransformInfo.h`
 
@@ -134,7 +134,7 @@ public:
 #endif
 ```
 
-### Step 3.2 — Create V6CTargetTransformInfo.cpp [ ]
+### Step 3.2 — Create V6CTargetTransformInfo.cpp [x]
 
 **File**: `llvm/lib/Target/V6C/V6CTargetTransformInfo.cpp`
 
@@ -217,7 +217,7 @@ bool V6CTTIImpl::isLSRCostLess(const TTI::LSRCost &C1,
   put `NumRegs` first (same as default) but adds `Insns` second, giving
   instruction count more weight than in the base implementation.
 
-### Step 3.3 — Register TTI in V6CTargetMachine [ ]
+### Step 3.3 — Register TTI in V6CTargetMachine [x]
 
 **File**: `llvm/lib/Target/V6C/V6CTargetMachine.h`
 
@@ -242,7 +242,7 @@ V6CTargetMachine::getTargetTransformInfo(const Function &F) const {
 }
 ```
 
-### Step 3.4 — Add to CMakeLists.txt [ ]
+### Step 3.4 — Add to CMakeLists.txt [x]
 
 **File**: `llvm/lib/Target/V6C/CMakeLists.txt`
 
@@ -257,7 +257,7 @@ add_llvm_target(V6CCodeGen
 )
 ```
 
-### Step 3.5 — Build [ ]
+### Step 3.5 — Build [x]
 
 ```bash
 ninja -C llvm-build clang llc
@@ -266,7 +266,7 @@ ninja -C llvm-build clang llc
 Fix any compilation errors. The TTI header uses CRTP
 (`BasicTTIImplBase<V6CTTIImpl>`), so method signatures must match exactly.
 
-### Step 3.6 — Verify IR: LSR transforms the loop [ ]
+### Step 3.6 — Verify IR: LSR transforms the loop [x]
 
 Compile the array copy test and inspect the IR before/after LSR:
 
@@ -281,7 +281,7 @@ Expected: the loop body should use `getelementptr ... %ptr` with
 
 Optional: use `-mllvm -debug-only=loop-reduce` to see LSR's decision log.
 
-### Step 3.7 — Verify assembly: pointer increment pattern [ ]
+### Step 3.7 — Verify assembly: pointer increment pattern [x]
 
 ```bash
 llvm-build\bin\clang -target i8080-unknown-v6c -O2 -S ^
@@ -296,7 +296,7 @@ Expected in the loop body:
 - No spill/reload inside the loop (3 pairs sufficient: HL=ptr1, DE=ptr2,
   BC=counter)
 
-### Step 3.8 — Lit test for LSR behavior [ ]
+### Step 3.8 — Lit test for LSR behavior [x]
 
 **File**: `tests/lit/CodeGen/V6C/loop-strength-reduce.ll`
 
@@ -332,7 +332,7 @@ exit:
 ; CHECK: INX
 ```
 
-### Step 3.9 — Tune cost parameters [ ]
+### Step 3.9 — Tune cost parameters [x]
 
 The initial cost values (`getAddressComputationCost` = 2, `isLSRCostLess`
 ranking order) are educated guesses. They must be validated empirically.
@@ -368,7 +368,7 @@ This shows the LSR candidates and their costs. Verify that:
 Iterate until the array copy produces the INX-based pointer pattern.
 Document final chosen values in a comment in `V6CTargetTransformInfo.cpp`.
 
-### Step 3.10 — Regression tests [ ]
+### Step 3.10 — Regression tests [x]
 
 ```bash
 python tests/run_all.py
@@ -377,7 +377,7 @@ python tests/run_all.py
 All existing tests must pass. LSR should only affect loops with array/pointer
 access patterns — straight-line code and non-loop functions are unaffected.
 
-### Step 3.11 — Sync mirror [ ]
+### Step 3.11 — Sync mirror [x]
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1

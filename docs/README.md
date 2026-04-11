@@ -28,6 +28,7 @@ Goal: **C source → Clang → LLVM IR → V6C backend → flat binary → Vecto
 - **Mirror sync**: [sync_llvm_mirror.ps1](../scripts/sync_llvm_mirror.ps1) — run after every build ([details](V6CBuildGuide.md#syncing-the-mirror))
 - **V6C backend source**: [llvm/lib/Target/V6C/](../llvm/lib/Target/V6C/) — git-tracked mirror
 - **Golden tests**: [tests/golden/](../tests/golden/) — emulator trust baseline
+- **Vector 06c CPU timings**: [Vector_06c_instruction_timings.md](Vector_06c_instruction_timings.md)
 
 ## Milestone Status
 

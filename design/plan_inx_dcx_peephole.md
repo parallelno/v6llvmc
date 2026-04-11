@@ -94,7 +94,7 @@ directly before expansion.
 
 ## 3. Implementation Steps
 
-### Step 3.1 — Add helper: find constant-defining LXI [ ]
+### Step 3.1 — Add helper: find constant-defining LXI [x]
 
 **File**: `llvm/lib/Target/V6C/V6CInstrInfo.cpp`
 
@@ -127,7 +127,7 @@ static MachineInstr *findDefiningLXI(MachineBasicBlock &MBB,
 }
 ```
 
-### Step 3.2 — Add helper: check FLAGS is dead [ ]
+### Step 3.2 — Add helper: check FLAGS is dead [x]
 
 **File**: `llvm/lib/Target/V6C/V6CInstrInfo.cpp`
 
@@ -146,7 +146,7 @@ static bool isFlagsDefDead(const MachineInstr &MI) {
 }
 ```
 
-### Step 3.3 — Add helper: check register is dead after instruction [ ]
+### Step 3.3 — Add helper: check register is dead after instruction [x]
 
 **File**: `llvm/lib/Target/V6C/V6CInstrInfo.cpp`
 
@@ -176,7 +176,7 @@ static bool isRegDeadAfter(MachineBasicBlock &MBB,
 > are acceptable: the LXI wastes 12cc but correctness is preserved. The
 > dead LXI can be cleaned up by a later peephole pass if needed.
 
-### Step 3.4 — INX/DCX expansion in V6C_ADD16 [ ]
+### Step 3.4 — INX/DCX expansion in V6C_ADD16 [x]
 
 **File**: `llvm/lib/Target/V6C/V6CInstrInfo.cpp`
 
@@ -281,7 +281,7 @@ too (8cc beats LXI+DAD at 24cc for small constants):
 >   Since DstReg comes from V6C_ADD16, it will never be SP, so there is
 >   no risk of accidentally incrementing SP.
 
-### Step 3.5 — DCX expansion in V6C_SUB16 [ ]
+### Step 3.5 — DCX expansion in V6C_SUB16 [x]
 
 **File**: `llvm/lib/Target/V6C/V6CInstrInfo.cpp`
 
@@ -330,7 +330,7 @@ Apply the same pattern to the `case V6C::V6C_SUB16:` block. Subtraction is
   }
 ```
 
-### Step 3.6 — Lit test: INX/DCX chains [ ]
+### Step 3.6 — Lit test: INX/DCX chains [x]
 
 **File**: `tests/lit/CodeGen/V6C/inx-dcx-peephole.ll`
 
@@ -426,7 +426,7 @@ define i16 @inc16_with_flags(i16 %x, i16 %y) {
 > function label, allowing the output to vary. Update the CHECKs once
 > the actual output is known.
 
-### Step 3.7 — Lit test: loop with pointer increment [ ]
+### Step 3.7 — Lit test: loop with pointer increment [x]
 
 **File**: `tests/lit/CodeGen/V6C/loop-pointer-inx.ll`
 
@@ -458,7 +458,7 @@ exit:
 ; CHECK:     JNZ
 ```
 
-### Step 3.8 — Build [ ]
+### Step 3.8 — Build [x]
 
 ```bash
 cmd /c "call vcvars64.bat >nul 2>&1 && ninja -C llvm-build clang llc"
@@ -467,7 +467,7 @@ cmd /c "call vcvars64.bat >nul 2>&1 && ninja -C llvm-build clang llc"
 Fix any compilation errors. The helpers use standard LLVM MachineInstr API
 (`modifiesRegister`, `readsRegister`, `implicit_operands`, `isDead`).
 
-### Step 3.9 — Run regression tests [ ]
+### Step 3.9 — Run regression tests [x]
 
 ```bash
 python tests/run_all.py
@@ -479,7 +479,7 @@ semantics — so no existing tests should break. If a test checks for specific
 instruction sequences that now change (e.g. a test that expects the 8-bit
 chain), update the CHECK lines.
 
-### Step 3.10 — Verify assembly on array copy benchmark [ ]
+### Step 3.10 — Verify assembly on array copy benchmark [x]
 
 ```bash
 llvm-build\bin\clang -target i8080-unknown-v6c -O2 -S ^
@@ -509,7 +509,7 @@ Inspect the loop body. Expected improvement:
 Savings: 92cc → 16cc per iteration (76cc saved, **5.75× faster** on
 increment portion). The LXI is also erased, freeing the HL register pair.
 
-### Step 3.11 — Sync mirror [ ]
+### Step 3.11 — Sync mirror [x]
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1
