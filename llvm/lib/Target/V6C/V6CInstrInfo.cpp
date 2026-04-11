@@ -306,7 +306,8 @@ bool V6CInstrInfo::reverseBranchCondition(
 /// after a reasonable scan window (16 instructions).
 static MachineInstr *findDefiningLXI(MachineBasicBlock &MBB,
                                      MachineBasicBlock::iterator From,
-                                     Register Reg) {
+                                     Register Reg,
+                                     const TargetRegisterInfo *TRI) {
   const unsigned ScanLimit = 16;
   unsigned Count = 0;
   for (auto I = From; I != MBB.begin() && Count < ScanLimit; ++Count) {
@@ -319,7 +320,7 @@ static MachineInstr *findDefiningLXI(MachineBasicBlock &MBB,
       return &Cand;
 
     // If something else defines Reg (including sub-registers), stop.
-    if (Cand.modifiesRegister(Reg, /*TRI=*/nullptr))
+    if (Cand.modifiesRegister(Reg, TRI))
       return nullptr;
   }
   return nullptr;
@@ -446,11 +447,11 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     // for small constants, and doesn't clobber a helper pair).
     if (isFlagsDefDead(MI)) {
       // Try RhsReg as the constant.
-      MachineInstr *LXI = findDefiningLXI(MBB, MI.getIterator(), RhsReg);
+      MachineInstr *LXI = findDefiningLXI(MBB, MI.getIterator(), RhsReg, &RI);
       Register BaseReg = LhsReg;
       if (!LXI) {
         // Try LhsReg as the constant (add is commutative).
-        LXI = findDefiningLXI(MBB, MI.getIterator(), LhsReg);
+        LXI = findDefiningLXI(MBB, MI.getIterator(), LhsReg, &RI);
         BaseReg = RhsReg;
       }
       if (LXI && DstReg == BaseReg) {
@@ -526,7 +527,7 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     // DCX/INX chains for constant ±1..±3.
     // Subtraction is not commutative: only RhsReg can be the constant.
     if (isFlagsDefDead(MI) && DstReg == LhsReg) {
-      MachineInstr *LXI = findDefiningLXI(MBB, MI.getIterator(), RhsReg);
+      MachineInstr *LXI = findDefiningLXI(MBB, MI.getIterator(), RhsReg, &RI);
       if (LXI) {
         int64_t ImmVal = LXI->getOperand(1).getImm();
         // Normalize unsigned 16-bit to signed.
