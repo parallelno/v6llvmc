@@ -1,57 +1,5 @@
 # Future Optimizations — V6C Backend
 
-Reference test case throughout: `temp/compare/05/v6llvmc.c`
-```c
-char a = *(volatile char*)0x0;
-char b = *(volatile char*)0x1;
-char c = *(volatile char*)0x2;
-return a + b + c;
-```
-
-Current v6llvmc output (after INX/DCX peephole fix):
-```asm
-LXI  HL, 0       ; 10cc
-MOV  A, M         ;  8cc   a = *(0)
-MVI  E, 0         ;  8cc
-MOV  B, E         ;  8cc   BC.hi = 0
-MOV  C, A         ;  8cc   BC = zext(a)
-LXI  HL, 1       ; 10cc
-MOV  A, M         ;  8cc   b = *(1)
-MOV  H, E         ;  8cc
-MOV  L, A         ;  8cc   HL = zext(b)
-MOV  A, L         ;  8cc   ← redundant, A already == b
-ADD  C            ;  4cc
-MOV  C, A         ;  8cc
-MOV  A, H         ;  8cc
-ADC  B            ;  4cc
-MOV  B, A         ;  8cc   BC = a + b
-LXI  HL, 2       ; 10cc
-MOV  A, M         ;  8cc   c = *(2)
-MOV  H, E         ;  8cc
-MOV  L, A         ;  8cc   HL = zext(c)
-DAD  BC           ; 12cc
-RET               ; 12cc
-; Total: ~174cc, 20 instructions, 20 bytes
-```
-
-Ideal hand-written output:
-```asm
-LXI  HL, 0       ; 10cc
-MOV  A, M         ;  8cc   a
-INX  HL           ;  6cc
-ADD  M            ;  8cc   a + b
-INX  HL           ;  6cc
-ADD  M            ;  8cc   a + b + c
-MOV  L, A         ;  8cc
-MVI  H, 0         ;  8cc
-RET               ; 12cc
-; Total: 74cc, 9 instructions, 12 bytes
-```
-
-For comparison, c8080 output: 344cc, 47 bytes (uses memory temporaries + library call for sign-extend).
-
----
-
 ## Optimization Plans
 
 | ID | Optimization | File | Source |

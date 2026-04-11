@@ -1,3 +1,5 @@
+# Feature Prompt
+
 Act as an experienced software architect responsible for execution.
 Create an implementation plan of a new functionality we discussed earlier.
 It must be maintainable, test-driven addition to the existing codebase.
@@ -5,7 +7,8 @@ It must be maintainable, test-driven addition to the existing codebase.
 Address development sequencing, dependency management, validation strategies, regression coverage, performance verification, and documentation updates.
 
 
-The implementation plan must include, at minimum:
+## The implementation plan must include, at minimum:
+
 - ## 1. Problem
 - ### Current behavior
 - ### Desired behavior
@@ -20,11 +23,12 @@ The implementation plan must include, at minimum:
 - > **Design Notes**: ... <if necessary> ...
 - > **Implementation Notes**: <empty. filled after completion>
 - ### ...
-- ### Step 3.N-2 — Build [ ]
-- ### Step 3.N-1 — Lit test: ... [ ]
+- ### Step 3.. — Build [ ]
+- ### Step 3.. — Lit test: ... [ ]
 - ### Step ...
-- ### Step 3.N-1 — Run regression tests [ ]
-- ### Step 3.10 — Sync mirror [ ]
+- ### Step 3.. — Run regression tests [ ]
+- ### Step 3.. — Verification assembly steps from `tests\features\README.md` [ ]
+- ### Step 3.. — Sync mirror [ ]
 - ## 4. Expected Results
 - ### Example1 of how this feature benefits the project
 - ### Example2 ...
@@ -41,7 +45,8 @@ The implementation plan must include, at minimum:
 - * [Vector 06c CPU Timings](docs\Vector_06c_instruction_timings.md)
 - * [Future Improvements](design\future_plans\README.md)
 
-Implementation must:
+
+## Implementation must:
 
 - Begin with reading reference documents
 - Describe the concrete implementation steps required for implementation
@@ -53,9 +58,13 @@ Implementation must:
 
 Emphasize a strong test strategy, with unit, integration, and regression tests.
 
+## Dependency
+
 Test dependencies must include at least:
 * tools\v6emul - CLI emulator for Vector 06c machine. Great for debugging and gold unit testing. [CLI Reference](..\tools\v6emul\docs\cli.md)
 * tools\v6asm - CLI assembler for Vector 06c machine. Creat for ASM syntax documentation, intermidiate ASM output comparisen and testing, and for ASM to ROM assembling for testing purposes. [CLI Reference](..\tools\v6asm\docs\cli.md)
 
+
+## Plan Format
 
 Use `design\plan_cmp_based_comparison.md` as a plan format reference.
