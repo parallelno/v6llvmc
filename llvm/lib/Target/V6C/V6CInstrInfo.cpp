@@ -296,6 +296,61 @@ bool V6CInstrInfo::reverseBranchCondition(
   return false;
 }
 
+//===----------------------------------------------------------------------===//
+// Helpers for INX/DCX peephole in expandPostRAPseudo
+//===----------------------------------------------------------------------===//
+
+/// Scan backward from \p From in \p MBB looking for an LXI that defines
+/// \p Reg with no intervening redefinition. Returns the LXI MachineInstr
+/// if found, nullptr otherwise. Stops at the beginning of the block or
+/// after a reasonable scan window (16 instructions).
+static MachineInstr *findDefiningLXI(MachineBasicBlock &MBB,
+                                     MachineBasicBlock::iterator From,
+                                     Register Reg) {
+  const unsigned ScanLimit = 16;
+  unsigned Count = 0;
+  for (auto I = From; I != MBB.begin() && Count < ScanLimit; ++Count) {
+    --I;
+    MachineInstr &Cand = *I;
+
+    // Found LXI defining Reg — return it.
+    if (Cand.getOpcode() == V6C::LXI &&
+        Cand.getOperand(0).getReg() == Reg)
+      return &Cand;
+
+    // If something else defines Reg (including sub-registers), stop.
+    if (Cand.modifiesRegister(Reg, /*TRI=*/nullptr))
+      return nullptr;
+  }
+  return nullptr;
+}
+
+/// Return true if the FLAGS register implicit-def on \p MI is dead.
+static bool isFlagsDefDead(const MachineInstr &MI) {
+  for (const MachineOperand &MO : MI.implicit_operands()) {
+    if (MO.isReg() && MO.isDef() && MO.getReg() == V6C::FLAGS)
+      return MO.isDead();
+  }
+  // No FLAGS implicit def found — conservatively safe (no flags produced).
+  return true;
+}
+
+/// Return true if \p Reg is not used by any instruction between \p After
+/// (exclusive) and the next redefinition or end of \p MBB.
+static bool isRegDeadAfter(MachineBasicBlock &MBB,
+                           MachineBasicBlock::iterator After,
+                           Register Reg,
+                           const TargetRegisterInfo *TRI) {
+  for (auto I = std::next(After), E = MBB.end(); I != E; ++I) {
+    if (I->readsRegister(Reg, TRI))
+      return false;
+    if (I->modifiesRegister(Reg, TRI))
+      return true; // Redefined before use — the LXI's value is dead.
+  }
+  // Reached end of block. Check if Reg is live-out.
+  return !MBB.isLiveIn(Reg) || MBB.succ_empty();
+}
+
 bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   MachineBasicBlock &MBB = *MI.getParent();
   DebugLoc DL = MI.getDebugLoc();
@@ -382,13 +437,53 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
 
   case V6C::V6C_ADD16: {
     // dst = lhs + rhs (16-bit)
-    // Optimization: if dst==HL and one operand is HL, use DAD rp (12cc)
-    // instead of the full 6-instruction 8-bit chain (~40cc).
     Register DstReg = MI.getOperand(0).getReg();
     Register LhsReg = MI.getOperand(1).getReg();
     Register RhsReg = MI.getOperand(2).getReg();
 
+    // INX/DCX chains for constant ±1..±3.
+    // Checked BEFORE DAD so that HL benefits too (INX 8cc beats LXI+DAD 24cc
+    // for small constants, and doesn't clobber a helper pair).
+    if (isFlagsDefDead(MI)) {
+      // Try RhsReg as the constant.
+      MachineInstr *LXI = findDefiningLXI(MBB, MI.getIterator(), RhsReg);
+      Register BaseReg = LhsReg;
+      if (!LXI) {
+        // Try LhsReg as the constant (add is commutative).
+        LXI = findDefiningLXI(MBB, MI.getIterator(), LhsReg);
+        BaseReg = RhsReg;
+      }
+      if (LXI && DstReg == BaseReg) {
+        int64_t ImmVal = LXI->getOperand(1).getImm();
+        // Normalize unsigned 16-bit to signed.
+        if (ImmVal > 0x7FFF)
+          ImmVal -= 0x10000;
+        unsigned Opc = 0;
+        unsigned Count = 0;
+        if (ImmVal >= 1 && ImmVal <= 3) {
+          Opc = V6C::INX;
+          Count = static_cast<unsigned>(ImmVal);
+        } else if (ImmVal >= -3 && ImmVal <= -1) {
+          Opc = V6C::DCX;
+          Count = static_cast<unsigned>(-ImmVal);
+        }
+
+        if (Opc) {
+          for (unsigned I = 0; I < Count; ++I)
+            BuildMI(MBB, MI, DL, get(Opc), DstReg).addReg(DstReg);
+          // Try to erase the now-dead LXI.
+          Register ConstReg = LXI->getOperand(0).getReg();
+          if (isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
+            LXI->eraseFromParent();
+          MI.eraseFromParent();
+          return true;
+        }
+      }
+    }
+
     // DAD rp: HL = HL + rp. Only sets Carry flag.
+    // Optimization: if dst==HL and one operand is HL, use DAD rp (12cc)
+    // instead of the full 6-instruction 8-bit chain (~40cc).
     if (DstReg == V6C::HL && LhsReg == V6C::HL) {
       BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(RhsReg);
       MI.eraseFromParent();
@@ -427,6 +522,37 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     Register DstReg = MI.getOperand(0).getReg();
     Register LhsReg = MI.getOperand(1).getReg();
     Register RhsReg = MI.getOperand(2).getReg();
+
+    // DCX/INX chains for constant ±1..±3.
+    // Subtraction is not commutative: only RhsReg can be the constant.
+    if (isFlagsDefDead(MI) && DstReg == LhsReg) {
+      MachineInstr *LXI = findDefiningLXI(MBB, MI.getIterator(), RhsReg);
+      if (LXI) {
+        int64_t ImmVal = LXI->getOperand(1).getImm();
+        // Normalize unsigned 16-bit to signed.
+        if (ImmVal > 0x7FFF)
+          ImmVal -= 0x10000;
+        unsigned Opc = 0;
+        unsigned Count = 0;
+        if (ImmVal >= 1 && ImmVal <= 3) {
+          Opc = V6C::DCX;  // sub rp, N → N × DCX rp
+          Count = static_cast<unsigned>(ImmVal);
+        } else if (ImmVal >= -3 && ImmVal <= -1) {
+          Opc = V6C::INX;  // sub rp, -N → N × INX rp
+          Count = static_cast<unsigned>(-ImmVal);
+        }
+
+        if (Opc) {
+          for (unsigned I = 0; I < Count; ++I)
+            BuildMI(MBB, MI, DL, get(Opc), DstReg).addReg(DstReg);
+          Register ConstReg = LXI->getOperand(0).getReg();
+          if (isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
+            LXI->eraseFromParent();
+          MI.eraseFromParent();
+          return true;
+        }
+      }
+    }
 
     MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
     MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
