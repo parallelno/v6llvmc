@@ -36,7 +36,8 @@ Repeat the following cycle for each step in the implementation plan.
    ```
 3. If the build fails, diagnose and fix, then go back to 2.
 4. Mark the plan step as complete (`[x]`).
-5. Repeat from 1 for the next plan step.
+5. Fill up or update `Implementation Notes` in the plan step.
+6. Repeat from 1 for the next plan step.
 
 ### Lit / Unit Tests (after each meaningful code change)
 1. Run the relevant lit test if the plan step includes one.
