@@ -577,31 +577,323 @@ codegen. Failures are compile-time errors, not silent miscompilation.
 
 ---
 
+## O10. Static Stack Allocation for Non-Reentrant Functions
+
+*Inspired by llvm-mos `MOSNonReentrant` + `MOSStaticStackAlloc`.*
+*Detailed analysis: [llvm_mos_analysis.md](llvm_mos_analysis.md) §S1.*
+
+### Problem
+
+Stack-relative addressing costs ~52cc per access (see O8). For functions
+that are provably non-reentrant (at most one active invocation at any time),
+the entire stack frame can be replaced with a statically-allocated global
+memory region — turning every spill/reload into a direct `LDA`/`STA` or
+`LHLD`/`SHLD` (16-20cc).
+
+### How llvm-mos Does It
+
+Two passes working together:
+1. **NonReentrant analysis** (IR-level, `ModulePass`): Walks the call graph
+   bottom-up via SCC iteration. Single-node SCCs that don't call themselves
+   are marked `norecurse`. Functions reachable from interrupts are marked
+   reentrant. All remaining `norecurse` functions get the `nonreentrant`
+   attribute.
+2. **StaticStackAlloc** (`ModulePass`, runs post-RA): Builds an SCC DAG from
+   the call graph, assigns static stack offsets per SCC (callers lower,
+   callees higher — enabling memory overlap for disjoint call paths). Creates
+   a single global `static_stack` array and per-function aliases into it.
+   Rewrites all `TargetIndex` operands to `GlobalAddress`.
+
+### V6C Adaptation
+
+- The NonReentrant analysis is **target-independent** — reusable as-is.
+- StaticStackAlloc needs adaptation for V6C frame lowering (different pseudo
+  names, `MachineFrameInfo` conventions), but the SCC offset algorithm is
+  directly reusable.
+- **Supersedes O8 T2** (ad-hoc global bss variables) with automatic,
+  optimally-packed static allocation with overlap analysis.
+- O8 T1 (PUSH/POP) remains orthogonal and complementary — T1 for LIFO-safe
+  slots within a BB, static stack for everything else.
+- **Requires whole-program visibility** (LTO or single-TU compilation, which
+  is the norm for 8080 programs).
+
+### Benefit
+
+- **Savings**: 52cc → 16-20cc per spill/reload access = **3-5× faster**
+- **Frequency**: Every function with a stack frame (most non-trivial functions)
+- **Cascading**: Eliminated stack frames → no prologue/epilogue overhead →
+  smaller code
+
+### Complexity
+
+Medium. Two new passes. Call graph analysis is robust (borrowed from llvm-mos
+who have battle-tested it). Frame lowering integration is the main work.
+
+### Risk
+
+Medium. Must correctly identify reentrant functions (interrupt handlers,
+recursive calls). Conservative fallback (T3 stack-relative) is always safe.
+
+---
+
+## O11. Dual Cost Model (Bytes + Cycles)
+
+*Inspired by llvm-mos `MOSInstrCost`.*
+*Detailed analysis: [llvm_mos_analysis.md](llvm_mos_analysis.md) §S8.*
+
+### Problem
+
+V6C optimization decisions (peephole replacements, pseudo expansion choices,
+copy elimination) are currently ad-hoc — each pass uses hardcoded heuristics.
+There is no unified way to express "prefer speed" vs "prefer size" vs
+"balanced". This leads to inconsistent decisions and makes it hard to add
+`-Os`/`-Oz` support.
+
+### How llvm-mos Does It
+
+A simple `MOSInstrCost` class with two `int32_t` fields (Bytes, Cycles).
+The `value()` method composes them based on optimization mode:
+- `-Oz`: `(Bytes << 32) + Cycles` — bytes dominate
+- `-O2`: `(Cycles << 32) + Bytes` — cycles dominate
+- Default: `Bytes + Cycles` — balanced
+
+Used in `copyCost()` for register-to-register copy decisions, and throughout
+the backend wherever optimization tradeoffs exist.
+
+### V6C Adaptation
+
+Create `V6CInstrCost` with identical interface. Populate from the existing
+instruction timing tables in [V6CInstructionTimings.md](../docs/V6CInstructionTimings.md).
+Use in:
+- `V6CPeephole` decisions (is INX cheaper than LXI in this context?)
+- `expandPostRAPseudo` choices (shorter ADD16 sequence selection)
+- Future copy optimization pass (O12)
+- Any new optimization pass
+
+### Benefit
+
+- **Prevents regressions** when adding new optimizations
+- **Enables `-Os`/`-Oz`** support for size-constrained targets
+- **Foundation** for cost-aware passes (O12, O13)
+
+### Complexity
+
+Low. ~40 lines: header with struct + 3 methods, one `.cpp` with `getModeFor()`.
+
+### Risk
+
+Very Low. Informational infrastructure — no code transformation by itself.
+
+---
+
+## O12. Global Copy Optimization (Cross-BB)
+
+*Inspired by llvm-mos `MOSCopyOpt`.*
+*Detailed analysis: [llvm_mos_analysis.md](llvm_mos_analysis.md) §S3.*
+
+### Problem
+
+V6C's current peephole (`V6CPeephole.cpp`) only analyzes within a single
+basic block. Copy chains that span basic blocks — common after register
+allocation when values flow through multiple blocks via copies — are missed.
+
+### How llvm-mos Does It
+
+`MOSCopyOpt` performs three inter-BB optimizations on COPY instructions:
+
+1. **Copy forwarding**: For `COPY dst, src`, finds all reaching definitions
+   of `src` across BBs. If all are `COPY src, newSrc` with the same `newSrc`,
+   rewrites to `COPY dst, newSrc` (when `copyCost(dst, newSrc) ≤ copyCost(dst, src)`).
+2. **Load-immediate rematerialization**: If all reaching defs of a COPY source
+   are the same `MoveImmediate`, rematerializes the immediate at the use site.
+3. **Dead copy elimination**: Removes copies with dead destinations, then
+   recomputes basic block liveness.
+
+Uses `findReachingDefs()` — backward walk through predecessor blocks with
+visited-set tracking — and `isClobbered()` — forward walk from each reaching
+def to verify the new source isn't modified along any path.
+
+### V6C Adaptation
+
+- Replace the COPY-centric logic with `MOV`-centric logic for V6C physical
+  registers (post-RA, all registers are physical).
+- Use `V6CInstrCost` (O11) for copy cost comparisons.
+- The reaching-def infrastructure translates directly — `modifiesRegister()`
+  with TRI works the same way.
+- **Supersedes O1** (single-BB redundant MOV elimination) — O12 catches
+  everything O1 catches plus cross-BB patterns and immediate rematerialization.
+
+### Before → After
+
+```asm
+; BB1:                              ; BB1:
+  MOV  A, M      ;  8cc              MOV  A, M      ;  8cc
+  MOV  C, A       ;  8cc             MOV  C, A       ;  8cc
+  JNZ  BB2                           JNZ  BB2
+; BB2:                              ; BB2:
+  MOV  A, C       ;  8cc  ← elim    ADD  E          ;  4cc  (A already == C's value)
+  ADD  E          ;  4cc
+```
+
+### Benefit
+
+- **Savings per instance**: 8cc + 1 byte per eliminated copy
+- **Frequency**: Very high — copy chains after regalloc are pervasive
+- **Compound effect**: Fewer live ranges → less register pressure → fewer spills
+
+### Complexity
+
+Medium. ~200 lines. Inter-BB analysis requires careful handling of loop
+back-edges and entry block boundaries.
+
+### Risk
+
+Low. Only rewrites when provably cheaper and not clobbered along any path.
+
+---
+
+## O13. Load-Immediate Combining (Register Value Tracking)
+
+*Inspired by llvm-mos `MOSLateOptimization::combineLdImm`.*
+*Detailed analysis: [llvm_mos_analysis.md](llvm_mos_analysis.md) §S4.*
+
+### Problem
+
+After pseudo expansion, the emitted code often contains redundant `MVI r, imm`
+instructions where another register already holds the needed value, or where
+the target register already holds `imm ± 1`.
+
+### How llvm-mos Does It
+
+Forward scan through each basic block tracking the known constant value in
+each register (A, X, Y). When a load-immediate is encountered:
+1. If another register holds the same value → replace with register transfer
+2. If a register holds value ± 1 → replace with INX/DEX/INY/DEY
+3. Track transfers (TAX, TAY) to propagate known values across registers
+
+### V6C Adaptation
+
+Track known values in all 7 registers (A, B, C, D, E, H, L). Replacements:
+- `MVI r, imm` → `MOV r, r'` when r' holds imm (saves 1 byte, same 8cc)
+- `MVI r, imm` → `INR r` or `DCR r` when r holds imm±1 (saves 4cc + 1 byte)
+- `MVI r, 0` → `MOV r, known_zero_reg` (extremely common for zext hi-byte)
+
+### Before → After
+
+```asm
+; Before                          ; After
+MVI  E, 0       ;  8cc, 2B       MVI  E, 0       ;  8cc, 2B  (first occurrence)
+MOV  B, E        ;  8cc, 1B       MOV  B, E        ;  8cc, 1B
+...
+MVI  H, 0       ;  8cc, 2B  ←    MOV  H, E        ;  8cc, 1B  (E still 0)
+```
+
+### Benefit
+
+- **Savings per instance**: 1 byte per MVI→MOV; 4cc+1B per MVI→INR/DCR
+- **Frequency**: High — zero-byte materialization is extremely common
+- **Test case**: Saves 2 bytes in the reference test (two `MVI 0` → `MOV r, E`)
+
+### Complexity
+
+Low. ~60 lines. Single-BB forward scan, no inter-BB analysis needed.
+
+### Risk
+
+Very Low. Only replaces when register value is provably known. Invalidates
+tracking when a register is modified by a non-immediate instruction.
+
+---
+
+## O14. Tail Call Optimization (CALL+RET → JMP)
+
+*Inspired by llvm-mos `MOSLateOptimization::tailJMP`.*
+*Detailed analysis: [llvm_mos_analysis.md](llvm_mos_analysis.md) §S9.*
+
+### Problem
+
+When a function's last action is a CALL followed by RET, both instructions
+can be replaced by a single JMP — the called function's RET will return
+directly to the original caller.
+
+### Before → After
+
+```asm
+; Before                          ; After
+CALL  target     ; 18cc, 3B      JMP  target      ; 12cc, 3B
+RET              ; 12cc, 1B
+; Total: 30cc, 4B                 ; Total: 12cc, 3B
+```
+
+### Implementation
+
+Post-RA peephole: scan each basic block for `CALL target; RET` at the end.
+Replace both with `JMP target`. Must verify no stack cleanup is needed
+between the CALL and RET (no local frame to deallocate).
+
+### Benefit
+
+- **Savings per instance**: 18cc + 1 byte
+- **Frequency**: Common in wrapper functions, dispatch patterns, and at `-O2`
+  where inlining creates short call-through functions
+- **Additional benefit**: Reduces stack depth, preventing overflow in deep
+  call chains
+
+### Complexity
+
+Very Low. ~15 lines in peephole pass.
+
+### Risk
+
+Very Low. Well-understood optimization. Must not apply when there's frame
+cleanup (epilogue) between CALL and RET — but V6C already emits epilogue
+before the CALL in such cases.
+
+---
+
 ## Summary Table
 
-| ID | Optimization | Savings/instance | Frequency | Complexity | Risk | Dependencies |
-|----|-------------|-----------------|-----------|------------|------|-------------|
-| O1 | Redundant MOV elimination | 8cc, 1B | Very high | Low | Low | None |
-| O2 | Sequential LXI → INX | 4cc, 2B | High | Medium | Low-Med | None |
-| O3 | Narrow-type arithmetic | 30-100cc | Very high | High | Med-High | None |
-| O4 | ADD M / SUB M direct | 4-8cc, 1B | High | Medium | Low-Med | O2 helps |
-| O5 | BUILD_PAIR(x,0)+ADD16 | 16-24cc | Very high | Medium | Low-Med | None |
-| O6 | LDA/STA absolute addr | 2cc, 1B | Medium | Low | Low | None |
-| O7 | Loop Strength Reduction (TTI) | 120-160cc/iter | High (loops) | Medium | Medium | None |
-| O8 | Spill Optimization (T1/T2) | 64-76cc/pair | Very high | High | Med-High | None |
-| O9 | Inline Assembly (MC parser) | N/A (feature) | N/A | High | Low | None |
+| ID | Optimization | Source | Savings/instance | Frequency | Complexity | Risk | Dependencies |
+|----|-------------|--------|-----------------|-----------|------------|------|-------------|
+| O1 | Redundant MOV elimination | V6C | 8cc, 1B | Very high | Low | Low | None (superseded by O12) |
+| O2 | Sequential LXI → INX | V6C | 4cc, 2B | High | Medium | Low-Med | None |
+| O3 | Narrow-type arithmetic | V6C | 30-100cc | Very high | High | Med-High | None |
+| O4 | ADD M / SUB M direct | V6C | 4-8cc, 1B | High | Medium | Low-Med | O2 helps |
+| O5 | BUILD_PAIR(x,0)+ADD16 | V6C | 16-24cc | Very high | Medium | Low-Med | None |
+| O6 | LDA/STA absolute addr | V6C | 2cc, 1B | Medium | Low | Low | None |
+| O7 | Loop Strength Reduction (TTI) | V6C | 120-160cc/iter | High (loops) | Medium | Medium | None |
+| O8 | Spill Optimization (T1/T2) | V6C | 64-76cc/pair | Very high | High | Med-High | O10 enhances T2 |
+| O9 | Inline Assembly (MC parser) | V6C | N/A (feature) | N/A | High | Low | None |
+| O10 | Static Stack (non-reentrant) | llvm-mos | 32-36cc/access | Very high | Medium | Medium | LTO/single-TU |
+| O11 | Dual Cost Model (Bytes+Cycles) | llvm-mos | N/A (infra) | N/A | Low | Very Low | None |
+| O12 | Global Copy Opt (cross-BB) | llvm-mos | 8cc, 1B | Very high | Medium | Low | O11 |
+| O13 | LdImm Combining (value track) | llvm-mos | 1B or 4cc+1B | High | Low | Very Low | None |
+| O14 | Tail Call (CALL+RET→JMP) | llvm-mos | 18cc, 1B | Medium | Very Low | Very Low | None |
 
 ### Recommended order
 
-1. **O1** — trivial peephole, immediate benefit, no risk
-2. **O6** — simple ISel pattern, standalone
-3. **O5** — medium effort, high payoff on zext+add patterns
-4. **O2** — medium effort, helps sequential access
-5. **O4** — builds on O2 (HL already set up)
-6. **O7** — medium effort, massive loop speedups, existing LLVM pass just needs cost info
-7. **O3** — highest per-instance payoff but highest complexity
-8. **O8** — high payoff for spill-heavy code, but complex pipeline integration
-9. **O9** — feature enablement, milestone-scale effort, do when inline asm is needed
+**Phase 1 — Quick wins (Low complexity, immediate benefit)**:
+1. **O14** — trivial tail-call peephole, 18cc savings, ~15 lines
+2. **O11** — cost model infrastructure, enables cost-aware decisions everywhere
+3. **O13** — register value tracking peephole, saves bytes on MVI→MOV/INR
+4. **O6** — simple ISel pattern for LDA/STA
+
+**Phase 2 — Core optimizations (Medium complexity, high payoff)**:
+5. **O12** — cross-BB copy optimization, supersedes O1
+6. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
+7. **O2** — sequential LXI→INX folding
+8. **O4** — ADD M / SUB M direct memory, builds on O2
+
+**Phase 3 — Loop & stack (Medium-High complexity, massive payoff)**:
+9. **O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info
+10. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
+
+**Phase 4 — Advanced (High complexity)**:
+11. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
+12. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
+
+**Deferred**:
+13. **O9** — inline assembly MC parser, implement when needed
 
 ### Comparison with AVR
 
@@ -624,17 +916,32 @@ This means:
 The **llvm-mos** project (https://github.com/llvm-mos/llvm-mos) targets the
 MOS 6502 — the closest architectural match to i8080 among LLVM backends.
 It is accumulator-only with even fewer registers (A, X, Y; no register pairs).
-Their backend solves many of the same problems we face:
+Their backend has 12+ custom optimization passes solving the same fundamental
+problems we face. Full analysis: [llvm_mos_analysis.md](llvm_mos_analysis.md).
 
-- **Accumulator traffic reduction** — aggressive peephole passes to eliminate
-  redundant LDA/STA (analogous to our O1)
-- **Narrow-type optimization** — custom DAG combines to keep arithmetic in i8
-  and defer widening (analogous to our O3)
-- **Zero-page addressing** — exploits cheaper addressing modes for frequently
-  accessed values (analogous to our O6 with LDA/STA)
-- **Pseudo expansion with constant folding** — detects known-zero/known-constant
-  operands during expansion to emit shorter sequences (analogous to our O5)
+**Passes directly adapted for V6C** (O10-O14 above):
+- **`MOSNonReentrant` + `MOSStaticStackAlloc`** → O10 (static stack for non-reentrant
+  functions, 3-5× faster spill/reload)
+- **`MOSInstrCost`** → O11 (dual Bytes+Cycles cost model)
+- **`MOSCopyOpt`** → O12 (inter-BB copy forwarding + immediate rematerialization)
+- **`MOSLateOptimization::combineLdImm`** → O13 (register value tracking,
+  replace MVI with MOV/INR/DCR)
+- **`MOSLateOptimization::tailJMP`** → O14 (CALL+RET → JMP tail calls)
 
-When implementing any optimization from this list, **check llvm-mos for prior
-art first** — their solutions are battle-tested on a similarly constrained
-architecture and can often be adapted directly.
+**Passes with indirect value for V6C**:
+- **`MOSIndexIV`** — IR-level loop pass that narrows indices to 8 bits via SCEV
+  analysis. Complements O7 (TTI). Almost target-independent; minimal porting.
+- **`MOSZeroPageAlloc`** — frequency-weighted call-graph-aware allocation of
+  scarce fast-access memory. No direct 8080 zero page, but the algorithm is
+  valuable for O8/O10 global bss slot allocation decisions.
+- **`MOSLateOptimization::lowerCmpZeros`** — eliminates compare-against-zero
+  by scanning backward past known-safe instructions. Enhances existing V6C
+  `ZERO_TEST` pass.
+- **`MOSShiftRotateChain`** — chains constant shifts to share intermediate
+  results via dominance analysis. Lower priority for 8080 (shifts less common).
+
+**Key architectural insight**: The 8080 has *more* registers (7 vs 3) but
+*fewer* addressing modes (no indexed, no zero page). llvm-mos compensates for
+its tiny register file with zero-page "soft registers" and indexed addressing.
+V6C must compensate for its addressing limitations with better register
+utilization and cheaper pointer management — different mechanism, same goal.
