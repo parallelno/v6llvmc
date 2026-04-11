@@ -851,6 +851,346 @@ before the CALL in such cases.
 
 ---
 
+## O15. Conditional Call Optimization (Branch-over-Call → CC/CZ etc.)
+
+*Inspired by jacobly0 Z80 `Z80MachineEarlyOptimization`.*
+*Detailed analysis: [llvm_z80_analysis.md](llvm_z80_analysis.md) §S2.*
+
+### Problem
+
+The V6C backend emits branch-over-call patterns for conditional function calls:
+
+```asm
+  JZ  skip        ; 12cc, 3B  (branch if condition false)
+  CALL target     ; 18cc, 3B
+skip:
+```
+
+The 8080 has dedicated conditional call instructions (CC, CNC, CZ, CNZ, CP, CM,
+CPE, CPO) that combine the test and call into one instruction — but V6C never
+emits them.
+
+### Before → After
+
+```asm
+; Before                          ; After
+JZ   skip       ; 12cc, 3B       CNZ  target      ; 18cc, 3B (taken)
+CALL target     ; 18cc, 3B                         ; 12cc, 3B (not taken)
+skip:
+; Total: 30cc taken, 12cc not     ; Total: 18cc taken, 12cc not taken
+; 6 bytes                         ; 3 bytes
+```
+
+### Implementation
+
+Pre-RA `MachineFunctionPass`:
+1. Scan for conditional branch → fallthrough to block containing a single CALL
+2. Verify the call block has only the CALL (+ optional result copies below a
+   cost threshold)
+3. Replace the branch + call with the corresponding conditional CALL opcode
+4. Move result copies, preserve flag register across the transformation
+
+Uses a cost threshold (`cond-call-threshold`) to avoid conversion when the
+"then" block has too many non-call instructions that would all become
+unconditional.
+
+### Benefit
+
+- **Savings per instance**: 3 bytes always; 12cc when call is taken
+- **Frequency**: Medium — wrapper functions, error handling branches, dispatch
+- **Side benefit**: Reduces basic block count → less branch overhead
+
+### Complexity
+
+Medium. ~80-100 lines. Requires analyzing the branch target block structure
+and carefully handling result register COPYs.
+
+### Risk
+
+Low. Both `JNZ target / CALL fn / target:` and `CNZ fn` have identical
+semantics. Only applies when the skipped block contains just the call.
+
+---
+
+## O16. Post-RA Store-to-Load Forwarding (Spill/Reload)
+
+*Inspired by llvm-z80 `Z80LateOptimization` IX-indexed and SM83 SP-relative forwarding.*
+*Detailed analysis: [llvm_z80_analysis.md](llvm_z80_analysis.md) §S5, §S6.*
+
+### Problem
+
+After register allocation, V6C inserts spill/reload sequences for stack access
+costing ~52cc each (see O8). Often, the register being reloaded still holds
+the same value that was spilled — the register was not clobbered between the
+spill and reload. In these cases, the reload is completely redundant.
+
+Even when the original register was clobbered, another register might still
+hold the spilled value (from a copy chain), enabling a cheap register-to-register
+transfer (8cc) instead of a full stack reload (52cc).
+
+### How the Z80 Backends Do It
+
+**jacobly0**: Tracks `DenseMap<int, MCPhysReg> AvailValues` mapping IX+d offsets
+to physical registers. On spill: record. On reload: forward or eliminate.
+On register clobber: invalidate affected entries. On call: clear all.
+
+**llvm-z80**: Extended version for SM83 (which lacks IX, like the 8080):
+- Tracks both register values and immediate constants at each SP-relative offset
+- Handles 16-bit store/load patterns (two adjacent 8-bit slots)
+- Detects and eliminates redundant stores (same value already in slot)
+- Manages SP delta tracking through PUSH/POP/ADD SP,e
+
+### V6C Adaptation
+
+V6C's stack access uses the pattern:
+```asm
+PUSH HL; LXI HL, offset; DAD SP; MOV M, r; POP HL   ; spill
+PUSH HL; LXI HL, offset; DAD SP; MOV r, M; POP HL   ; reload
+```
+
+The pass would track `offset → register` mappings and:
+1. **Eliminate redundant reloads**: If `r` still holds the spilled value, erase
+   the entire 5-instruction reload sequence (saves 52cc + 5 bytes)
+2. **Forward via MOV**: If `r` was clobbered but `r'` holds the value, replace
+   the reload with `MOV r, r'` (saves 44cc + 4 bytes)
+3. **Eliminate redundant stores**: If the slot already holds the value being
+   stored, erase the entire spill sequence
+
+### Before → After
+
+```asm
+; Before                                    ; After
+PUSH HL; LXI HL,4; DAD SP; MOV M,C; POP HL ; spill C at SP+4
+; ... C not clobbered ...                    ; ... C not clobbered ...
+PUSH HL; LXI HL,4; DAD SP; MOV E,M; POP HL ; reload → E   MOV E,C  ; 8cc, 1B
+; Saves: 52cc – 8cc = 44cc per forwarded reload
+```
+
+### Benefit
+
+- **Savings per instance**: 44-52cc per forwarded/eliminated reload
+- **Frequency**: Very high — spill/reload pairs are pervasive in any function
+  with >1 live pointer
+- **Compound effect**: Eliminated reloads free HL for other uses → further
+  reducing spill pressure
+
+### Complexity
+
+Medium. ~100-150 lines. The offset tracking is straightforward. Main
+complexity: correctly invalidating entries on register clobber (must check
+all tracked registers, not just the instruction's explicit defs) and handling
+calls/side effects.
+
+### Risk
+
+Low-Medium. Only replaces when provably correct (register value matches
+what's in the stack slot). Conservative: clear all on call/unknown side
+effects.
+
+---
+
+## O17. Redundant Flag-Setting Elimination (Post-RA)
+
+*Inspired by llvm-z80 `Z80PostRACompareMerge`.*
+*Detailed analysis: [llvm_z80_analysis.md](llvm_z80_analysis.md) §S7.*
+
+### Problem
+
+The V6C backend frequently emits `ORA A` (or `ANA A`) before conditional
+branches to set the zero flag, even when the preceding ALU instruction
+already set the flags correctly.
+
+```asm
+XRA  E          ; sets Z flag (A = A XOR E)
+ORA  A          ; redundant — Z already reflects A's value
+JZ   .label
+```
+
+V6C's `V6CEliminateZeroTest` pass handles the `ZERO_TEST` pseudo, but this
+is limited to specific patterns at pseudo expansion time. Post-RA code may
+have additional redundant flag-setting instructions that are missed.
+
+### Implementation
+
+Post-RA `MachineFunctionPass`: forward scan through each basic block tracking
+whether the Z flag is "valid for A" (set by an instruction that both defines
+FLAGS and operates on A):
+
+1. On any ALU instruction that defines FLAGS and A (ADD, ADC, SUB, SBB, ANA,
+   ORA, XRA, CMP, CPI): mark `ZFlagValid = true`
+2. On `ORA A` or `ANA A` when `ZFlagValid`: erase the instruction
+3. On any instruction that modifies A without setting flags (MOV A,r, MVI A,
+   LDA, etc.): mark `ZFlagValid = false`
+4. On call, return, branch, or pseudo: mark `ZFlagValid = false`
+
+### Before → After
+
+```asm
+; Before                    ; After
+ANA  D       ;  4cc         ANA  D       ;  4cc
+ORA  A       ;  4cc  ←del
+JZ   label   ; 12cc         JZ   label   ; 12cc
+```
+
+### Benefit
+
+- **Savings per instance**: 4cc + 1 byte
+- **Frequency**: Medium-high — occurs after comparison expansions, loop
+  condition checks, and any conditional branch based on an ALU result
+
+### Complexity
+
+Low. ~50 lines. Simple forward scan, no inter-BB analysis needed.
+
+### Risk
+
+Very Low. The Z flag semantics are well-defined for all affected instructions.
+Only erases when provably redundant.
+
+---
+
+## O18. Loop Counter DEC+Branch Peephole
+
+*Inspired by llvm-z80 `Z80LateOptimization` dec-and-branch peephole and
+`Z80ExpandPseudo` DJNZ expansion.*
+*Detailed analysis: [llvm_z80_analysis.md](llvm_z80_analysis.md) §S8.*
+
+### Problem
+
+V6C emits a 5-instruction sequence for "decrement counter and branch if
+nonzero" because the accumulator is required for both `DCR` (which doesn't
+set all flags on all registers) and the branch test:
+
+```asm
+MOV  A, B        ;  8cc   load counter into A
+DCR  A           ;  4cc   decrement
+MOV  B, A        ;  8cc   store back
+ORA  A           ;  4cc   set flags
+JNZ  loop        ; 12cc   branch if nonzero
+; Total: 36cc, 6B
+```
+
+The 8080's `DCR r` instruction sets the Z flag directly for any register r.
+The entire 5-instruction sequence can be replaced with:
+
+```asm
+DCR  B           ;  4cc   decrement B, sets Z flag
+JNZ  loop        ; 12cc   branch if nonzero
+; Total: 16cc, 2B
+```
+
+### Implementation
+
+Post-RA peephole: match the 5-instruction template `MOV A,r; DCR A; MOV r,A;
+ORA A; JNZ target` and replace with `DCR r; JNZ target`. Preconditions:
+1. A must be dead after the sequence (not used before next definition)
+2. No intervening instructions between the 5
+
+### Benefit
+
+- **Savings per instance**: 20cc + 4 bytes per loop iteration
+- **Frequency**: Very high — this is the standard loop counter pattern
+- **Compound**: Loop iterations × savings → massive in tight loops
+
+### Complexity
+
+Low. ~40 lines. Pattern matching on 5 consecutive instructions with a
+register liveness check.
+
+### Risk
+
+Very Low. `DCR r` and `JNZ` have identical semantics to the expanded sequence.
+Only applies when A is dead after (checked by forward scan to next A def/use).
+
+---
+
+## O19. Inline Arithmetic Expansion (Mul/Div)
+
+*Inspired by llvm-z80 `Z80ExpandPseudo` inline multiply and divide.*
+*Detailed analysis: [llvm_z80_analysis.md](llvm_z80_analysis.md) §S9.*
+
+### Problem
+
+V6C uses library calls (`__mulqi3`, `__divqi3`, etc.) for all multiply and
+divide operations. Each library call incurs:
+- CALL/RET overhead: ~30cc
+- Register save/restore in the callee: ~40-80cc (PUSH/POP pairs)
+- Function body execution
+- Total: ~150-300cc+ per invocation
+
+For 8-bit multiply (the most common case), an inline shift-add loop takes
+only ~100-120cc with no call overhead and no register save/restore beyond
+what the caller already manages.
+
+### How the Z80 Does It
+
+Expand pseudo instructions into inline loops:
+
+**8-bit multiply** (SM83 variant = 8080-compatible):
+```asm
+  LD   D, A           ; D = multiplier
+  XOR  A              ; A = 0 (accumulator)
+  LD   B, 8           ; counter
+loop:
+  ADD  A, A           ; A <<= 1
+  RL   D              ; D <<= 1, MSB → carry
+  JR   NC, skip
+  ADD  A, E           ; A += multiplicand
+skip:
+  DJNZ loop
+; Result in A (low 8 bits)
+```
+
+8080 equivalent:
+```asm
+  MOV  D, A           ; D = multiplier
+  XRA  A              ; A = 0
+  MVI  B, 8
+loop:
+  ADD  A              ; A <<= 1
+  MOV  A, D           ; (need to rotate D via A on 8080)
+  RAL                 ; carry into D's MSB position
+  MOV  D, A
+  JNC  skip
+  ADD  E              ; A += multiplicand
+skip:
+  DCR  B
+  JNZ  loop
+```
+
+**16-bit multiply** and **8/16-bit divide** follow similar shift-loop patterns
+with the SM83 variants (no DJNZ, no EX DE,HL) mapping directly to 8080.
+
+### Implementation
+
+Expand arithmetic pseudo instructions in a post-RA pass:
+1. **8-bit multiply**: ~12-15 instructions inline (vs CALL + library)
+2. **8-bit divide/mod**: ~20 instructions inline (restoring division)
+3. **Signed variants**: Absolute value + unsigned op + sign correction
+4. Selection: Always inline for 8-bit; use size threshold for 16-bit
+
+Could be controlled by `-O` level: inline at `-O2`/`-O3`, keep library calls
+at `-Os`/`-Oz`.
+
+### Benefit
+
+- **8-bit multiply**: ~100-120cc inline vs ~200-300cc library = **2-3× faster**
+- **8-bit divide**: ~150-200cc inline vs ~300-400cc library = **1.5-2× faster**
+- **Code size tradeoff**: Each inline expansion is ~12-20 bytes vs 3-byte CALL,
+  but eliminates the library function from the linked binary
+
+### Complexity
+
+Medium. ~200-400 lines for all variants (8/16 bit, unsigned/signed, mul/div/mod).
+The algorithms are well-known and the Z80 SM83 variants provide tested templates.
+
+### Risk
+
+Low. The algorithms are standard binary multiply/divide. Correctness can be
+exhaustively tested for 8-bit operands (256×256 = 65536 cases).
+
+---
+
 ## Summary Table
 
 | ID | Optimization | Source | Savings/instance | Frequency | Complexity | Risk | Dependencies |
@@ -869,28 +1209,38 @@ before the CALL in such cases.
 | O12 | Global Copy Opt (cross-BB) | llvm-mos | 8cc, 1B | Very high | Medium | Low | O11 |
 | O13 | LdImm Combining (value track) | llvm-mos | 1B or 4cc+1B | High | Low | Very Low | None |
 | O14 | Tail Call (CALL+RET→JMP) | llvm-mos | 18cc, 1B | Medium | Very Low | Very Low | None |
+| O15 | Conditional Call (JNZ+CALL→CNZ) | llvm-z80 | 12cc, 3B | Medium | Medium | Low | None |
+| O16 | Store-to-Load Forwarding | llvm-z80 | 44-52cc/reload | Very high | Medium | Low-Med | None |
+| O17 | Redundant Flag Elimination | llvm-z80 | 4cc, 1B | Med-high | Low | Very Low | None |
+| O18 | Loop Counter DCR+JNZ | llvm-z80 | 20cc, 4B/iter | Very high | Low | Very Low | None |
+| O19 | Inline Arithmetic (Mul/Div) | llvm-z80 | 100-200cc | Medium | Medium | Low | None |
 
 ### Recommended order
 
 **Phase 1 — Quick wins (Low complexity, immediate benefit)**:
 1. **O14** — trivial tail-call peephole, 18cc savings, ~15 lines
-2. **O11** — cost model infrastructure, enables cost-aware decisions everywhere
-3. **O13** — register value tracking peephole, saves bytes on MVI→MOV/INR
-4. **O6** — simple ISel pattern for LDA/STA
+2. **O18** — loop counter DCR+JNZ peephole, 20cc savings per iteration, ~40 lines
+3. **O17** — redundant flag elimination, 4cc+1B per instance, ~50 lines
+4. **O11** — cost model infrastructure, enables cost-aware decisions everywhere
+5. **O13** — register value tracking peephole, saves bytes on MVI→MOV/INR
+6. **O6** — simple ISel pattern for LDA/STA
 
 **Phase 2 — Core optimizations (Medium complexity, high payoff)**:
-5. **O12** — cross-BB copy optimization, supersedes O1
-6. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
-7. **O2** — sequential LXI→INX folding
-8. **O4** — ADD M / SUB M direct memory, builds on O2
+7. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
+8. **O12** — cross-BB copy optimization, supersedes O1
+9. **O15** — conditional call, 12cc+3B per instance, reduces branch count
+10. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
+11. **O2** — sequential LXI→INX folding
+12. **O4** — ADD M / SUB M direct memory, builds on O2
 
 **Phase 3 — Loop & stack (Medium-High complexity, massive payoff)**:
-9. **O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info
-10. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
+13. **O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info
+14. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
+15. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
 
 **Phase 4 — Advanced (High complexity)**:
-11. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
-12. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
+16. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
+17. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
 
 **Deferred**:
 13. **O9** — inline assembly MC parser, implement when needed
@@ -945,3 +1295,52 @@ problems we face. Full analysis: [llvm_mos_analysis.md](llvm_mos_analysis.md).
 its tiny register file with zero-page "soft registers" and indexed addressing.
 V6C must compensate for its addressing limitations with better register
 utilization and cheaper pointer management — different mechanism, same goal.
+
+### Reference: llvm-z80
+
+Two Z80 LLVM backends were analyzed — full details in
+[llvm_z80_analysis.md](llvm_z80_analysis.md).
+
+**jacobly0/llvm-project** (https://github.com/jacobly0/llvm-project, `z80`
+branch, 171 stars) — mature Z80/eZ80 backend, GlobalISel, ~LLVM 15. 14
+custom passes. Key contribution: comprehensive `RegVal` tracking in
+`Z80MachineLateOptimization` that knows per-register constants, flag states,
+and sub-register composition. This is the inspiration for O13's "enhanced"
+form.
+
+**llvm-z80/llvm-z80** (https://github.com/llvm-z80/llvm-z80, `main` branch,
+34 stars) — newer active Z80+SM83 backend, ~LLVM 20, ports from llvm-mos.
+23 custom passes. Key contribution: SM83 (Game Boy) is an 8080 subset, so
+its SM83 code paths are directly applicable to V6C.
+
+**Passes directly adapted for V6C** (O15-O19 above):
+- **`Z80MachineEarlyOptimization`** (jacobly0) → O15 (conditional call,
+  JNZ+CALL → CNZ using the 8080's CC/CNC/CZ/CNZ/CP/CM/CPE/CPO)
+- **`Z80LateOptimization` IX-forwarding** (llvm-z80) → O16 (store-to-load
+  forwarding, tracking spilled register values to eliminate redundant reloads)
+- **`Z80PostRACompareMerge`** (llvm-z80) → O17 (redundant flag elimination,
+  erase ORA A when preceding ALU already set Z flag)
+- **`Z80LateOptimization` loop counter** (llvm-z80) → O18 (5-instruction
+  loop counter → DCR r; JNZ, saving 20cc+4B per iteration)
+- **`Z80ExpandPseudo` inline arithmetic** (llvm-z80) → O19 (shift-add mul,
+  restoring div inline instead of library calls)
+
+**Passes enhancing existing V6C plans**:
+- **`Z80TargetTransformInfo`** — `areInlineCompatible()` restricts inlining
+  to ≤10 instructions or InlineHint-annotated functions (because with few
+  registers, inlining large functions causes massive spilling). Enhances O7.
+  `isLSRCostLess()` prioritizes instruction count over register pressure.
+  Enhances O7's TTI cost model.
+- **`Z80MachineLateOptimization` RegVal** (jacobly0) — extends O13 with
+  comprehensive per-register constant tracking, flag state awareness,
+  sub-register composition knowledge, and many more peephole patterns
+  (SLA A→ADD A,A, LD 0→SBC r,r when carry known, LD imm±1→INC/DEC).
+- **`Z80InstrCost`** + **`Z80ShiftRotateChain`** + **`Z80IndexIV`** — all
+  ported from llvm-mos, confirming the value of O11 (dual cost model).
+
+**Key architectural insight**: The Z80 is a strict superset of the 8080. Any
+Z80 optimization using only base 8080 instructions applies directly to V6C.
+The SM83 (Game Boy CPU) is an 8080 subset (no IX/IY, no relative jumps, no
+block instructions) — making the llvm-z80 SM83 code paths the most directly
+portable to V6C. The main Z80-only features (IX+d indexing, relative jumps,
+DJNZ, block I/O) require 8080-specific alternatives when porting.
