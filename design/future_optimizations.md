@@ -393,6 +393,190 @@ where dest/src is A and address is a constant.
 
 ---
 
+## O7. Loop Strength Reduction via TargetTransformInfo
+
+### Problem
+
+The V6C backend generates `base + i` address recomputation on every loop
+iteration instead of maintaining and incrementing a pointer. For a simple
+array copy:
+
+```c
+for (uint8_t i = 0; i < 100; i++)
+    array2[i] = array1[i];
+```
+
+Each `base + i` costs at minimum 24cc (`LXI` + `DAD`). With two arrays, the
+loop body pays ~48cc for address computation alone, plus ~100cc+ of spill
+overhead to manage intermediate values.
+
+### Before → After
+
+```asm
+; Before (per iteration)               ; After (per iteration)
+LXI  HL, array1     ; 12cc            MOV  A, M          ;  8cc  load via HL
+; ... extend i to 16-bit ...           XCHG                ;  4cc
+DAD  HL              ; 12cc            MOV  M, A          ;  8cc  store via HL (was DE)
+MOV  A, M            ;  8cc            XCHG                ;  4cc
+; ... spill, reload, recompute ...     INX  HL            ;  8cc  advance ptr1
+LXI  HL, array2     ; 12cc            INX  DE            ;  8cc  advance ptr2
+; ... extend i again ...               ; ... compare & branch ...
+DAD  HL              ; 12cc
+MOV  M, A            ;  8cc
+; ~200cc+ with spills                  ; ~40cc
+```
+
+### Root Cause
+
+LLVM has a built-in Loop Strength Reduction pass (`-loop-reduce`), but it
+makes cost decisions through `TargetTransformInfo` (TTI) hooks. V6C has
+**no TTI implementation** — it falls back to defaults that assume reg+reg
+addressing is free and the target has 32-bit registers. These defaults prevent
+LSR from making correct transformations for the 8080.
+
+### Implementation
+
+Implement `V6CTargetTransformInfo` class with key hooks:
+
+| Hook | V6C Value |
+|------|-----------|
+| `isLegalAddressingMode()` | Only reg indirect, no offset |
+| `getAddressComputationCost()` | Non-zero (initial: 2) |
+| `getNumberOfRegisters()` | 3 (register pairs) |
+| `getRegisterBitWidth()` | 16 bits |
+| `isNumRegsMajorCostOfLSR()` | `true` |
+| `isLSRCostLess()` | Prioritize fewer regs over fewer insns |
+
+This teaches LLVM's existing LSR pass about the 8080's constraints without
+writing a custom loop optimization pass.
+
+**Detailed plan**: [plan_loop_strength_reduction.md](plan_loop_strength_reduction.md)
+
+### Benefit
+
+- **Savings per iteration**: ~120-160cc for dual-array loops
+- **Frequency**: Every loop with array/pointer indexing
+- **Loop body speedup**: ~3-7× depending on spill pressure
+
+### Complexity
+
+Medium. Creates 4 new files (header, cpp, CMake addition, target machine
+registration). The logic is declarative cost tuning, not a new pass.
+
+### Risk
+
+Medium. Incorrect cost parameters can cause LSR to make worse decisions
+(e.g., using too many pointers → more spills). Requires tuning with
+representative benchmarks (Step 3.9 in plan).
+
+---
+
+## O8. Spill Optimization (Tier 1/2 Strategy)
+
+### Problem
+
+Stack-relative addressing on the 8080 costs **~52cc per spill or reload**
+(104cc per pair, 16 bytes) because there are no stack-relative load/store
+instructions. Every stack access requires:
+
+```asm
+PUSH HL               ; save scratch pair
+LXI  HL, offset       ; load stack offset
+DAD  SP               ; HL = SP + offset
+MOV  M, lo / MOV lo,M ; store/load low byte
+INX  HL               ; advance pointer
+MOV  M, hi / MOV hi,M ; store/load high byte
+POP  HL               ; restore scratch pair
+```
+
+This dominates inner loops whenever two 16-bit pointers are live simultaneously.
+
+### Tiered Approach
+
+| Tier | Mechanism | Cost | Constraints |
+|------|-----------|------|-------------|
+| **T1** | PUSH/POP | 28cc/pair | Same-BB, LIFO nesting, no intervening branches/calls |
+| **T2** | SHLD/LHLD or STA/LDA (global bss slots) | 40cc/pair | Non-reentrant, same-BB or cross-BB |
+| **T3** | Current stack-relative (fallback) | 104cc/pair | Always safe |
+
+Selection priority: T1 → T2 → T3. Each tier's constraints checked statically.
+
+### Implementation
+
+A new `V6CSpillOpt` MachineFunction pass running **before** `eliminateFrameIndex()`:
+
+1. **Inventory**: Scan for SPILL/RELOAD pseudos, classify by slot
+2. **LIFO analysis**: Check bracket nesting for T1 eligibility
+3. **Safety checks**: FLAGS liveness (for PUSH PSW), intervening control flow,
+   stack mutations
+4. **Rewrite**: Convert eligible slots to PUSH/POP (T1) or global symbols (T2),
+   erase original pseudos
+5. **Integration**: Mark converted slots so frame lowering skips stack allocation
+
+**Detailed design**: [design_improve_spilling.md](design_improve_spilling.md)
+
+### Benefit
+
+- **T1 savings**: 28cc vs 104cc per pair = **3.7× faster** spill-reload
+- **T2 savings**: 40cc vs 104cc per pair = **2.6× faster**
+- **Cascading**: Freed stack space → smaller frame → fewer prologue/epilogue cycles
+- **Frequency**: Very high in any code with >1 live pointer (loops, struct access)
+
+### Complexity
+
+High. Requires LIFO verification algorithm, global symbol management,
+integration with frame lowering pipeline (`MachineFrameInfo` slot marking,
+prologue size adjustment).
+
+### Risk
+
+Medium-high. T1 is dangerous if LIFO nesting is violated (silent corruption).
+T2 breaks reentrancy. Both require careful analysis and extensive testing.
+
+---
+
+## O9. Inline Assembly Completion (MC Asm Parser)
+
+### Problem
+
+Inline assembly (`asm()` / `__asm__`) works at the LLVM IR level — constraint
+resolution (`getConstraintType`, `getRegForInlineAsmConstraint`) is implemented
+and `-emit-llvm` verifies it. However, **assembly emission fails** because V6C
+has no MC asm parser. The error is:
+
+> "Inline asm not supported by this streamer because we don't have an asm
+> parser for this target"
+
+### Implementation
+
+Implement a V6C MC asm parser that:
+1. Parses 8080 mnemonics (`MOV`, `LXI`, `ADD`, etc.) from inline asm strings
+2. Converts them to `MCInst` objects
+3. Integrates with `AsmPrinter` for inline asm directive emission
+
+This is essentially a mini-assembler within the MC layer.
+
+**Reference**: [future_plans/inline_assembly.md](future_plans/inline_assembly.md)
+
+### Benefit
+
+- Enables inline 8080 assembly in C code for timing-critical sequences,
+  I/O port handling, and custom instruction patterns
+- Required for porting existing 8080 assembly libraries to the V6C C toolchain
+
+### Complexity
+
+High. An MC asm parser is a milestone-scale effort: lexer, parser, operand
+matching, encoding, directive handling. Comparable to M3 (MC layer) in
+original plan scope.
+
+### Risk
+
+Low (isolated). The parser is a new component with no impact on existing
+codegen. Failures are compile-time errors, not silent miscompilation.
+
+---
+
 ## Summary Table
 
 | ID | Optimization | Savings/instance | Frequency | Complexity | Risk | Dependencies |
@@ -403,6 +587,9 @@ where dest/src is A and address is a constant.
 | O4 | ADD M / SUB M direct | 4-8cc, 1B | High | Medium | Low-Med | O2 helps |
 | O5 | BUILD_PAIR(x,0)+ADD16 | 16-24cc | Very high | Medium | Low-Med | None |
 | O6 | LDA/STA absolute addr | 2cc, 1B | Medium | Low | Low | None |
+| O7 | Loop Strength Reduction (TTI) | 120-160cc/iter | High (loops) | Medium | Medium | None |
+| O8 | Spill Optimization (T1/T2) | 64-76cc/pair | Very high | High | Med-High | None |
+| O9 | Inline Assembly (MC parser) | N/A (feature) | N/A | High | Low | None |
 
 ### Recommended order
 
@@ -411,7 +598,10 @@ where dest/src is A and address is a constant.
 3. **O5** — medium effort, high payoff on zext+add patterns
 4. **O2** — medium effort, helps sequential access
 5. **O4** — builds on O2 (HL already set up)
-6. **O3** — highest payoff but highest complexity, do last
+6. **O7** — medium effort, massive loop speedups, existing LLVM pass just needs cost info
+7. **O3** — highest per-instance payoff but highest complexity
+8. **O8** — high payoff for spill-heavy code, but complex pipeline integration
+9. **O9** — feature enablement, milestone-scale effort, do when inline asm is needed
 
 ### Comparison with AVR
 
