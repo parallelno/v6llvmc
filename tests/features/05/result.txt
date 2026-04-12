@@ -1,0 +1,273 @@
+== Test Case ==
+volatile unsigned char sink8;
+volatile unsigned int sink16;
+void use8(unsigned char val) { sink8 = val; }
+void use16(unsigned int val) { sink16 = val; }
+
+void test_multi_zext(unsigned char a, unsigned char b) {
+    unsigned int wide_a = a;
+    unsigned int wide_b = b;
+    use16(wide_a + wide_b);
+}
+void test_same_imm(void) {
+    use8(42);
+    use8(42);
+}
+void test_sequential_values(void) {
+    use8(10);
+    use8(11);
+}
+void test_mov_propagation(unsigned char a) {
+    unsigned int w1 = a;
+    use16(w1);
+    unsigned int w2 = a;
+    use16(w2);
+}
+int main(void) {
+    test_multi_zext(5, 10);
+    test_same_imm();
+    test_sequential_values();
+    test_mov_propagation(7);
+    return 0;
+}
+
+== c8080 assembly (Z80 -> i8080 translation, key functions only) ==
+
+test_multi_zext:                       ; a in static, b in A
+    STA  __a_2                         ; 16cc, 3B  store b
+    LHLD __a_1                         ; 20cc, 3B  load a
+    MVI  H, 0                          ;  8cc, 2B  zext
+    SHLD wide_a                        ; 20cc, 3B  store wide_a
+    LHLD __a_2                         ; 20cc, 3B  load b
+    MVI  H, 0                          ;  8cc, 2B  zext
+    SHLD wide_b                        ; 20cc, 3B  store wide_b
+    LHLD wide_a                        ; 20cc, 3B
+    XCHG                               ;  4cc, 1B
+    LHLD wide_b                        ; 20cc, 3B
+    DAD  DE                            ; 12cc, 1B
+    JMP  use16                         ; 12cc, 3B
+                                       ; total: 180cc, 30B
+
+test_same_imm:
+    MVI  A, 42                         ;  8cc, 2B
+    CALL use8                          ; 24cc, 3B
+    MVI  A, 42                         ;  8cc, 2B
+    JMP  use8                          ; 12cc, 3B
+                                       ; total: 52cc, 10B
+
+test_sequential_values:
+    MVI  A, 10                         ;  8cc, 2B
+    CALL use8                          ; 24cc, 3B
+    MVI  A, 11                         ;  8cc, 2B
+    JMP  use8                          ; 12cc, 3B
+                                       ; total: 52cc, 10B
+
+test_mov_propagation:                  ; a in A
+    STA  __a_1                         ; 16cc, 3B
+    LHLD __a_1                         ; 20cc, 3B
+    MVI  H, 0                          ;  8cc, 2B
+    SHLD w1                            ; 20cc, 3B
+    CALL use16                         ; 24cc, 3B
+    LHLD __a_1                         ; 20cc, 3B
+    MVI  H, 0                          ;  8cc, 2B
+    SHLD w2                            ; 20cc, 3B
+    ; falls through to use16
+                                       ; total: 136cc, 22B (excl. use16 tail)
+
+use8:
+    STA  sink8                         ; 16cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 28cc, 4B
+
+use16:
+    SHLD sink16                        ; 20cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 32cc, 4B
+
+main:
+    LXI  HL, 0                         ; 12cc, 3B  argc=0
+    SHLD __a_2_main                    ; 20cc, 3B
+    SHLD __a_1_main                    ; 20cc, 3B
+    MVI  A, 5                          ;  8cc, 2B
+    STA  __a_1_tmz                     ; 16cc, 3B
+    MVI  A, 10                         ;  8cc, 2B
+    CALL test_multi_zext               ; 24cc, 3B
+    CALL test_same_imm                 ; 24cc, 3B
+    CALL test_sequential_values        ; 24cc, 3B
+    MVI  A, 7                          ;  8cc, 2B
+    CALL test_mov_propagation          ; 24cc, 3B
+    LXI  HL, 0                         ; 12cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 212cc, 34B
+
+c8080 stats (all functions):
+  use8:                  28cc,  4B
+  use16:                 32cc,  4B
+  test_multi_zext:      180cc, 30B
+  test_same_imm:         52cc, 10B
+  test_sequential_values:52cc, 10B
+  test_mov_propagation: 136cc, 22B
+  main:                 212cc, 34B
+  Total:                692cc, 114B
+
+== v6llvmc assembly BEFORE (O13 not applied) ==
+
+use8:
+    STA  sink8                         ; 16cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 28cc, 4B
+
+use16:
+    SHLD sink16                        ; 20cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 32cc, 4B
+
+test_multi_zext:                       ; a in A, b in E
+    MVI  L, 0                          ;  8cc, 2B
+    MOV  B, L                          ;  8cc, 1B
+    MOV  C, A                          ;  8cc, 1B
+    MOV  H, L                          ;  8cc, 1B  (ISel already reuses L=0)
+    MOV  L, E                          ;  8cc, 1B
+    DAD  BC                            ; 12cc, 1B
+    SHLD sink16                        ; 20cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 84cc, 11B
+
+test_same_imm:
+    MVI  A, 0x2a                       ;  8cc, 2B
+    STA  sink8                         ; 16cc, 3B
+    STA  sink8                         ; 16cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 52cc, 9B
+
+test_sequential_values:
+    MVI  A, 0xa                        ;  8cc, 2B
+    STA  sink8                         ; 16cc, 3B
+    MVI  A, 0xb                        ;  8cc, 2B  <-- target of O13
+    STA  sink8                         ; 16cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 60cc, 11B
+
+test_mov_propagation:                  ; a in A
+    MVI  L, 0                          ;  8cc, 2B
+    MOV  H, L                          ;  8cc, 1B
+    MOV  L, A                          ;  8cc, 1B
+    SHLD sink16                        ; 20cc, 3B
+    SHLD sink16                        ; 20cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 76cc, 11B
+
+main:
+    LXI  HL, 0xf                       ; 12cc, 3B
+    SHLD sink16                        ; 20cc, 3B
+    MVI  A, 0x2a                       ;  8cc, 2B
+    STA  sink8                         ; 16cc, 3B
+    STA  sink8                         ; 16cc, 3B
+    MVI  A, 0xa                        ;  8cc, 2B
+    STA  sink8                         ; 16cc, 3B
+    MVI  A, 0xb                        ;  8cc, 2B  <-- target of O13
+    STA  sink8                         ; 16cc, 3B
+    LXI  HL, 7                         ; 12cc, 3B
+    SHLD sink16                        ; 20cc, 3B
+    SHLD sink16                        ; 20cc, 3B
+    LXI  HL, 0                         ; 12cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 196cc, 34B
+
+v6llvmc BEFORE stats:
+  use8:                  28cc,  4B
+  use16:                 32cc,  4B
+  test_multi_zext:       84cc, 11B
+  test_same_imm:         52cc,  9B
+  test_sequential_values:60cc, 11B
+  test_mov_propagation:  76cc, 11B
+  main:                 196cc, 34B
+  Total:                528cc, 84B
+
+== v6llvmc assembly AFTER (O13 load-immediate combining) ==
+
+use8:
+    STA  sink8                         ; 16cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 28cc, 4B
+
+use16:
+    SHLD sink16                        ; 20cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 32cc, 4B
+
+test_multi_zext:                       ; a in A, b in E
+    MVI  L, 0                          ;  8cc, 2B
+    MOV  B, L                          ;  8cc, 1B
+    MOV  C, A                          ;  8cc, 1B
+    MOV  H, L                          ;  8cc, 1B
+    MOV  L, E                          ;  8cc, 1B
+    DAD  BC                            ; 12cc, 1B
+    SHLD sink16                        ; 20cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 84cc, 11B  (unchanged)
+
+test_same_imm:
+    MVI  A, 0x2a                       ;  8cc, 2B
+    STA  sink8                         ; 16cc, 3B
+    STA  sink8                         ; 16cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 52cc, 9B  (unchanged)
+
+test_sequential_values:
+    MVI  A, 0xa                        ;  8cc, 2B
+    STA  sink8                         ; 16cc, 3B
+    INR  A                             ;  8cc, 1B  <-- O13: was MVI A, 0xb (2B)
+    STA  sink8                         ; 16cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 60cc, 10B  (saved 1B)
+
+test_mov_propagation:                  ; a in A
+    MVI  L, 0                          ;  8cc, 2B
+    MOV  H, L                          ;  8cc, 1B
+    MOV  L, A                          ;  8cc, 1B
+    SHLD sink16                        ; 20cc, 3B
+    SHLD sink16                        ; 20cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 76cc, 11B  (unchanged)
+
+main:
+    LXI  HL, 0xf                       ; 12cc, 3B
+    SHLD sink16                        ; 20cc, 3B
+    MVI  A, 0x2a                       ;  8cc, 2B
+    STA  sink8                         ; 16cc, 3B
+    STA  sink8                         ; 16cc, 3B
+    MVI  A, 0xa                        ;  8cc, 2B
+    STA  sink8                         ; 16cc, 3B
+    INR  A                             ;  8cc, 1B  <-- O13: was MVI A, 0xb (2B)
+    STA  sink8                         ; 16cc, 3B
+    LXI  HL, 7                         ; 12cc, 3B
+    SHLD sink16                        ; 20cc, 3B
+    SHLD sink16                        ; 20cc, 3B
+    LXI  HL, 0                         ; 12cc, 3B
+    RET                                ; 12cc, 1B
+                                       ; total: 196cc, 33B  (saved 1B)
+
+v6llvmc AFTER stats:
+  use8:                  28cc,  4B
+  use16:                 32cc,  4B
+  test_multi_zext:       84cc, 11B
+  test_same_imm:         52cc,  9B
+  test_sequential_values:60cc, 10B  (-1B)
+  test_mov_propagation:  76cc, 11B
+  main:                 196cc, 33B  (-1B)
+  Total:                528cc, 82B  (-2B)
+
+== Summary ==
+  c8080 total:           692cc, 114B
+  v6llvmc BEFORE (O13):  528cc,  84B
+  v6llvmc AFTER  (O13):  528cc,  82B  (saved 2 bytes, same cycle count)
+
+O13 improvements in this test:
+  - test_sequential_values: MVI A, 0xb -> INR A (saved 1 byte)
+  - main (inlined):         MVI A, 0xb -> INR A (saved 1 byte)
+  - Cycle count unchanged (MVI 8cc = INR 8cc), pure code size win
+
+Note: v6llvmc already greatly outperforms c8080 (82B vs 114B, 528cc vs 692cc)
+due to register-based calling convention and inlining. O13 provides incremental
+code size reduction by eliminating redundant immediate loads.

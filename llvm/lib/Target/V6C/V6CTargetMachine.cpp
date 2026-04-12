@@ -81,6 +81,7 @@ public:
     // Order: AccumulatorPlanning → Peephole → LoadStoreOpt → XchgOpt →
     //        BranchOpt → ZeroTestOpt → SPTrickOpt
     addPass(createV6CAccumulatorPlanningPass());
+    addPass(createV6CLoadImmCombinePass());
     addPass(createV6CPeepholePass());
     addPass(createV6CLoadStoreOptPass());
     addPass(createV6CXchgOptPass());

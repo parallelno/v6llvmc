@@ -25,6 +25,7 @@ add_llvm_target(V6CCodeGen
   V6CISelDAGToDAG.cpp
   V6CISelLowering.cpp
   V6CInstrInfo.cpp
+  V6CLoadImmCombine.cpp
   V6CLoadStoreOpt.cpp
   V6CLoopPointerInduction.cpp
   V6CMCInstLower.cpp

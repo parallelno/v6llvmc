@@ -61,6 +61,7 @@ Enter this phase after all implementation plan steps are complete.
    ```
    powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1
    ```
+6. Make sure result.txt is created. Details in `tests\features\README.md`.
 
 ---
 

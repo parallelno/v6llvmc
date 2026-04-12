@@ -28,6 +28,7 @@ FunctionPass *createV6CPeepholePass();
 FunctionPass *createV6CBranchOptPass();
 FunctionPass *createV6CLoadStoreOptPass();
 FunctionPass *createV6CAccumulatorPlanningPass();
+FunctionPass *createV6CLoadImmCombinePass();
 FunctionPass *createV6CSPTrickOptPass();
 
 /// IR-level optimization pass (M8).
