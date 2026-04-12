@@ -22,6 +22,7 @@ unsigned getV6CStartAddress();
 
 /// Post-RA optimization passes (M8).
 FunctionPass *createV6CZeroTestOptPass();
+FunctionPass *createV6CRedundantFlagElimPass();
 FunctionPass *createV6CXchgOptPass();
 FunctionPass *createV6CPeepholePass();
 FunctionPass *createV6CBranchOptPass();

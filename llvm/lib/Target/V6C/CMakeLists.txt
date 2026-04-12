@@ -29,6 +29,7 @@ add_llvm_target(V6CCodeGen
   V6CLoopPointerInduction.cpp
   V6CMCInstLower.cpp
   V6CPeephole.cpp
+  V6CRedundantFlagElim.cpp
   V6CRegisterInfo.cpp
   V6CSPTrickOpt.cpp
   V6CSubtarget.cpp
