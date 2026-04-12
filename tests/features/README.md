@@ -15,6 +15,8 @@ Compile ASM guide:
 ## Preparation steps:
 - Create a new folder in tests\features. The name is two digits.
 - Create a test case that the new feature will improve.
+- Both v6llvmc.c and c8080.c must include a main() that calls every test function,
+  so the compiled assembly is comparable between the two compilers.
 - Store the test case to v6llvmc.c and c8080.c.
 - Compile ASM with c8080.c to c8080.asm.
 - Compile ASM with v6llvmc.c to v6llvmc.asm.

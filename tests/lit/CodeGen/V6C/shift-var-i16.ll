@@ -4,7 +4,7 @@
 
 define i16 @test_shl_var(i16 %val, i16 %amt) {
 ; CHECK-LABEL: test_shl_var:
-; CHECK: CALL __ashlhi3
+; CHECK: JMP __ashlhi3
   %r = shl i16 %val, %amt
   ret i16 %r
 }
@@ -13,7 +13,7 @@ define i16 @test_shl_var(i16 %val, i16 %amt) {
 
 define i16 @test_lshr_var(i16 %val, i16 %amt) {
 ; CHECK-LABEL: test_lshr_var:
-; CHECK: CALL __lshrhi3
+; CHECK: JMP __lshrhi3
   %r = lshr i16 %val, %amt
   ret i16 %r
 }
@@ -22,7 +22,7 @@ define i16 @test_lshr_var(i16 %val, i16 %amt) {
 
 define i16 @test_ashr_var(i16 %val, i16 %amt) {
 ; CHECK-LABEL: test_ashr_var:
-; CHECK: CALL __ashrhi3
+; CHECK: JMP __ashrhi3
   %r = ashr i16 %val, %amt
   ret i16 %r
 }

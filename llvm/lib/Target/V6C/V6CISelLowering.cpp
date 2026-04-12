@@ -730,6 +730,10 @@ SDValue V6CTargetLowering::LowerReturn(
 
 SDValue V6CTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
                                       SmallVectorImpl<SDValue> &InVals) const {
+  // V6C does not support tail calls at the ISel level. Reset the flag so
+  // LLVM's generic machinery emits a normal CALL + RET sequence.
+  CLI.IsTailCall = false;
+
   SelectionDAG &DAG = CLI.DAG;
   SDLoc DL = CLI.DL;
   SmallVectorImpl<ISD::OutputArg> &Outs = CLI.Outs;

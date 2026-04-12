@@ -1,0 +1,91 @@
+== Test Case ==
+int helper(int x);
+void void_func(void);
+
+/* Simple tail call — should become JMP */
+int wrapper(int x) {
+    return helper(x);
+}
+
+/* Void tail call — should become JMP */
+void void_wrapper(void) {
+    void_func();
+}
+
+/* NOT a tail call — work after call */
+int not_tail(int x) {
+    int r = helper(x);
+    return r + 1;
+}
+
+int main(int argc, char** argv) {
+    wrapper(42);
+    void_wrapper();
+    not_tail(10);
+    return 0;
+}
+
+== c8080 assembly ==
+
+wrapper:
+    LD   (wrapper_x), HL     ; 20cc — store arg (static stack)
+    JP   helper              ; 12cc
+
+void_wrapper:
+    JP   void_func           ; 12cc
+
+not_tail:
+    LD   (not_tail_x), HL    ; 20cc
+    CALL helper              ; 24cc
+    LD   (not_tail_r), HL    ; 20cc — store result (static stack)
+    INX  HL                  ; 8cc
+    RET                      ; 12cc
+main:
+	ld hl, 42
+	call wrapper
+	call void_wrapper
+	ld hl, 10
+	call not_tail
+	ld hl, 0
+	ret
+
+c8080 stats:
+  Total CPU cc: 248cc
+  Length: 39B
+
+== v6llvmc assembly (after tail call optimization) ==
+
+wrapper:
+    JMP  helper               ; 12cc, 3B
+
+void_wrapper:
+    JMP  void_func            ; 12cc, 3B
+
+not_tail:
+    CALL helper               ; 24cc, 3B
+    INX  HL                   ;  8cc, 1B
+    RET                       ; 12cc, 1B
+
+main:                                   ; @main
+; %bb.0:
+	LXI	HL, 0x2a              ; 12cc, 3B
+	CALL	helper            ; 24cc, 3B
+	CALL	void_func         ; 24cc, 3B
+	LXI	HL, 0xa               ; 12cc, 3B
+	CALL	helper            ; 24cc, 3B
+	LXI	HL, 0                 ; 12cc, 3B
+	RET                       ; 12cc, 1B
+
+v6llvmc stats:
+  Total CPU cc: 188cc
+  Length: 30B
+
+== Comparison ==
+
+| Function       | c8080  | v6llvmc |  Savings   |
+|----------------|--------|---------|------------|
+| **Total**      | 248cc  | 188cc   | 60cc (24%) |
+| **Size**       | 39B    | 30B     | 9B (23%)   |
+
+Both compilers recognize tail calls (JMP instead of CALL+RET).
+v6llvmc is faster because it passes arguments in registers (no static stack store).

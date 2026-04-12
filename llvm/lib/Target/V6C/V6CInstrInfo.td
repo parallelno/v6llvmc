@@ -464,6 +464,14 @@ let isReturn = 1, isTerminator = 1,
   def RM  : V6CInstImplied<0xF8, (outs), (ins), "RM", []>;
 }
 
+// V6C_TAILJMP — tail call via JMP encoding (0xC3).
+// Used by peephole pass: CALL target; RET → V6C_TAILJMP target.
+// Marked isReturn (not isBranch) so analyzeBranch/BranchOpt skip it.
+let isReturn = 1, isTerminator = 1, isBarrier = 1 in
+def V6C_TAILJMP : V6CInstImm16Opc<0xC3,
+    (outs), (ins brtarget:$addr),
+    "JMP\t$addr", []>;
+
 //===----------------------------------------------------------------------===//
 // RST — Restart (RST 0-7)
 // Encoding: 11_NNN_111

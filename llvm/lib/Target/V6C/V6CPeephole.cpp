@@ -20,6 +20,8 @@
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
@@ -47,6 +49,7 @@ public:
 private:
   bool eliminateSelfMov(MachineBasicBlock &MBB);
   bool eliminateRedundantMov(MachineBasicBlock &MBB);
+  bool eliminateTailCall(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -106,6 +109,35 @@ bool V6CPeephole::eliminateRedundantMov(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// Replace CALL target; RET → V6C_TAILJMP target (tail call elimination).
+/// Only matches when CALL is immediately before RET (no epilogue between).
+bool V6CPeephole::eliminateTailCall(MachineBasicBlock &MBB) {
+  if (MBB.size() < 2)
+    return false;
+
+  // Find the last non-debug instruction — must be RET.
+  auto RetIt = MBB.getLastNonDebugInstr();
+  if (RetIt == MBB.end() || RetIt->getOpcode() != V6C::RET)
+    return false;
+
+  // Find the instruction before RET, skipping debug instrs.
+  auto CallIt = std::prev(RetIt);
+  while (CallIt != MBB.begin() && CallIt->isDebugInstr())
+    CallIt = std::prev(CallIt);
+
+  if (CallIt->getOpcode() != V6C::CALL)
+    return false;
+
+  // Build V6C_TAILJMP with the CALL's target operand.
+  const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  BuildMI(MBB, CallIt, CallIt->getDebugLoc(), TII.get(V6C::V6C_TAILJMP))
+      .add(CallIt->getOperand(0));
+
+  RetIt->eraseFromParent();
+  CallIt->eraseFromParent();
+  return true;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -114,6 +146,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   for (MachineBasicBlock &MBB : MF) {
     Changed |= eliminateSelfMov(MBB);
     Changed |= eliminateRedundantMov(MBB);
+    Changed |= eliminateTailCall(MBB);
   }
   return Changed;
 }
