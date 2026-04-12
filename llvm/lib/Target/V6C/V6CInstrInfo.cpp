@@ -7,6 +7,7 @@
 #include "V6CInstrInfo.h"
 #include "V6C.h"
 #include "V6CISelLowering.h"
+#include "V6CInstrCost.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -431,6 +432,35 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     Register RpReg = MI.getOperand(2).getReg();
     assert(DstReg == V6C::HL && "V6C_DAD operands must be HL");
     (void)DstReg;
+
+    // Try INX/DCX chains for small constants loaded by a preceding LXI.
+    // INX/DCX set no flags, so this is only valid when FLAGS is dead.
+    if (isFlagsDefDead(MI)) {
+      MachineInstr *LXI = findDefiningLXI(MBB, MI.getIterator(), RpReg, &RI);
+      if (LXI) {
+        int64_t ImmVal = LXI->getOperand(1).getImm();
+        if (ImmVal > 0x7FFF)
+          ImmVal -= 0x10000;
+        if (ImmVal != 0) {
+          unsigned AbsVal =
+              static_cast<unsigned>(ImmVal > 0 ? ImmVal : -ImmVal);
+          unsigned InxOpc = ImmVal > 0 ? V6C::INX : V6C::DCX;
+          V6COptMode Mode = getV6COptMode(*MBB.getParent());
+          V6CInstrCost InxCost = V6CCost::INX * AbsVal;
+          V6CInstrCost DadCost = V6CCost::LXI + V6CCost::DAD;
+          if (InxCost.isCheaperOrEqual(DadCost, Mode)) {
+            for (unsigned I = 0; I < AbsVal; ++I)
+              BuildMI(MBB, MI, DL, get(InxOpc), V6C::HL).addReg(V6C::HL);
+            Register ConstReg = LXI->getOperand(0).getReg();
+            if (isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
+              LXI->eraseFromParent();
+            MI.eraseFromParent();
+            return true;
+          }
+        }
+      }
+    }
+
     BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(RpReg);
     MI.eraseFromParent();
     return true;
@@ -442,9 +472,9 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     Register LhsReg = MI.getOperand(1).getReg();
     Register RhsReg = MI.getOperand(2).getReg();
 
-    // INX/DCX chains for constant ±1..±3.
-    // Checked BEFORE DAD so that HL benefits too (INX 8cc beats LXI+DAD 24cc
-    // for small constants, and doesn't clobber a helper pair).
+    // INX/DCX chains for small constants via cost model.
+    // Checked BEFORE DAD so that HL benefits too (INX doesn't clobber
+    // a helper pair).
     if (isFlagsDefDead(MI)) {
       // Try RhsReg as the constant.
       MachineInstr *LXI = findDefiningLXI(MBB, MI.getIterator(), RhsReg, &RI);
@@ -459,25 +489,22 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
         // Normalize unsigned 16-bit to signed.
         if (ImmVal > 0x7FFF)
           ImmVal -= 0x10000;
-        unsigned Opc = 0;
-        unsigned Count = 0;
-        if (ImmVal >= 1 && ImmVal <= 3) {
-          Opc = V6C::INX;
-          Count = static_cast<unsigned>(ImmVal);
-        } else if (ImmVal >= -3 && ImmVal <= -1) {
-          Opc = V6C::DCX;
-          Count = static_cast<unsigned>(-ImmVal);
-        }
-
-        if (Opc) {
-          for (unsigned I = 0; I < Count; ++I)
-            BuildMI(MBB, MI, DL, get(Opc), DstReg).addReg(DstReg);
-          // Try to erase the now-dead LXI.
-          Register ConstReg = LXI->getOperand(0).getReg();
-          if (isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
-            LXI->eraseFromParent();
-          MI.eraseFromParent();
-          return true;
+        if (ImmVal != 0) {
+          unsigned AbsVal =
+              static_cast<unsigned>(ImmVal > 0 ? ImmVal : -ImmVal);
+          unsigned InxOpc = ImmVal > 0 ? V6C::INX : V6C::DCX;
+          V6COptMode Mode = getV6COptMode(*MBB.getParent());
+          V6CInstrCost InxCost = V6CCost::INX * AbsVal;
+          V6CInstrCost DadCost = V6CCost::LXI + V6CCost::DAD;
+          if (InxCost.isCheaperOrEqual(DadCost, Mode)) {
+            for (unsigned I = 0; I < AbsVal; ++I)
+              BuildMI(MBB, MI, DL, get(InxOpc), DstReg).addReg(DstReg);
+            Register ConstReg = LXI->getOperand(0).getReg();
+            if (isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
+              LXI->eraseFromParent();
+            MI.eraseFromParent();
+            return true;
+          }
         }
       }
     }
@@ -524,7 +551,7 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     Register LhsReg = MI.getOperand(1).getReg();
     Register RhsReg = MI.getOperand(2).getReg();
 
-    // DCX/INX chains for constant ±1..±3.
+    // DCX/INX chains for small constants via cost model.
     // Subtraction is not commutative: only RhsReg can be the constant.
     if (isFlagsDefDead(MI) && DstReg == LhsReg) {
       MachineInstr *LXI = findDefiningLXI(MBB, MI.getIterator(), RhsReg, &RI);
@@ -533,24 +560,22 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
         // Normalize unsigned 16-bit to signed.
         if (ImmVal > 0x7FFF)
           ImmVal -= 0x10000;
-        unsigned Opc = 0;
-        unsigned Count = 0;
-        if (ImmVal >= 1 && ImmVal <= 3) {
-          Opc = V6C::DCX;  // sub rp, N → N × DCX rp
-          Count = static_cast<unsigned>(ImmVal);
-        } else if (ImmVal >= -3 && ImmVal <= -1) {
-          Opc = V6C::INX;  // sub rp, -N → N × INX rp
-          Count = static_cast<unsigned>(-ImmVal);
-        }
-
-        if (Opc) {
-          for (unsigned I = 0; I < Count; ++I)
-            BuildMI(MBB, MI, DL, get(Opc), DstReg).addReg(DstReg);
-          Register ConstReg = LXI->getOperand(0).getReg();
-          if (isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
-            LXI->eraseFromParent();
-          MI.eraseFromParent();
-          return true;
+        if (ImmVal != 0) {
+          unsigned AbsVal =
+              static_cast<unsigned>(ImmVal > 0 ? ImmVal : -ImmVal);
+          unsigned InxOpc = ImmVal > 0 ? V6C::DCX : V6C::INX;
+          V6COptMode Mode = getV6COptMode(*MBB.getParent());
+          V6CInstrCost InxCost = V6CCost::INX * AbsVal;
+          V6CInstrCost DadCost = V6CCost::LXI + V6CCost::DAD;
+          if (InxCost.isCheaperOrEqual(DadCost, Mode)) {
+            for (unsigned I = 0; I < AbsVal; ++I)
+              BuildMI(MBB, MI, DL, get(InxOpc), DstReg).addReg(DstReg);
+            Register ConstReg = LXI->getOperand(0).getReg();
+            if (isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
+              LXI->eraseFromParent();
+            MI.eraseFromParent();
+            return true;
+          }
         }
       }
     }

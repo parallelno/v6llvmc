@@ -36,7 +36,7 @@ Cross-referenced with TableGen `SchedWriteRes` names from `V6CSchedule.td`.
 
 | Mnemonic | Bytes | Cycles | SchedWrite | Notes |
 |----------|-------|--------|------------|-------|
-| MOV r,r | 1 | 4 | WriteALU4 | Register to register |
+| MOV r,r | 1 | 8 | WriteALU4 | Register to register |
 | MOV r,M | 1 | 8 | WriteMOV8 | Memory (HL) to register |
 | MOV M,r | 1 | 8 | WriteMOV8 | Register to memory (HL) |
 | MVI r,d8 | 2 | 8 | WriteMOV8 | Immediate to register |

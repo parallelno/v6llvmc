@@ -1,0 +1,127 @@
+== Test Case ==
+unsigned char read_offset1(unsigned char *p) { return *(p + 1); }
+unsigned char read_offset2(unsigned char *p) { return *(p + 2); }
+unsigned char read_offset3(unsigned char *p) { return *(p + 3); }
+unsigned char read_offset4(unsigned char *p) { return *(p + 4); }
+
+== c8080 assembly (Z80 → i8080 translation, key functions only) ==
+
+read_offset1:                         ; p in HL
+    INX  HL                           ;  8cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 28cc, 3B
+
+read_offset2:
+    INX  HL                           ;  8cc, 1B
+    INX  HL                           ;  8cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 36cc, 4B
+
+read_offset3:
+    INX  HL                           ;  8cc, 1B
+    INX  HL                           ;  8cc, 1B
+    INX  HL                           ;  8cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 44cc, 5B
+
+read_offset4:
+    LXI  DE, 4                        ; 12cc, 3B
+    DAD  DE                           ; 12cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 44cc, 6B
+
+c8080 stats (4 functions):
+  read_offset1: 28cc, 3B
+  read_offset2: 36cc, 4B
+  read_offset3: 44cc, 5B
+  read_offset4: 44cc, 6B
+  Total: 152cc, 18B
+
+== v6llvmc assembly BEFORE (O11 not applied) ==
+
+read_offset1:
+    LXI  DE, 1                        ; 12cc, 3B
+    DAD  DE                           ; 12cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 44cc, 6B
+
+read_offset2:
+    LXI  DE, 2                        ; 12cc, 3B
+    DAD  DE                           ; 12cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 44cc, 6B
+
+read_offset3:
+    LXI  DE, 3                        ; 12cc, 3B
+    DAD  DE                           ; 12cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 44cc, 6B
+
+read_offset4:
+    LXI  DE, 4                        ; 12cc, 3B
+    DAD  DE                           ; 12cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 44cc, 6B
+
+v6llvmc BEFORE stats (4 functions):
+  read_offset1: 44cc, 6B
+  read_offset2: 44cc, 6B
+  read_offset3: 44cc, 6B
+  read_offset4: 44cc, 6B
+  Total: 176cc, 24B
+
+== v6llvmc assembly AFTER (O11 cost model applied) ==
+
+read_offset1:
+    INX  HL                           ;  8cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 28cc, 3B
+
+read_offset2:
+    INX  HL                           ;  8cc, 1B
+    INX  HL                           ;  8cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 36cc, 4B
+
+read_offset3:
+    INX  HL                           ;  8cc, 1B
+    INX  HL                           ;  8cc, 1B
+    INX  HL                           ;  8cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 44cc, 5B
+
+read_offset4:
+    LXI  DE, 4                        ; 12cc, 3B
+    DAD  DE                           ; 12cc, 1B
+    MOV  A, M                         ;  8cc, 1B
+    RET                               ; 12cc, 1B
+                                      ; total: 44cc, 6B
+
+v6llvmc AFTER stats (4 functions):
+  read_offset1: 28cc, 3B  (saved 16cc, 3B)
+  read_offset2: 36cc, 4B  (saved  8cc, 2B)
+  read_offset3: 44cc, 5B  (saved  0cc, 1B)
+  read_offset4: 44cc, 6B  (no change — correct: DAD wins at +4)
+  Total: 152cc, 18B
+
+== Summary ==
+
+                Before O11    After O11     c8080
+  Total cc:     176cc         152cc         152cc
+  Total bytes:   24B           18B           18B
+  Savings:      -24cc, -6B    (matches c8080 exactly)
+
+O11 brings v6llvmc to parity with c8080 for pointer offset patterns.
+The cost model correctly derives the INX/DAD threshold: INX for ≤3,
+LXI+DAD for ≥4.
