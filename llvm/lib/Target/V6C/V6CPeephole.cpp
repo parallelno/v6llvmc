@@ -20,8 +20,10 @@
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
@@ -50,6 +52,7 @@ private:
   bool eliminateSelfMov(MachineBasicBlock &MBB);
   bool eliminateRedundantMov(MachineBasicBlock &MBB);
   bool eliminateTailCall(MachineBasicBlock &MBB);
+  bool foldCounterBranch(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -138,6 +141,158 @@ bool V6CPeephole::eliminateTailCall(MachineBasicBlock &MBB) {
   return true;
 }
 
+/// Check if a physical register is dead (not read) after iterator I.
+/// Returns true if no instruction between I (exclusive) and the end of the
+/// block reads Reg before redefining it, and no successor has Reg as a livein.
+static bool isRegDeadAfter(MachineBasicBlock &MBB,
+                           MachineBasicBlock::iterator I,
+                           unsigned Reg,
+                           const TargetRegisterInfo *TRI) {
+  for (auto MI = std::next(I); MI != MBB.end(); ++MI) {
+    bool usesReg = false, defsReg = false;
+    for (const MachineOperand &MO : MI->operands()) {
+      if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
+        continue;
+      if (MO.isUse())
+        usesReg = true;
+      if (MO.isDef())
+        defsReg = true;
+    }
+    if (usesReg)
+      return false; // Read before redefined → live
+    if (defsReg)
+      return true;  // Redefined before read → dead
+  }
+  // Reached end of block: check if any successor needs Reg.
+  for (MachineBasicBlock *Succ : MBB.successors()) {
+    for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
+         ++AI) {
+      if (Succ->isLiveIn(*AI))
+        return false;
+    }
+  }
+  return true;
+}
+
+/// Return true if MI is a redundant zero-test: ORA A or CPI 0.
+static bool isRedundantZeroTest(const MachineInstr &MI) {
+  // ORA A: ORAr with all three operands (dst, lhs, src) = A.
+  if (MI.getOpcode() == V6C::ORAr &&
+      MI.getOperand(0).getReg() == V6C::A &&
+      MI.getOperand(1).getReg() == V6C::A &&
+      MI.getOperand(2).getReg() == V6C::A)
+    return true;
+  // CPI 0: compare A with immediate 0.
+  if (MI.getOpcode() == V6C::CPI &&
+      MI.getOperand(1).isImm() && MI.getOperand(1).getImm() == 0)
+    return true;
+  return false;
+}
+
+/// Return true if MI is a DCR r or INR r instruction.
+static bool isDcrOrInr(const MachineInstr &MI) {
+  return MI.getOpcode() == V6C::DCRr || MI.getOpcode() == V6C::INRr;
+}
+
+/// Fold DCR/INR + redundant flag test + JNZ/JZ into DCR/INR + JNZ/JZ.
+///
+/// Pattern A: DCR A; ORA A; Jcc → DCR A; Jcc (remove ORA A)
+/// Pattern B: DCR r; MOV A,r; ORA A; Jcc → DCR r; Jcc (remove MOV+ORA, A dead)
+/// Pattern C: MOV A,r; DCR A; MOV r,A; ORA A; Jcc → DCR r; Jcc (A dead)
+bool V6CPeephole::foldCounterBranch(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+  const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+
+  for (auto I = MBB.begin(), E = MBB.end(); I != E; ++I) {
+    MachineInstr &BrMI = *I;
+    // Match JNZ or JZ.
+    if (BrMI.getOpcode() != V6C::JNZ && BrMI.getOpcode() != V6C::JZ)
+      continue;
+
+    // We need at least 2 instructions before the branch for Pattern A.
+    if (I == MBB.begin())
+      continue;
+    auto OraIt = std::prev(I);
+    if (OraIt == MBB.begin())
+      continue;
+
+    // The instruction before the branch must be ORA A or CPI 0.
+    if (!isRedundantZeroTest(*OraIt))
+      continue;
+
+    auto PreOraIt = std::prev(OraIt);
+
+    // --- Try Pattern C first (5 instructions → 2) ---
+    // MOV A,r; DCR/INR A; MOV r,A; ORA A; Jcc
+    if (PreOraIt != MBB.begin()) {
+      auto MovRaIt = PreOraIt;  // MOV r, A
+      auto DcrAIt = std::prev(MovRaIt);
+      if (DcrAIt != MBB.begin()) {
+        auto MovArIt = std::prev(DcrAIt);  // MOV A, r
+
+        if (MovRaIt->getOpcode() == V6C::MOVrr &&
+            MovRaIt->getOperand(1).getReg() == V6C::A &&
+            isDcrOrInr(*DcrAIt) &&
+            DcrAIt->getOperand(0).getReg() == V6C::A &&
+            MovArIt->getOpcode() == V6C::MOVrr &&
+            MovArIt->getOperand(0).getReg() == V6C::A) {
+          Register CounterReg = MovArIt->getOperand(1).getReg();
+          Register StoreReg = MovRaIt->getOperand(0).getReg();
+          // MOV A,r and MOV r,A must refer to the same register r.
+          if (CounterReg == StoreReg && CounterReg != V6C::A &&
+              isRegDeadAfter(MBB, I, V6C::A, TRI)) {
+            // Replace 5 instructions with DCR/INR r + Jcc.
+            unsigned NewOpc = (DcrAIt->getOpcode() == V6C::DCRr)
+                                  ? V6C::DCRr : V6C::INRr;
+            BuildMI(MBB, *MovArIt, MovArIt->getDebugLoc(),
+                    TII.get(NewOpc), CounterReg)
+                .addReg(CounterReg);
+            // Remove MOV A,r; DCR A; MOV r,A; ORA A (keep Jcc).
+            OraIt->eraseFromParent();
+            MovRaIt->eraseFromParent();
+            DcrAIt->eraseFromParent();
+            MovArIt->eraseFromParent();
+            Changed = true;
+            continue;
+          }
+        }
+      }
+    }
+
+    // --- Try Pattern B (4 instructions → 2) ---
+    // DCR r; MOV A,r; ORA A; Jcc
+    if (PreOraIt->getOpcode() == V6C::MOVrr &&
+        PreOraIt->getOperand(0).getReg() == V6C::A) {
+      Register SrcReg = PreOraIt->getOperand(1).getReg();
+      if (SrcReg != V6C::A && PreOraIt != MBB.begin()) {
+        auto DcrIt = std::prev(PreOraIt);
+        if (isDcrOrInr(*DcrIt) &&
+            DcrIt->getOperand(0).getReg() == SrcReg &&
+            isRegDeadAfter(MBB, I, V6C::A, TRI)) {
+          // Remove MOV A,r and ORA A — keep DCR r and Jcc.
+          OraIt->eraseFromParent();
+          PreOraIt->eraseFromParent();
+          Changed = true;
+          continue;
+        }
+      }
+    }
+
+    // --- Try Pattern A (3 instructions → 2) ---
+    // DCR A; ORA A; Jcc
+    if (isDcrOrInr(*PreOraIt) &&
+        PreOraIt->getOperand(0).getReg() == V6C::A) {
+      // Remove ORA A — DCR A already set Z.
+      OraIt->eraseFromParent();
+      Changed = true;
+      continue;
+    }
+  }
+  return Changed;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -146,6 +301,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   for (MachineBasicBlock &MBB : MF) {
     Changed |= eliminateSelfMov(MBB);
     Changed |= eliminateRedundantMov(MBB);
+    Changed |= foldCounterBranch(MBB);
     Changed |= eliminateTailCall(MBB);
   }
   return Changed;

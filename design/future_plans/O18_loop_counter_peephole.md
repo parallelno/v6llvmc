@@ -23,7 +23,7 @@ The 8080's `DCR r` instruction sets the Z flag directly for any register r.
 The entire 5-instruction sequence can be replaced with:
 
 ```asm
-DCR  B           ;  4cc   decrement B, sets Z flag
+DCR  B           ;  8cc   decrement B, sets Z flag
 JNZ  loop        ; 12cc   branch if nonzero
 ; Total: 16cc, 2B
 ```

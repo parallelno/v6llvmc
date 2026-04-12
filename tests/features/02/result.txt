@@ -1,0 +1,98 @@
+O18 Loop Counter DEC+Branch Peephole — Result
+
+== C Test Case ==
+
+extern volatile unsigned char output_port;
+
+void countdown(unsigned char n) {
+    while (n != 0) {
+        output_port = n;
+        n--;
+    }
+}
+
+unsigned char count_down(unsigned char n) {
+    while (n != 0) {
+        n--;
+    }
+    return n;
+}
+
+int main(int argc, char **argv) {
+    countdown(5);
+    return count_down(10);
+}
+
+== c8080 assembly (countdown loop body, i8080 equivalent) ==
+
+countdown:
+    STA  __a_1          ;  16cc
+l_0:
+    ORA  A              ;   4cc
+    RZ                  ;   8cc (not taken) / 16cc (taken)
+    STA  output_port    ;  16cc
+    LDA  __a_1          ;  16cc
+    DCR  A              ;   8cc
+    STA  __a_1          ;  16cc
+    JMP  l_0            ;  12cc
+; Loop overhead per iteration: 80cc (not counting RZ taken)
+; Note: c8080 uses static stack allocation so stores counter to memory
+
+count_down:
+    STA  __a_1          ;  16cc
+l_2:
+    ORA  A              ;   4cc
+    RZ                  ;   8cc / 16cc
+    DCR  A              ;   8cc
+    STA  __a_1          ;  16cc
+    JMP  l_2            ;  12cc
+; Loop overhead per iteration: 48cc
+
+c8080 stats:
+  countdown loop body: ~80cc/iter, function: ~40B
+  count_down loop body: ~48cc/iter, function: ~20B
+
+== v6llvmc assembly (before optimization) ==
+
+countdown:
+    ORA  A              ;   4cc
+    JZ   .LBB0_2        ;  12cc
+.LBB0_1:
+    STA  output_port    ;  16cc
+    DCR  A              ;   8cc
+    ORA  A              ;   4cc  ← redundant
+    JNZ  .LBB0_1        ;  12cc
+.LBB0_2:
+    RET                 ;  12cc
+; Loop overhead per iteration: 40cc (STA 16 + DCR 8 + ORA 4 + JNZ 12)
+; Function: 12B
+
+== v6llvmc assembly (after O18 optimization) ==
+
+countdown:
+    ORA  A              ;   4cc
+    JZ   .LBB0_2        ;  12cc
+.LBB0_1:
+    STA  output_port    ;  16cc
+    DCR  A              ;   8cc
+    JNZ  .LBB0_1        ;  12cc
+.LBB0_2:
+    RET                 ;  12cc
+; Loop overhead per iteration: 36cc (STA 16 + DCR 8 + JNZ 12)
+; Function: 11B
+
+v6llvmc stats (before):
+  countdown loop body: 40cc/iter, function: 12B
+
+v6llvmc stats (after):
+  countdown loop body: 36cc/iter, function: 11B
+
+== Improvement ==
+
+  Savings per iteration: 4cc + 1B (ORA A eliminated)
+  Pattern A fired: DCR A; CPI 0; JNZ → DCR A; JNZ
+
+  v6llvmc vs c8080 countdown loop:
+    v6llvmc: 36cc/iter (after O18)
+    c8080:   80cc/iter (static stack stores on every iteration)
+    v6llvmc is 2.2× faster per iteration

@@ -19,7 +19,7 @@ Compile ASM guide:
   so the compiled assembly is comparable between the two compilers.
 - Store the test case to v6llvmc.c and c8080.c.
 - Compile ASM with c8080.c to c8080.asm.
-- Compile ASM with v6llvmc.c to v6llvmc.asm.
+- Compile ASM with v6llvmc.c to v6llvmc_old.asm.
 - Fix C code if required (c8080 can complain about syntax).
 - Inform the user, then pause to let the user verify the new files.
 - Return to the pipeline (Phase 2).
@@ -29,10 +29,10 @@ c8080.c - test for c8080 compiler
 v6llvmc.c - test for this compiler
 
 ## Verification assembly steps:
-- Compile ASM with v6llvmc.c to v6llvmc_improve01.asm.
+- Compile ASM with v6llvmc.c to v6llvmc_new01.asm.
 - Analyze the ASM code for improvements.
 - Present it to the user, explaining what changed and why.
-- If the improvements didn't show up, investigate and fix, then repeat from the top of this section. Each recompiled ASM file gets the next number: v6llvmc_improve02.asm, v6llvmc_improve03.asm, etc.
+- If the improvements didn't show up, investigate and fix, then repeat from the top of this section. Each recompiled ASM file gets the next number: v6llvmc_new02.asm, v6llvmc_new03.asm, etc.
 - When the ASM shows the expected improvement, create result.txt.
 
 ## result.txt structure
@@ -48,10 +48,10 @@ c8080.c - test for c8080 compiler
 c8080.asm
 v6llvmc.c - test for this compiler
 v6llvmc.asm
-v6llvmc_improve01.asm
-v6llvmc_improve02.asm
+v6llvmc_new01.asm
+v6llvmc_new02.asm
 ...
-v6llvmc_improveNN.asm
+v6llvmc_newNN.asm
 result.txt
 
 ## Reference
