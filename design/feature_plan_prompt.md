@@ -28,6 +28,7 @@ Address development sequencing, dependency management, validation strategies, re
 - ### Step ...
 - ### Step 3.. — Run regression tests [ ]
 - ### Step 3.. — Verification assembly steps from `tests\features\README.md` [ ]
+- ### Step 3.. — Make sure result.txt is created. `tests\features\README.md` [ ]
 - ### Step 3.. — Sync mirror [ ]
 - ## 4. Expected Results
 - ### Example1 of how this feature benefits the project

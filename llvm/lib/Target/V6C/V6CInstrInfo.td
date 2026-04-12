@@ -647,6 +647,12 @@ def : Pat<(i8 (load (V6Cwrapper tglobaladdr:$addr))),
 def : Pat<(store i8:$val, (V6Cwrapper tglobaladdr:$addr)),
           (STA i8:$val, tglobaladdr:$addr)>;
 
+// Load i8 from constant integer address via LDA (e.g. memory-mapped I/O)
+def : Pat<(i8 (load imm:$addr)), (LDA imm:$addr)>;
+
+// Store i8 to constant integer address via STA
+def : Pat<(store i8:$val, imm:$addr), (STA i8:$val, imm:$addr)>;
+
 // Unconditional branch → JMP
 def : Pat<(br bb:$dst), (JMP bb:$dst)>;
 

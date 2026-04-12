@@ -1,0 +1,74 @@
+== O6: LDA/STA for Absolute Address Loads/Stores ==
+
+=== C Test Case ===
+
+#define PORT_A  (*(volatile unsigned char*)0x100)
+#define PORT_B  (*(volatile unsigned char*)0x200)
+
+unsigned char read_port(void) {
+    return PORT_A;
+}
+
+void write_port(unsigned char val) {
+    PORT_A = val;
+}
+
+void copy_port(void) {
+    PORT_B = PORT_A;
+}
+
+=== c8080 Assembly (Z80 → i8080 translation) ===
+
+read_port:
+    LDA  0x100          ; 16cc, 3B  [ld a, (256)]
+    RET                 ; 12cc, 1B
+; Total: 28cc, 4B
+
+write_port:
+    STA  0x100          ; 16cc, 3B  [ld (256), a]  — note: c8080 uses static stack; val already in A
+    RET                 ; 12cc, 1B
+; Total: 28cc, 4B  (excluding static-stack save)
+
+copy_port:
+    LDA  0x100          ; 16cc, 3B  [ld a, (256)]
+    STA  0x200          ; 16cc, 3B  [ld (512), a]
+    RET                 ; 12cc, 1B
+; Total: 44cc, 7B
+
+c8080 stats (body only, excluding static-stack overhead):
+  read_port:  16cc, 3B
+  write_port: 16cc, 3B
+  copy_port:  32cc, 6B
+  Total:      64cc, 12B
+
+=== v6llvmc Assembly ===
+
+read_port:
+    LDA  0x100          ; 16cc, 3B
+    RET                 ; 12cc, 1B
+
+write_port:
+    STA  0x100          ; 16cc, 3B
+    RET                 ; 12cc, 1B
+
+copy_port:
+    LDA  0x100          ; 16cc, 3B
+    STA  0x200          ; 16cc, 3B
+    RET                 ; 12cc, 1B
+
+v6llvmc stats (body only):
+  read_port:  16cc, 3B
+  write_port: 16cc, 3B
+  copy_port:  32cc, 6B
+  Total:      64cc, 12B
+
+=== Comparison ===
+
+| Function   | v6llvmc OLD       | v6llvmc NEW       | Savings     |
+|------------|-------------------|-------------------|-------------|
+| read_port  | 20cc, 4B (LXI+MOV) | 16cc, 3B (LDA)  | 4cc + 1B    |
+| write_port | 20cc, 4B (LXI+MOV) | 16cc, 3B (STA)  | 4cc + 1B    |
+| copy_port  | 40cc, 8B          | 32cc, 6B         | 8cc + 2B    |
+| Total      | 80cc, 16B         | 64cc, 12B        | 16cc + 4B   |
+
+v6llvmc now matches c8080 for constant-address loads/stores.
