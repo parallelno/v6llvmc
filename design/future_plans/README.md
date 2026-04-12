@@ -23,6 +23,7 @@
 | O17 | Redundant Flag-Setting Elimination (Post-RA) | [O17_redundant_flag_elimination.md](O17_redundant_flag_elimination.md) | llvm-z80 |
 | O18 | Loop Counter DEC+Branch Peephole | [O18_loop_counter_peephole.md](O18_loop_counter_peephole.md) | llvm-z80 |
 | O19 | Inline Arithmetic Expansion (Mul/Div) | [O19_inline_arithmetic_expansion.md](O19_inline_arithmetic_expansion.md) | llvm-z80 |
+| O20 | Honest Store/Load Pseudo Defs (Remove False HL Clobber) | [O20_honest_store_load_defs.md](O20_honest_store_load_defs.md) | V6C |
 
 ---
 
@@ -49,36 +50,38 @@
 | O17 | Redundant Flag Elimination | llvm-z80 | 4cc, 1B | Med-high | Low | Very Low | None | [x] |
 | O18 | Loop Counter DCR+JNZ | llvm-z80 | 20cc, 4B/iter | Very high | Low | Very Low | None | [x] |
 | O19 | Inline Arithmetic (Mul/Div) | llvm-z80 | 100-200cc | Medium | Medium | Low | None | [ ] |
+| O20 | Honest Store/Load Defs (HL clobber) | V6C | 14cc, 2B/iter | Very high | Medium | Low-Med | None | [ ] |
 
 ### Recommended order
 
 **Phase 1 — Quick wins (Low complexity, immediate benefit)**:
-1. **O14** — trivial tail-call peephole, 18cc savings, ~15 lines
-2. **O18** — loop counter DCR+JNZ peephole, 20cc savings per iteration, ~40 lines
-3. **O17** — redundant flag elimination, 4cc+1B per instance, ~50 lines
-4. **O11** — cost model infrastructure, enables cost-aware decisions everywhere
-5. **O13** — register value tracking peephole, saves bytes on MVI→MOV/INR
-6. **O6** — simple ISel pattern for LDA/STA
+1. ~~**O14** — trivial tail-call peephole, 18cc savings, ~15 lines~~ ✅
+2. ~~**O18** — loop counter DCR+JNZ peephole, 20cc savings per iteration, ~40 lines~~ ✅
+3. ~~**O17** — redundant flag elimination, 4cc+1B per instance, ~50 lines~~ ✅
+4. ~~**O11** — cost model infrastructure, enables cost-aware decisions everywhere~~ ✅
+5. ~~**O13** — register value tracking peephole, saves bytes on MVI→MOV/INR~~ ✅
+6. ~~**O6** — simple ISel pattern for LDA/STA~~ ✅
 
 **Phase 2 — Core optimizations (Medium complexity, high payoff)**:
-7. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
-8. **O12** — cross-BB copy optimization, supersedes O1
-9. **O15** — conditional call, 12cc+3B per instance, reduces branch count
-10. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
-11. **O2** — sequential LXI→INX folding
-12. **O4** — ADD M / SUB M direct memory, builds on O2
+7. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines
+8. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
+9. **O12** — cross-BB copy optimization, supersedes O1
+10. **O15** — conditional call, 12cc+3B per instance, reduces branch count
+11. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
+12. **O2** — sequential LXI→INX folding
+13. **O4** — ADD M / SUB M direct memory, builds on O2
 
 **Phase 3 — Loop & stack (Medium-High complexity, massive payoff)**:
-13. **O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info
-14. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
-15. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
+14. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
+15. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
+16. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
 
 **Phase 4 — Advanced (High complexity)**:
-16. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
-17. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
+17. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
+18. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
 
 **Deferred**:
-13. **O9** — inline assembly MC parser, implement when needed
+- **O9** — inline assembly MC parser, implement when needed
 
 ### Comparison with AVR
 
