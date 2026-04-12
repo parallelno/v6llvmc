@@ -57,7 +57,7 @@
 | O18 | Loop Counter DCR+JNZ | llvm-z80 | 20cc, 4B/iter | Very high | Low | Very Low | None | [x] |
 | O19 | Inline Arithmetic (Mul/Div) | llvm-z80 | 100-200cc | Medium | Medium | Low | None | [ ] |
 | O20 | Honest Store/Load Defs (HL clobber) | V6C | 14cc, 2B/iter | Very high | Medium | Low-Med | None | [ ] |
-| O21 | LHLD/SHLD 16-bit absolute addr | V6C | 14-22cc, 3-4B | Medium | Low | Very Low | O6 done | [ ] |
+| O21 | LHLD/SHLD 16-bit absolute addr | V6C | 14-22cc, 3-4B | Medium | Low | Very Low | O6 done | [x] |
 | O22 | TTI Cost Hooks Expansion | V6C | indirect (better decisions) | High | Low-Med | Low | O7 done | [ ] |
 | O23 | Conditional Tail Call | V6C | 14cc, 1B | Medium | Low-Med | Low | O14 done | [ ] |
 | O24 | SUI/SBI Immediate Unsigned CMP | V6C | 2cc, 1B + free reg pair | Med-high | Medium | Low | None | [ ] |
@@ -75,7 +75,7 @@
 6. ~~**O6** — simple ISel pattern for LDA/STA~~ ✅
 
 **Phase 2 — Quick extensions (Low complexity, builds on completed work)**:
-7. **O21** — LHLD/SHLD for i16 globals, ISel patterns like O6, ~20 lines
+7. ~~**O21** — LHLD/SHLD for i16 globals, ISel patterns like O6, ~20 lines~~ ✅
 8. **O23** — conditional tail call, extends O14 peephole, ~20 lines
 9. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines
 10. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
