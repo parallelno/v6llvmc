@@ -284,6 +284,21 @@ JZ   label   ; 12cc         JZ   label   ; 12cc
 - **ANA A elimination**: Same pass already handles `ANA A` — could be
   extended to other identity flag-setting patterns if they arise.
 
+> **Not pursued — all three items (April 2026):** These are minor scope
+> extensions ("if more instances are found") with no evidence of real-world
+> occurrence. **Inter-BB**: flag-setting instructions (ADD, SUB, INR, DCR, CMP,
+> ANA, ORA, XRA) are so dense within basic blocks that the flag is almost
+> always set locally; cross-BB cases only arise when a BB starts with ORA A
+> and the sole predecessor ends with a flag-setter, which LLVM's branch
+> structure makes uncommon. Would require dominator-tree dataflow — a large
+> complexity jump for marginal gain. **Carry tracking**: the compiler barely
+> emits STC/CMC; CY is set by ADD/SUB/CMP and consumed immediately by
+> JC/JNC/CC/CNC. No "set carry then use later" pattern exists in compiler
+> output. **ANA A / identity patterns**: patterns like `ORA B` (when B=0)
+> require value tracking, which is O13's domain, not flag elimination. All
+> three are ~10-20 line additions to O17 if evidence emerges; not separate
+> optimizations.
+
 ---
 
 ## 8. References

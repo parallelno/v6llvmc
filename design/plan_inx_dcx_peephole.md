@@ -694,6 +694,15 @@ eliminate the register pressure that causes the intervening stack accesses.
   16cc) followed by INX (8cc) = 24cc total, still better than 52cc. Only
   worthwhile if this case actually occurs in practice after RA.
 
+  > **Not pursued.** Tested with runtime pointer patterns (`uint8_t *p`
+  > passed as argument, both `*p` and `*(p+1)` used). LLVM's register
+  > coalescing always ensures DstReg == BaseReg for the add. When both
+  > the original and incremented pointer are needed, the compiler spills
+  > the original to the stack before advancing — it never produces a
+  > 3-operand `DE = HL + 1` pattern. For global arrays, constant folding
+  > eliminates the pointer arithmetic entirely (LDA/STA with pre-computed
+  > addresses). This case is dead code territory in practice.
+
 - **DCR-based loop counter**: When the loop counter counts down and the
   only use of the counter is the exit test, DCR (8-bit decrement, sets
   flags) might replace the 16-bit comparison entirely. This is a separate

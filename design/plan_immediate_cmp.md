@@ -1081,6 +1081,10 @@ This is improvement #4 in the optimization sequence:
   comparison) because CMP r costs 4cc while CPI imm costs 8cc. So
   MVI+CMP is the preferred pattern.
 
+  > **Not pursued.** MOV+CPI is strictly dominated by the implemented
+  > MVI+CMP approach: same byte count, 4cc slower per byte (8cc per
+  > 16-bit comparison). No scenario where MOV+CPI wins.
+
 - **Extend to SUB/SBB conditions**: For unsigned less-than comparisons
   (`SETULT`, `SETUGE`), the current SUB/SBB expansion also uses register
   operands. A SUI/SBI immediate variant could similarly free a register

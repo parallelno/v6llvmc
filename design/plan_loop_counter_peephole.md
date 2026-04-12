@@ -287,6 +287,24 @@ powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1
 - Extend to handle conditional branches other than JNZ/JZ (JM, JP) when
   DCR/INR is followed by sign/parity tests.
 
+> **Not pursued — SUI 1 (April 2026):** Empirical testing across all compiled
+> assembly output shows the V6C backend **never emits `SUI`**. LLVM always
+> lowers `sub i8 %x, 1` directly to `DCR A` via ISel patterns. Zero
+> occurrences of `SUI` in any compiler-generated `.asm` file. Dead pattern.
+
+> **Not pursued — JM/JP sign-flag branches (April 2026):** Tested with
+> `while (n >= 0) { result = n; n--; }` — the compiler emits
+> `DCR A; CPI 0xFF; JNZ` instead of `DCR A; JP`. LLVM's InstCombine rewrites
+> the signed comparison `icmp slt i8 %dec, 0` to `icmp eq i8 %orig, 0`,
+> losing the sign-flag semantics. A peephole cannot safely replace
+> `CPI 0xFF; JNZ` with `JP` — they are not equivalent for all inputs
+> (e.g. A=0x81: DCR→0x80 has sign=1 so JP exits, but 0x80≠0xFF so JNZ
+> continues). The correct fix would require preserving `nsw` info at ISel
+> level to emit sign-flag tests — a non-trivial ISel change, not a peephole
+> extension. Separately, `while (n > 0)` causes register allocation failure
+> because LLVM rewrites it to `icmp ugt i8 %x, 1` which requires a CPI
+> with a live constant, exhausting 8080's limited registers.
+
 ---
 
 ## 8. References

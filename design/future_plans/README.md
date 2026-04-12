@@ -24,6 +24,12 @@
 | O18 | Loop Counter DEC+Branch Peephole | [O18_loop_counter_peephole.md](O18_loop_counter_peephole.md) | llvm-z80 |
 | O19 | Inline Arithmetic Expansion (Mul/Div) | [O19_inline_arithmetic_expansion.md](O19_inline_arithmetic_expansion.md) | llvm-z80 |
 | O20 | Honest Store/Load Pseudo Defs (Remove False HL Clobber) | [O20_honest_store_load_defs.md](O20_honest_store_load_defs.md) | V6C |
+| O21 | LHLD/SHLD 16-bit Absolute Address Patterns | [O21_lhld_shld_absolute_addr.md](O21_lhld_shld_absolute_addr.md) | V6C |
+| O22 | TTI Cost Hooks Expansion | [O22_tti_cost_hooks.md](O22_tti_cost_hooks.md) | V6C |
+| O23 | Conditional Tail Call Optimization | [O23_conditional_tail_call.md](O23_conditional_tail_call.md) | V6C |
+| O24 | SUI/SBI Immediate Unsigned Comparison | [O24_sui_sbi_immediate_cmp.md](O24_sui_sbi_immediate_cmp.md) | V6C |
+| O25 | LXI 16-bit Value Combining | [O25_lxi_value_combining.md](O25_lxi_value_combining.md) | V6C |
+| O26 | Cost Model Infrastructure (getInstrCost + copyCost) | [O26_cost_model_infra.md](O26_cost_model_infra.md) | V6C |
 
 ---
 
@@ -51,6 +57,12 @@
 | O18 | Loop Counter DCR+JNZ | llvm-z80 | 20cc, 4B/iter | Very high | Low | Very Low | None | [x] |
 | O19 | Inline Arithmetic (Mul/Div) | llvm-z80 | 100-200cc | Medium | Medium | Low | None | [ ] |
 | O20 | Honest Store/Load Defs (HL clobber) | V6C | 14cc, 2B/iter | Very high | Medium | Low-Med | None | [ ] |
+| O21 | LHLD/SHLD 16-bit absolute addr | V6C | 14-22cc, 3-4B | Medium | Low | Very Low | O6 done | [ ] |
+| O22 | TTI Cost Hooks Expansion | V6C | indirect (better decisions) | High | Low-Med | Low | O7 done | [ ] |
+| O23 | Conditional Tail Call | V6C | 14cc, 1B | Medium | Low-Med | Low | O14 done | [ ] |
+| O24 | SUI/SBI Immediate Unsigned CMP | V6C | 2cc, 1B + free reg pair | Med-high | Medium | Low | None | [ ] |
+| O25 | LXI 16-bit Value Combining | V6C | 10cc, 3B | Medium | Low-Med | Very Low | O13 done | [ ] |
+| O26 | Cost Model Infra (getInstrCost) | V6C | N/A (infra) | N/A | Low | Very Low | O11 done | [ ] |
 
 ### Recommended order
 
@@ -62,23 +74,31 @@
 5. ~~**O13** — register value tracking peephole, saves bytes on MVI→MOV/INR~~ ✅
 6. ~~**O6** — simple ISel pattern for LDA/STA~~ ✅
 
-**Phase 2 — Core optimizations (Medium complexity, high payoff)**:
-7. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines
-8. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
-9. **O12** — cross-BB copy optimization, supersedes O1
-10. **O15** — conditional call, 12cc+3B per instance, reduces branch count
-11. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
-12. **O2** — sequential LXI→INX folding
-13. **O4** — ADD M / SUB M direct memory, builds on O2
+**Phase 2 — Quick extensions (Low complexity, builds on completed work)**:
+7. **O21** — LHLD/SHLD for i16 globals, ISel patterns like O6, ~20 lines
+8. **O23** — conditional tail call, extends O14 peephole, ~20 lines
+9. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines
+10. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
 
-**Phase 3 — Loop & stack (Medium-High complexity, massive payoff)**:
-14. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
-15. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
-16. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
+**Phase 3 — Core optimizations (Medium complexity, high payoff)**:
+11. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines
+12. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
+13. **O12** — cross-BB copy optimization, supersedes O1
+14. **O24** — SUI/SBI immediate unsigned comparison, frees register pair
+15. **O15** — conditional call, 12cc+3B per instance, reduces branch count
+16. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
+17. **O2** — sequential LXI→INX folding
+18. **O4** — ADD M / SUB M direct memory, builds on O2
 
-**Phase 4 — Advanced (High complexity)**:
-17. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
-18. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
+**Phase 4 — Loop & stack (Medium-High complexity, massive payoff)**:
+19. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
+20. **O22** — TTI cost hooks (arithmetic, memory, cmp costs), extends O7
+21. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
+22. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
+
+**Phase 5 — Advanced (High complexity)**:
+23. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
+24. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
 
 **Deferred**:
 - **O9** — inline assembly MC parser, implement when needed

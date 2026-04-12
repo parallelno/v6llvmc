@@ -417,6 +417,22 @@ Two tail calls optimized — saves 48cc and 2 bytes total.
   with the caller's args, restructure the argument setup to enable the
   tail call even when some shuffling is needed.
 
+> **Not pursued — ISel-level tail call (April 2026):** The simple
+> CALL+RET→JMP peephole (O14, done) already catches the common case where
+> no argument shuffling is needed. Full ISel-level `LowerTailCall` requires
+> teaching ISel to mark calls as tail-position during lowering, argument
+> register shuffling logic, frame cleanup before the jump, and callee-saved
+> register handling — high complexity for diminishing returns. The
+> conditional-branch extension is captured separately as O23.
+
+> **Not pursued — Sibling call optimization (April 2026):** A strict subset
+> of ISel-level tail calls, handling partially-overlapping arguments. On 8080
+> with only 3 register pairs, argument shuffling (e.g. swapping DE↔BC)
+> requires temporary storage (PUSH/POP or XCHG). The shuffle cost (24-48cc)
+> typically negates the 18cc savings from eliminating CALL+RET→JMP, making it
+> a net loss. The only clearly beneficial case — identical arguments — is a
+> regular tail call that O14 already handles.
+
 ---
 
 ## 8. References

@@ -653,7 +653,27 @@ second pointer increment.
   might be faster to check the high byte first. This is a tuning decision
   with negligible impact for most loops.
 
+  > **Not pursued.** For a typical loop iterating 0→100 within a single
+  > 256-byte page, the low byte changes every iteration while the high
+  > byte is constant — so low-byte-first already gives the early exit
+  > ~99% of the time. The high-byte check only executes on the ~1
+  > iteration where low bytes happen to match. The only case where
+  > high-byte-first helps is when a pointer crosses a page boundary
+  > (e.g., 0x00F0→0x0154), but even then the benefit on some iterations
+  > is offset by the penalty on others — it's a wash on average. Doing
+  > it correctly would require static analysis of address ranges at
+  > compile time, which is high complexity for near-zero payoff.
+
 - **CPI-based optimization for non-loop code**: For single comparisons
   (not in a loop), `MOV A, R; CPI imm` saves the LXI instruction (12cc)
   at the cost of 4cc per CPI vs CMP. Net saving: 12 − 8 = 4cc. Only
   matters for non-loop comparisons against constants.
+
+  > **Not pursued.** The implemented MVI+CMP pattern (from O_IMM_CMP)
+  > already handles this case and is strictly faster: MVI A,imm + CMP r
+  > = 12cc vs MOV A,r + CPI imm = 16cc. Same byte count (2B+1B vs
+  > 1B+2B). MOV+CPI is dominated in all scenarios — there is no
+  > combination of operand placement where it wins on cycles or size.
+  > The only hypothetical edge case (A already holds the value to
+  > compare) would need A-liveness tracking at ISel time, which is
+  > not available at that stage.
