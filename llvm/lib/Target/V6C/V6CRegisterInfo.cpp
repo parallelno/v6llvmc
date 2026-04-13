@@ -54,6 +54,17 @@ BitVector V6CRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   return Reserved;
 }
 
+const TargetRegisterClass *
+V6CRegisterInfo::getLargestLegalSuperClass(
+    const TargetRegisterClass *RC, const MachineFunction &MF) const {
+  // Widen Acc (singleton {A}) to GR8 ({A,B,C,D,E,H,L}) so the register
+  // allocator can park Acc-constrained values in other GPRs and insert
+  // MOV A,r copies when the value is actually needed in A.
+  if (V6C::AccRegClass.hasSubClassEq(RC))
+    return &V6C::GR8RegClass;
+  return TargetRegisterInfo::getLargestLegalSuperClass(RC, MF);
+}
+
 bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
                                            int SPAdj,
                                            unsigned FIOperandNum,
