@@ -93,7 +93,7 @@
 12. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
 13. **O29** — cross-BB immediate propagation, 1B+7cc per redundant MVI, ~30 lines
 14. **O30** — conditional return peephole (Jcc RET → Rcc), 3B per instance, ~30 lines
-15. **O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines
+15. ~~**O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 16. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines
