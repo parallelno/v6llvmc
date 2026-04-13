@@ -75,7 +75,7 @@
 | O29 | Cross-BB Immediate Propagation | V6C | 7cc, 1B | Medium | Low-Med | Low | O13 done | [ ] |
 | O30 | Conditional Return (Jcc RET→Rcc) | V6C | 3B, 1 instr | Med-High | Low | Very Low | O27 done | [x] |
 | O31 | Dead PHI-Constant Elimination | V6C | 9-11B, 40-60cc | Very high | Medium | Low | O27 done | [x] |
-| O32 | XCHG in copyPhysReg (RA-time swap) | V6C | 12cc, 1B | Med-High | Very Low | Very Low | None | [ ] |
+| O32 | XCHG in copyPhysReg (RA-time swap) | V6C | 12cc, 1B | Med-High | Very Low | Very Low | None | [x] |
 | O33 | XCHG Peephole Relaxation | V6C | 12cc, 1B | Low | Very Low | Very Low | None | [ ] |
 
 ### Recommended order
@@ -92,7 +92,7 @@
 7. ~~**O21** — LHLD/SHLD for i16 globals, ISel patterns like O6, ~20 lines~~ ✅
 8. ~~**O23** — conditional tail call, extends O14 peephole, ~20 lines~~ ✅
 9. ~~**O27** — i16 zero-test (MOV A,H; ORA L), 10B+24cc per zero comparison, ~15 lines~~ ✅
-10. **O32** — XCHG in copyPhysReg, 1B+12cc per DE↔HL copy, ~10 lines
+10. ~~**O32** — XCHG in copyPhysReg, 1B+12cc per DE↔HL copy, ~10 lines~~ ✅
 11. **O33** — XCHG peephole relaxation, drop isRegLiveBefore guard, ~10 lines
 12. **O28** — branch threading through JMP-only blocks, 3B+10cc, synergy with O27, ~25 lines
 13. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines

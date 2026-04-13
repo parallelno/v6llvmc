@@ -36,6 +36,15 @@ void V6CInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   // 16-bit pair copy: two MOV instructions (hi byte, then lo byte)
   if (V6C::GR16RegClass.contains(DestReg) &&
       V6C::GR16RegClass.contains(SrcReg)) {
+    // DE↔HL with source killed: use XCHG (1B/4cc vs 2B/16cc).
+    // Safe because source is dead — the reverse swap side-effect is harmless.
+    if (KillSrc &&
+        ((DestReg == V6C::HL && SrcReg == V6C::DE) ||
+         (DestReg == V6C::DE && SrcReg == V6C::HL))) {
+      BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      return;
+    }
+
     const TargetRegisterInfo *TRI = &RI;
     MCRegister DestHi = TRI->getSubReg(DestReg, V6C::sub_hi);
     MCRegister DestLo = TRI->getSubReg(DestReg, V6C::sub_lo);
