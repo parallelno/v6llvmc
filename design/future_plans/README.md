@@ -33,6 +33,8 @@
 | O27 | i16 Zero-Test Optimization (MOV+ORA) | [O27_i16_zero_test.md](O27_i16_zero_test.md) | V6C |
 | O28 | Branch Threading Through JMP-Only Blocks | [O28_branch_threading_jmp_only.md](O28_branch_threading_jmp_only.md) | V6C |
 | O29 | Cross-BB Immediate Value Propagation | [O29_cross_bb_imm_propagation.md](O29_cross_bb_imm_propagation.md) | V6C |
+| O30 | Conditional Return Peephole (Jcc RET → Rcc) | [O30_conditional_return.md](O30_conditional_return.md) | V6C |
+| O31 | Dead PHI-Constant Elimination for Zero-Tested Branches | [O31_dead_phi_constant.md](O31_dead_phi_constant.md) | V6C |
 
 ---
 
@@ -69,6 +71,8 @@
 | O27 | i16 Zero-Test (MOV+ORA) | V6C | 24cc, 10B | Very high | Low-Med | Low | None | [x] |
 | O28 | Branch Threading (JMP-only blocks) | V6C | 10cc, 3B | Medium | Low | Very Low | O27 enables | [ ] |
 | O29 | Cross-BB Immediate Propagation | V6C | 7cc, 1B | Medium | Low-Med | Low | O13 done | [ ] |
+| O30 | Conditional Return (Jcc RET→Rcc) | V6C | 3B, 1 instr | Med-High | Low | Very Low | O27 done | [ ] |
+| O31 | Dead PHI-Constant Elimination | V6C | 9-11B, 40-60cc | Very high | Medium | Low | O27 done | [ ] |
 
 ### Recommended order
 
@@ -88,26 +92,28 @@
 11. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines
 12. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
 13. **O29** — cross-BB immediate propagation, 1B+7cc per redundant MVI, ~30 lines
+14. **O30** — conditional return peephole (Jcc RET → Rcc), 3B per instance, ~30 lines
+15. **O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
-14. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines
-15. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
-16. **O12** — cross-BB copy optimization, supersedes O1
-17. **O24** — SUI/SBI immediate unsigned comparison, frees register pair
-18. **O15** — conditional call, 12cc+3B per instance, reduces branch count
-19. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
-20. **O2** — sequential LXI→INX folding
-21. **O4** — ADD M / SUB M direct memory, builds on O2
+16. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines
+17. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
+18. **O12** — cross-BB copy optimization, supersedes O1
+19. **O24** — SUI/SBI immediate unsigned comparison, frees register pair
+20. **O15** — conditional call, 12cc+3B per instance, reduces branch count
+21. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
+22. **O2** — sequential LXI→INX folding
+23. **O4** — ADD M / SUB M direct memory, builds on O2
 
 **Phase 4 — Loop & stack (Medium-High complexity, massive payoff)**:
-22. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
-23. **O22** — TTI cost hooks (arithmetic, memory, cmp costs), extends O7
-24. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
-25. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
+24. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
+25. **O22** — TTI cost hooks (arithmetic, memory, cmp costs), extends O7
+26. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
+27. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
 
 **Phase 5 — Advanced (High complexity)**:
-26. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
-27. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
+28. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
+29. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
 
 **Deferred**:
 - **O9** — inline assembly MC parser, implement when needed
