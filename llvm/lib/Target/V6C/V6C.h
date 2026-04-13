@@ -20,6 +20,9 @@ FunctionPass *createV6CISelDag(V6CTargetMachine &TM,
 /// Get the configured V6C start address (-mv6c-start-address, default 0x0100).
 unsigned getV6CStartAddress();
 
+/// Pre-RA optimization pass: constant sinking past branches (O37).
+FunctionPass *createV6CConstantSinkingPass();
+
 /// Pre-RA optimization pass: dead PHI-constant elimination (O31).
 FunctionPass *createV6CDeadPhiConstPass();
 

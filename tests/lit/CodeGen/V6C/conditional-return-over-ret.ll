@@ -10,14 +10,20 @@ target triple = "i8080-unknown-v6c"
 
 declare i16 @bar(i16)
 
-; Test 1: Jcc jumps over RET to a non-JMP-only tail-call block.
+; Test 1: Jcc jumps over multi-instruction block to a non-JMP-only tail-call.
 ; Pattern: if (x == 0) return bar(y); return 0;
 ; The target block has XCHG+JMP (setup argument from DE to HL), so
-; branch threading cannot reduce it. O35 fires: JZ+RET → RNZ.
+; branch threading cannot reduce it.
+; NOTE: O37 (constant sinking) moves LXI HL,0 past the branch, so the
+; Jcc-over-RET → Rcc (O35) pattern no longer fires. Instead we get a
+; direct zero-test on HL with LXI deferred to the NZ fallthrough path.
 ;
 ; CHECK-LABEL: test_jcc_over_ret:
-; CHECK:       RNZ
-; CHECK-NOT:   RET
+; CHECK:       MOV A, H
+; CHECK-NEXT:  ORA L
+; CHECK-NEXT:  JZ
+; CHECK:       LXI HL, 0
+; CHECK-NEXT:  RET
 ; CHECK:       XCHG
 ; CHECK-NEXT:  JMP	bar
 ;

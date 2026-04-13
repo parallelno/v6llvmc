@@ -78,6 +78,7 @@ public:
 
   void addPreRegAlloc() override {
     addPass(createV6CDeadPhiConstPass());
+    addPass(createV6CConstantSinkingPass());
   }
 
   void addPreEmitPass() override {

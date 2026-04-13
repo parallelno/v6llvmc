@@ -84,7 +84,7 @@
 | O34 | SELECT_CC Zero-Test ISel Gap | V6C | 15cc, 3B + spill savings | Medium | Low-Med | Low | O27 done | [x] |
 | O35 | Conditional Return Over RET (Jcc-over-RET → Rcc) | 18cc, 3B | Medium | Very Low | Very Low | O28 done | [x] |
 | O36 | Branch-Implied Value Propagation | 12cc, 3B+ | Medium | Low | Low | O27+O35+O13 done | [x] |
-| O37 | Deferred Zero-Load After Zero-Test | 16cc, 4B | Medium | Low-Med | Low | O36 done | [ ] |
+| O37 | Deferred Zero-Load After Zero-Test | 16cc, 4B | Medium | Low-Med | Low | O36 done | [x] |
 
 ### Recommended order
 
@@ -111,7 +111,7 @@
 17. **O29** — cross-BB immediate propagation, 1B+7cc per redundant MVI, ~30 lines
 18. ~~**O30** — conditional return peephole (Jcc RET → Rcc), 3B per instance, ~30 lines~~ ✅
 19. ~~**O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines~~ ✅
-20. **O37** — deferred zero-load after zero-test, 4B+16cc, sink LXI past branch, ~40 lines
+20. ~~**O37** — deferred zero-load after zero-test, 4B+16cc, sink LXI past branch, ~40 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines

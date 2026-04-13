@@ -1,0 +1,85 @@
+== O37: Deferred Zero-Load After Zero-Test ==
+
+=== C Test Case ===
+
+extern int bar(int x);
+
+// Pattern 1 (primary): both paths after zero-test need HL=0.
+// Before: MOV D,H; MOV E,L; LXI HL,0; test via DE → 11B.
+// After:  zero-test on HL directly, LXI only on NZ path → 9B.
+int test_cond_zero_return_zero(int x) {
+    if (x == 0) return bar(0);
+    return 0;
+}
+
+// Pattern 2 (trivial): only one path, no branch → unchanged.
+int test_both_call_zero(int x) {
+    return bar(0);
+}
+
+// Pattern 3: one path uses zero (via tailcall), other returns x.
+int test_one_path_zero(int x) {
+    if (x == 0) return bar(0);
+    return x;
+}
+
+=== v6llvmc ASM (before O37 — baseline) ===
+
+test_cond_zero_return_zero:     ; 11B
+    MOV  D, H                   ; 8cc, 1B — save x to DE
+    MOV  E, L                   ; 8cc, 1B
+    LXI  HL, 0                  ; 12cc, 3B — hoisted: both paths need 0
+    MOV  A, D                   ; 8cc, 1B — zero-test via DE
+    ORA  E                      ; 4cc, 1B
+    JZ   bar                    ; 12cc, 3B
+    RET                         ; 12cc, 1B
+
+test_one_path_zero:             ; 6B (already optimal)
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    JZ   bar                    ; 12cc, 3B
+    RET                         ; 12cc, 1B
+
+=== v6llvmc ASM (after O37) ===
+
+test_cond_zero_return_zero:     ; 9B
+    MOV  A, H                   ; 8cc, 1B — zero-test directly on HL
+    ORA  L                      ; 4cc, 1B
+    JZ   bar                    ; 12cc, 3B — HL already 0 (branch-proven)
+    LXI  HL, 0                  ; 12cc, 3B — deferred to NZ path only
+    RET                         ; 12cc, 1B
+
+test_one_path_zero:             ; 6B (unchanged — already optimal)
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    JZ   bar                    ; 12cc, 3B
+    RET                         ; 12cc, 1B
+
+=== Improvement Summary ===
+
+Primary pattern (test_cond_zero_return_zero):
+  Bytes saved: 2B (11B → 9B)
+  Eliminated: MOV D,H + MOV E,L (register shuffle to free HL)
+  Mechanism: pre-RA constant sinking moves LXI HL,0 past the
+  conditional branch. RA sees no HL conflict → x stays in HL →
+  zero-test uses MOV A,H; ORA L directly.
+
+Register pressure benefit (cascading):
+  Frees DE before RA. On the 3-pair i8080, holding a premature
+  constant in HL forces x into DE, leaving only BC for everything
+  else. In non-trivial functions, this triggers spill cascades
+  costing 50-150cc and 6-18B. O37 prevents the cascade.
+
+Pass interaction:
+  O31 (DeadPhiConst) runs first → eliminates branch-proven constants.
+  O37 (ConstantSinking) runs second → sinks remaining constants.
+  O36 (post-RA LoadImmCombine) → eliminates redundant LXI on
+  branch-proven paths where applicable.
+
+Updated test: conditional-return-over-ret.ll test_jcc_over_ret
+  pattern updated (O37 sinks LXI past branch, preventing O35
+  conditional return in this specific case — net 1B regression
+  but correct trade-off for register pressure in general).
+
+Lit tests: 91/91 passed (including new constant-sinking.ll)
+Golden tests: 15/15 passed
