@@ -37,6 +37,7 @@
 | O31 | Dead PHI-Constant Elimination for Zero-Tested Branches | [O31_dead_phi_constant.md](O31_dead_phi_constant.md) | V6C |
 | O32 | XCHG in copyPhysReg (RA-Time DE↔HL Swap) | [O32_xchg_in_copy_phys_reg.md](O32_xchg_in_copy_phys_reg.md) | V6C |
 | O33 | XCHG Peephole Relaxation (Drop isRegLiveBefore Guard) | [O33_xchg_peephole_relaxation.md](O33_xchg_peephole_relaxation.md) | V6C |
+| O34 | SELECT_CC Zero-Test ISel Gap | [O34_select_cc_zero_test.md](O34_select_cc_zero_test.md) | V6C |
 
 ---
 
@@ -77,6 +78,7 @@
 | O31 | Dead PHI-Constant Elimination | V6C | 9-11B, 40-60cc | Very high | Medium | Low | O27 done | [x] |
 | O32 | XCHG in copyPhysReg (RA-time swap) | V6C | 12cc, 1B | Med-High | Very Low | Very Low | None | [x] |
 | O33 | XCHG Peephole Relaxation | V6C | 12cc, 1B | Low | Very Low | Very Low | None | [ ] |
+| O34 | SELECT_CC Zero-Test ISel Gap | V6C | 15cc, 3B + spill savings | Medium | Low-Med | Low | O27 done | [x] |
 
 ### Recommended order
 
@@ -94,28 +96,29 @@
 9. ~~**O27** — i16 zero-test (MOV A,H; ORA L), 10B+24cc per zero comparison, ~15 lines~~ ✅
 10. ~~**O32** — XCHG in copyPhysReg, 1B+12cc per DE↔HL copy, ~10 lines~~ ✅
 11. **O33** — XCHG peephole relaxation, drop isRegLiveBefore guard, ~10 lines
-12. **O28** — branch threading through JMP-only blocks, 3B+10cc, synergy with O27, ~25 lines
-13. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines
-14. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
-15. **O29** — cross-BB immediate propagation, 1B+7cc per redundant MVI, ~30 lines
-16. ~~**O30** — conditional return peephole (Jcc RET → Rcc), 3B per instance, ~30 lines~~ ✅
-17. ~~**O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines~~ ✅
+12. ~~**O34** — SELECT_CC zero-test ISel gap, 3B+15cc + spill cascade savings, ~30 lines~~ ✅
+13. **O28** — branch threading through JMP-only blocks, 3B+10cc, synergy with O27, ~25 lines
+14. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines
+15. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
+16. **O29** — cross-BB immediate propagation, 1B+7cc per redundant MVI, ~30 lines
+17. ~~**O30** — conditional return peephole (Jcc RET → Rcc), 3B per instance, ~30 lines~~ ✅
+18. ~~**O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
-18. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines
-19. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
-20. **O12** — cross-BB copy optimization, supersedes O1
-21. **O24** — SUI/SBI immediate unsigned comparison, frees register pair
-22. **O15** — conditional call, 12cc+3B per instance, reduces branch count
-23. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
-24. **O2** — sequential LXI→INX folding
-25. **O4** — ADD M / SUB M direct memory, builds on O2
+19. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines
+20. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
+21. **O12** — cross-BB copy optimization, supersedes O1
+22. **O24** — SUI/SBI immediate unsigned comparison, frees register pair
+23. **O15** — conditional call, 12cc+3B per instance, reduces branch count
+24. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
+25. **O2** — sequential LXI→INX folding
+26. **O4** — ADD M / SUB M direct memory, builds on O2
 
 **Phase 4 — Loop & stack (Medium-High complexity, massive payoff)**:
-26. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
-27. **O22** — TTI cost hooks (arithmetic, memory, cmp costs), extends O7
-28. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
-29. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
+27. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
+28. **O22** — TTI cost hooks (arithmetic, memory, cmp costs), extends O7
+29. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
+30. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
 
 **Phase 5 — Advanced (High complexity)**:
 30. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine

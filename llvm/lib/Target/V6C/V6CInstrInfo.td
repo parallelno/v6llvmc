@@ -51,6 +51,11 @@ def V6Ccall     : SDNode<"V6CISD::CALL", SDT_V6CCall,
                           [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue,
                            SDNPVariadic]>;
 def V6Ccmp      : SDNode<"V6CISD::CMP", SDT_V6CCmp, [SDNPOutGlue]>;
+
+// CMP_ZERO: zero-test a single i16 value, produces FLAGS.
+def SDT_V6CCmpZero : SDTypeProfile<0, 1, [SDTCisVT<0, i16>]>;
+def V6Ccmpzero : SDNode<"V6CISD::CMP_ZERO", SDT_V6CCmpZero, [SDNPOutGlue]>;
+
 def V6Cbrcond   : SDNode<"V6CISD::BRCOND", SDT_V6CBrCond,
                           [SDNPHasChain, SDNPInGlue]>;
 def V6Cselectcc : SDNode<"V6CISD::SELECT_CC", SDT_V6CSelectCC,
@@ -789,6 +794,13 @@ def V6C_BR_CC16_IMM : V6CPseudo<(outs),
     (ins GR16:$lhs, imm16:$rhs, i8imm:$cc, brtarget:$dst),
     "# BR_CC16_IMM $lhs, $rhs, $cc, $dst",
     []>;
+
+// O34: 16-bit zero-test comparison (for SELECT_CC against zero).
+// Produces FLAGS via MOV A, Hi; ORA Lo — Z=1 iff pair==0.
+let Defs = [A, FLAGS] in
+def V6C_CMP16_ZERO : V6CPseudo<(outs), (ins GR16:$src),
+    "# CMP16_ZERO $src",
+    [(V6Ccmpzero i16:$src)]>;
 
 // 16-bit comparison (for use in i16 BR_CC lowering).
 // Produces FLAGS via subtraction (SUB lo, SBB hi).

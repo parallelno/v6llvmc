@@ -187,6 +187,7 @@ const char *V6CTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case V6CISD::RET:       return "V6CISD::RET";
   case V6CISD::CALL:      return "V6CISD::CALL";
   case V6CISD::CMP:       return "V6CISD::CMP";
+  case V6CISD::CMP_ZERO:  return "V6CISD::CMP_ZERO";
   case V6CISD::BRCOND:    return "V6CISD::BRCOND";
   case V6CISD::SELECT_CC: return "V6CISD::SELECT_CC";
   case V6CISD::Wrapper:   return "V6CISD::Wrapper";
@@ -386,6 +387,16 @@ SDValue V6CTargetLowering::LowerSELECT_CC(SDValue Op,
 
   V6CCC::CondCode V6CC = getV6CCC(CC);
   SDValue CCVal = DAG.getConstant(V6CC, DL, MVT::i8);
+
+  // O34: For i16 EQ/NE against zero, use zero-test (MOV A, Hi; ORA Lo)
+  // instead of materializing 0 into a register pair for SUB/SBB.
+  if (LHS.getValueType() == MVT::i16 && isNullConstant(RHS) &&
+      (CC == ISD::SETEQ || CC == ISD::SETNE)) {
+    SDValue Glue = DAG.getNode(V6CISD::CMP_ZERO, DL, MVT::Glue, LHS);
+    SDVTList VTs = DAG.getVTList(Op.getValueType());
+    return DAG.getNode(V6CISD::SELECT_CC, DL, VTs,
+                       TrueVal, FalseVal, CCVal, Glue);
+  }
 
   // For i16 comparison operands, emit CMP16 then SELECT_CC (uses FLAGS).
   // For i8, emit CMP then SELECT_CC.

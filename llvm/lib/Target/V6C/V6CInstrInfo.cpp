@@ -645,6 +645,18 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     return true;
   }
 
+  case V6C::V6C_CMP16_ZERO: {
+    // O34: Zero-test for i16 — MOV A, Hi; ORA Lo → Z=1 iff pair==0.
+    Register SrcReg = MI.getOperand(0).getReg();
+    MCRegister SrcLo = RI.getSubReg(SrcReg, V6C::sub_lo);
+    MCRegister SrcHi = RI.getSubReg(SrcReg, V6C::sub_hi);
+    BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(SrcHi);
+    BuildMI(MBB, MI, DL, get(V6C::ORAr), V6C::A)
+        .addReg(V6C::A).addReg(SrcLo);
+    MI.eraseFromParent();
+    return true;
+  }
+
   case V6C::V6C_CMP16: {
     // Compare lhs vs rhs (16-bit) via SUB/SBB.
     // Sets FLAGS: C for unsigned, S for signed. Z only for hi byte.

@@ -1,0 +1,130 @@
+== O34: SELECT_CC Zero-Test ISel Gap ==
+
+=== C test case ===
+
+int select_second(int a, int b, int c) {
+    if (a) return b;
+    return c;
+}
+
+int select_on_zero(int x, int a, int b) {
+    if (x == 0) return a;
+    return b;
+}
+
+int select_nonzero(int x, int a, int b) {
+    if (x != 0) return a;
+    return b;
+}
+
+=== c8080 assembly (i8080 mnemonics, function bodies only) ===
+
+; c8080 uses static stack allocation — args passed via memory.
+; select_second: a in __a_1, b in __a_2, c (last arg) in HL→__a_3
+
+select_second:                          ; 3rd arg in HL
+    SHLD __a_3_select_second            ; 20cc  3B  — store c
+    LHLD __a_1_select_second            ; 20cc  3B  — load a
+    MOV  A, H                           ;  8cc  1B
+    ORA  L                              ;  4cc  1B
+    JZ   l_0                            ; 12cc  3B  — if (a == 0) goto return c
+    LHLD __a_2_select_second            ; 20cc  3B  — return b
+    RET                                 ; 12cc  1B
+l_0:
+    LHLD __a_3_select_second            ; 20cc  3B  — return c
+    RET                                 ; 12cc  1B
+
+; Taken path (a!=0): 96cc, 15B
+; Not-taken path (a==0): 108cc, 19B
+
+select_on_zero:                         ; 3rd arg in HL
+    SHLD __a_3_select_on_zero           ; 20cc  3B
+    LHLD __a_1_select_on_zero           ; 20cc  3B
+    MOV  A, H                           ;  8cc  1B
+    ORA  L                              ;  4cc  1B
+    JNZ  l_2                            ; 12cc  3B
+    LHLD __a_2_select_on_zero           ; 20cc  3B
+    RET                                 ; 12cc  1B
+l_2:
+    LHLD __a_3_select_on_zero           ; 20cc  3B
+    RET                                 ; 12cc  1B
+
+; x==0 path: 96cc, 15B
+; x!=0 path: 108cc, 19B
+
+select_nonzero:                         ; 3rd arg in HL
+    SHLD __a_3_select_nonzero           ; 20cc  3B
+    LHLD __a_1_select_nonzero           ; 20cc  3B
+    MOV  A, H                           ;  8cc  1B
+    ORA  L                              ;  4cc  1B
+    JZ   l_4                            ; 12cc  3B
+    LHLD __a_2_select_nonzero           ; 20cc  3B
+    RET                                 ; 12cc  1B
+l_4:
+    LHLD __a_3_select_nonzero           ; 20cc  3B
+    RET                                 ; 12cc  1B
+
+; x!=0 path: 96cc, 15B
+; x==0 path: 108cc, 19B
+
+c8080 stats (per function, worst case): 108cc, 19B
+
+=== v6llvmc assembly ===
+
+select_second:
+    MOV  A, H        ;  8cc  1B
+    ORA  L           ;  4cc  1B
+    JNZ  .LBB0_2     ; 12cc  3B
+    MOV  D, B        ;  8cc  1B
+    MOV  E, C        ;  8cc  1B
+.LBB0_2:
+    XCHG             ;  4cc  1B
+    RET              ; 12cc  1B
+
+; Taken path (a!=0): 28cc, 7B (skip MOV D,B; MOV E,C)
+; Not-taken (a==0):  44cc, 9B
+
+select_on_zero:
+    MOV  A, H        ;  8cc  1B
+    ORA  L           ;  4cc  1B
+    JNZ  .LBB1_2     ; 12cc  3B
+    MOV  B, D        ;  8cc  1B
+    MOV  C, E        ;  8cc  1B
+.LBB1_2:
+    MOV  H, B        ;  8cc  1B
+    MOV  L, C        ;  8cc  1B
+    RET              ; 12cc  1B
+
+; x==0 path: 56cc, 10B
+; x!=0 path: 40cc, 8B
+
+select_nonzero:
+    MOV  A, H        ;  8cc  1B
+    ORA  L           ;  4cc  1B
+    JNZ  .LBB2_2     ; 12cc  3B
+    MOV  D, B        ;  8cc  1B
+    MOV  E, C        ;  8cc  1B
+.LBB2_2:
+    XCHG             ;  4cc  1B
+    RET              ; 12cc  1B
+
+; x!=0 path: 28cc, 7B
+; x==0 path: 44cc, 9B
+
+v6llvmc stats (per function, worst case): 56cc, 10B
+
+=== Comparison Summary ===
+
+| Function       | c8080 cc | c8080 B | v6llvmc cc | v6llvmc B | Savings          |
+|----------------|----------|---------|------------|-----------|------------------|
+| select_second  | 108      | 19      | 44         | 9         | 64cc, 10B (59%)  |
+| select_on_zero | 108      | 19      | 56         | 10        | 52cc, 9B (48%)   |
+| select_nonzero | 108      | 19      | 44         | 9         | 64cc, 10B (59%)  |
+
+Key improvement: O34 eliminates LXI rp,0 (3B+12cc) and SUB/SBB comparison,
+replaces with MOV A,H; ORA L zero-test (2B+12cc). Freed register pair also
+eliminates all spills in these functions — no frame setup/teardown needed.
+
+v6llvmc is register-based (args in HL/DE/BC) while c8080 uses static stack
+(args via memory loads/stores), giving v6llvmc a structural advantage for
+small functions with few arguments.

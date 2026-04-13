@@ -20,6 +20,7 @@ enum NodeType : unsigned {
   RET,        // Return from function (with optional glue).
   CALL,       // Function call.
   CMP,        // Compare two values, produces glue (FLAGS).
+  CMP_ZERO,   // Zero-test a single i16 value, produces glue (FLAGS).
   BRCOND,     // Conditional branch on FLAGS.
   SELECT_CC,  // Conditional select on FLAGS.
   Wrapper,    // GlobalAddress / ExternalSymbol wrapper.
