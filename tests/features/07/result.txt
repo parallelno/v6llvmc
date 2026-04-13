@@ -1,0 +1,156 @@
+O23: Conditional Tail Call Optimization — Test Results
+=====================================================
+
+## C Test Case
+
+int bar(int x) { return x + 1; }
+int baz(int x) { return x + 2; }
+
+int test_pattern_a(int x) {
+    if (x)
+        return bar(x);
+    return 0;
+}
+
+int test_pattern_b(int x) {
+    if (x)
+        return 0;
+    return bar(x);
+}
+
+int test_pattern_c(int x) {
+    if (x)
+        return bar(x);
+    return baz(x);
+}
+
+
+## c8080 assembly (Z80 mnemonics converted to i8080)
+
+test_pattern_a:                        ; 10B
+    SHLD __a_1_test_pattern_a  ; 20cc  3B
+    MOV  A, H                  ;  8cc  1B
+    ORA  L                     ;  4cc  1B
+    JNZ  bar                   ; 12cc  3B
+    LXI  HL, 0                 ; 12cc  3B   (not counted: alt path)
+    RET                        ; 12cc  1B   (not counted: alt path)
+; call path: 44cc, 8B   (excl. bar body)
+; zero path: 56cc, 12B
+
+test_pattern_b:                        ; 13B
+    SHLD __a_1_test_pattern_b  ; 20cc  3B
+    MOV  A, H                  ;  8cc  1B
+    ORA  L                     ;  4cc  1B
+    JZ   l_2                   ; 12cc  3B
+    LXI  HL, 0                 ; 12cc  3B
+    RET                        ; 12cc  1B
+l_2:
+    JMP  bar                   ; 12cc  3B   (not counted above)
+; zero path: 56cc, 12B  (excl. JMP bar)
+; call path: 44cc+12cc = 56cc, 11B+3B = 11B
+
+test_pattern_c:                        ; 8B
+    SHLD __a_1_test_pattern_c  ; 20cc  3B
+    MOV  A, H                  ;  8cc  1B
+    ORA  L                     ;  4cc  1B
+    JNZ  bar                   ; 12cc  3B
+    JMP  baz                   ; 12cc  3B   (not counted: alt path)
+; bar path: 44cc, 8B
+; baz path: 44cc+12cc, 8B+3B
+
+c8080 totals (function bodies only, excl. bar/baz):
+  test_pattern_a: 44cc call / 56cc zero, 12B
+  test_pattern_b: 56cc call / 56cc zero, 13B
+  test_pattern_c: 44cc bar / 56cc baz, 11B
+
+
+## v6llvmc assembly (BEFORE O23)
+
+test_pattern_a:                        ; 24B
+    MOV  D, H                  ;  8cc  1B
+    MOV  E, L                  ;  8cc  1B
+    LXI  HL, 0                 ; 12cc  3B
+    MOV  A, H                  ;  8cc  1B
+    CMP  E                     ;  4cc  1B
+    JNZ  .LBB0_1               ; 12cc  3B
+    MVI  A, 0                  ;  8cc  2B
+    CMP  D                     ;  4cc  1B
+    JZ   .LBB0_2               ; 12cc  3B
+.LBB0_1:
+    MOV  H, D                  ;  8cc  1B
+    MOV  L, E                  ;  8cc  1B
+    CALL bar                   ; 24cc  3B   ← BEFORE: CALL
+.LBB0_2:
+    RET                        ; 12cc  1B
+; call path (lo!=0): 8+8+12+8+4+12+8+8+24+12 = 104cc, 22B
+; zero path: 8+8+12+8+4+12+8+4+12+12 = 88cc, 18B
+
+test_pattern_b:                        ; 21B
+    MOV  D, H                  ;  8cc  1B
+    MOV  E, L                  ;  8cc  1B
+    LXI  HL, 0                 ; 12cc  3B
+    MOV  A, H                  ;  8cc  1B
+    CMP  E                     ;  4cc  1B
+    JNZ  .LBB1_2               ; 12cc  3B
+    MVI  A, 0                  ;  8cc  2B
+    CMP  D                     ;  4cc  1B
+    JNZ  .LBB1_2               ; 12cc  3B
+    CALL bar                   ; 24cc  3B   ← BEFORE: CALL
+.LBB1_2:
+    RET                        ; 12cc  1B
+; call path: 8+8+12+8+4+12+8+4+12+24+12 = 112cc, 21B
+; zero path (lo!=0): 8+8+12+8+4+12+12 = 64cc, 12B
+
+
+## v6llvmc assembly (AFTER O23)
+
+test_pattern_a:                        ; 24B
+    MOV  D, H                  ;  8cc  1B
+    MOV  E, L                  ;  8cc  1B
+    LXI  HL, 0                 ; 12cc  3B
+    MOV  A, H                  ;  8cc  1B
+    CMP  E                     ;  4cc  1B
+    JNZ  .LBB0_1               ; 12cc  3B
+    MVI  A, 0                  ;  8cc  2B
+    CMP  D                     ;  4cc  1B
+    JZ   .LBB0_2               ; 12cc  3B
+.LBB0_1:
+    MOV  H, D                  ;  8cc  1B
+    MOV  L, E                  ;  8cc  1B
+    JMP  bar                   ; 12cc  3B   ← AFTER: JMP (saves 12cc + 12cc RET)
+.LBB0_2:
+    RET                        ; 12cc  1B
+; call path (lo!=0): 8+8+12+8+4+12+8+8+12 = 80cc, 22B  (saved 24cc)
+; zero path: 8+8+12+8+4+12+8+4+12+12 = 88cc, 18B (unchanged)
+
+test_pattern_b:                        ; 21B
+    MOV  D, H                  ;  8cc  1B
+    MOV  E, L                  ;  8cc  1B
+    LXI  HL, 0                 ; 12cc  3B
+    MOV  A, H                  ;  8cc  1B
+    CMP  E                     ;  4cc  1B
+    JNZ  .LBB1_2               ; 12cc  3B
+    MVI  A, 0                  ;  8cc  2B
+    CMP  D                     ;  4cc  1B
+    JNZ  .LBB1_2               ; 12cc  3B
+    JMP  bar                   ; 12cc  3B   ← AFTER: JMP (saves 12cc + 12cc RET)
+.LBB1_2:
+    RET                        ; 12cc  1B
+; call path: 8+8+12+8+4+12+8+4+12+12 = 88cc, 21B  (saved 24cc)
+; zero path (lo!=0): 8+8+12+8+4+12+12 = 64cc, 12B (unchanged)
+
+
+## Summary
+
+| Function | Path | Before (cc) | After (cc) | Saved |
+|----------|------|-------------|------------|-------|
+| test_pattern_a | call | 104cc | 80cc | 24cc |
+| test_pattern_a | zero | 88cc | 88cc | 0cc |
+| test_pattern_b | call | 112cc | 88cc | 24cc |
+| test_pattern_b | zero | 64cc | 64cc | 0cc |
+| test_pattern_c | any | (already JMP) | (already JMP) | 0cc |
+
+Savings: 24cc per conditional tail call (CALL 24cc + RET 12cc → JMP 12cc).
+Code size: unchanged (CALL and JMP are both 3 bytes).
+
+Regression tests: 15/15 golden, 83/83 lit — all pass.

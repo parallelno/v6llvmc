@@ -59,7 +59,7 @@
 | O20 | Honest Store/Load Defs (HL clobber) | V6C | 14cc, 2B/iter | Very high | Medium | Low-Med | None | [ ] |
 | O21 | LHLD/SHLD 16-bit absolute addr | V6C | 14-22cc, 3-4B | Medium | Low | Very Low | O6 done | [x] |
 | O22 | TTI Cost Hooks Expansion | V6C | indirect (better decisions) | High | Low-Med | Low | O7 done | [ ] |
-| O23 | Conditional Tail Call | V6C | 14cc, 1B | Medium | Low-Med | Low | O14 done | [ ] |
+| O23 | Conditional Tail Call | V6C | 14cc, 1B | Medium | Low-Med | Low | O14 done | [x] |
 | O24 | SUI/SBI Immediate Unsigned CMP | V6C | 2cc, 1B + free reg pair | Med-high | Medium | Low | None | [ ] |
 | O25 | LXI 16-bit Value Combining | V6C | 10cc, 3B | Medium | Low-Med | Very Low | O13 done | [ ] |
 | O26 | Cost Model Infra (getInstrCost) | V6C | N/A (infra) | N/A | Low | Very Low | O11 done | [ ] |
@@ -76,7 +76,7 @@
 
 **Phase 2 — Quick extensions (Low complexity, builds on completed work)**:
 7. ~~**O21** — LHLD/SHLD for i16 globals, ISel patterns like O6, ~20 lines~~ ✅
-8. **O23** — conditional tail call, extends O14 peephole, ~20 lines
+8. ~~**O23** — conditional tail call, extends O14 peephole, ~20 lines~~ ✅
 9. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines
 10. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
 

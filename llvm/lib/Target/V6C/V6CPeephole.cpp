@@ -112,33 +112,67 @@ bool V6CPeephole::eliminateRedundantMov(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// Return true if MBB contains only a single RET (plus optional debug instrs).
+static bool isRetOnlyBlock(const MachineBasicBlock &MBB) {
+  for (const MachineInstr &MI : MBB) {
+    if (MI.isDebugInstr())
+      continue;
+    if (MI.getOpcode() == V6C::RET)
+      return true; // RET found — any debug instrs after it are fine.
+    return false;  // Non-debug, non-RET instruction → not RET-only.
+  }
+  return false; // Empty block.
+}
+
 /// Replace CALL target; RET → V6C_TAILJMP target (tail call elimination).
-/// Only matches when CALL is immediately before RET (no epilogue between).
+///
+/// Pattern 1 (O14): CALL and RET in the same block.
+/// Pattern 2 (O23): CALL is last instruction, sole successor is RET-only.
 bool V6CPeephole::eliminateTailCall(MachineBasicBlock &MBB) {
-  if (MBB.size() < 2)
+  if (MBB.empty())
     return false;
 
-  // Find the last non-debug instruction — must be RET.
-  auto RetIt = MBB.getLastNonDebugInstr();
-  if (RetIt == MBB.end() || RetIt->getOpcode() != V6C::RET)
+  // Find the last non-debug instruction.
+  auto LastIt = MBB.getLastNonDebugInstr();
+  if (LastIt == MBB.end())
     return false;
 
-  // Find the instruction before RET, skipping debug instrs.
-  auto CallIt = std::prev(RetIt);
-  while (CallIt != MBB.begin() && CallIt->isDebugInstr())
-    CallIt = std::prev(CallIt);
+  // --- Pattern 1: CALL; RET in the same block (O14) ---
+  if (MBB.size() >= 2 && LastIt->getOpcode() == V6C::RET) {
+    auto CallIt = std::prev(LastIt);
+    while (CallIt != MBB.begin() && CallIt->isDebugInstr())
+      CallIt = std::prev(CallIt);
 
-  if (CallIt->getOpcode() != V6C::CALL)
-    return false;
+    if (CallIt->getOpcode() == V6C::CALL) {
+      const TargetInstrInfo &TII =
+          *MBB.getParent()->getSubtarget().getInstrInfo();
+      BuildMI(MBB, CallIt, CallIt->getDebugLoc(),
+              TII.get(V6C::V6C_TAILJMP))
+          .add(CallIt->getOperand(0));
 
-  // Build V6C_TAILJMP with the CALL's target operand.
-  const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
-  BuildMI(MBB, CallIt, CallIt->getDebugLoc(), TII.get(V6C::V6C_TAILJMP))
-      .add(CallIt->getOperand(0));
+      LastIt->eraseFromParent();
+      CallIt->eraseFromParent();
+      return true;
+    }
+  }
 
-  RetIt->eraseFromParent();
-  CallIt->eraseFromParent();
-  return true;
+  // --- Pattern 2: CALL at end of block, sole successor is RET-only (O23) ---
+  if (LastIt->getOpcode() == V6C::CALL && MBB.succ_size() == 1) {
+    MachineBasicBlock *Succ = *MBB.succ_begin();
+    if (isRetOnlyBlock(*Succ)) {
+      const TargetInstrInfo &TII =
+          *MBB.getParent()->getSubtarget().getInstrInfo();
+      BuildMI(MBB, LastIt, LastIt->getDebugLoc(),
+              TII.get(V6C::V6C_TAILJMP))
+          .add(LastIt->getOperand(0));
+
+      LastIt->eraseFromParent();
+      MBB.removeSuccessor(Succ);
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /// Check if a physical register is dead (not read) after iterator I.

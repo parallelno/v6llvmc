@@ -1,3 +1,5 @@
+// Test case for O14: Tail Call (CALL+RET→JMP)
+
 int helper(int x);
 void void_func(void);
 
