@@ -41,6 +41,7 @@
 | O35 | Conditional Return Over RET (Jcc-over-RET → Rcc) | [O35_conditional_return_over_ret.md](O35_conditional_return_over_ret.md) | V6C |
 | O36 | Redundant LXI After Zero-Test Branch | [O36_redundant_lxi_after_zero_test.md](O36_redundant_lxi_after_zero_test.md) | V6C |
 | O37 | Deferred Zero-Load After Zero-Test | [O37_deferred_zero_load.md](O37_deferred_zero_load.md) | V6C |
+| O38 | XRA+CMP i8 Zero-Test Peephole | [O38_xra_cmp_zero_test.md](O38_xra_cmp_zero_test.md) | V6C |
 
 ---
 
@@ -85,6 +86,7 @@
 | O35 | Conditional Return Over RET (Jcc-over-RET → Rcc) | 18cc, 3B | Medium | Very Low | Very Low | O28 done | [x] |
 | O36 | Branch-Implied Value Propagation | 12cc, 3B+ | Medium | Low | Low | O27+O35+O13 done | [x] |
 | O37 | Deferred Zero-Load After Zero-Test | 16cc, 4B | Medium | Low-Med | Low | O36 done | [x] |
+| O38 | XRA+CMP i8 Zero-Test | 4cc + cascade 4B+16cc | Med-high | Low | Very Low | O13 benefits | [x] |
 
 ### Recommended order
 
@@ -112,6 +114,7 @@
 18. ~~**O30** — conditional return peephole (Jcc RET → Rcc), 3B per instance, ~30 lines~~ ✅
 19. ~~**O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines~~ ✅
 20. ~~**O37** — deferred zero-load after zero-test, 4B+16cc, sink LXI past branch, ~40 lines~~ ✅
+21. ~~**O38** — XRA+CMP i8 zero-test, 4cc + cascade MVI elimination, ~40 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines

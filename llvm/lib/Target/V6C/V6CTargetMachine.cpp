@@ -83,11 +83,11 @@ public:
 
   void addPreEmitPass() override {
     // Post-RA optimization pipeline per design §8.1 Phase 3.
-    // Order: AccumulatorPlanning → Peephole → LoadStoreOpt → XchgOpt →
-    //        BranchOpt → ZeroTestOpt → SPTrickOpt
+    // Order: AccumulatorPlanning → Peephole → LoadImmCombine → LoadStoreOpt →
+    //        XchgOpt → BranchOpt → ZeroTestOpt → RedundantFlagElim → SPTrickOpt
     addPass(createV6CAccumulatorPlanningPass());
-    addPass(createV6CLoadImmCombinePass());
     addPass(createV6CPeepholePass());
+    addPass(createV6CLoadImmCombinePass());
     addPass(createV6CLoadStoreOptPass());
     addPass(createV6CXchgOptPass());
     addPass(createV6CBranchOptPass());

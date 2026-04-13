@@ -155,6 +155,28 @@ bool V6CLoadImmCombine::seedPredecessorValues(MachineBasicBlock &MBB) {
   MachineInstr &Term = *It;
   unsigned TermOpc = Term.getOpcode();
 
+  // --- Pattern D: XRA A; CMP r; branch — A=0 on ALL paths (XRA sets A=0,
+  //     CMP doesn't modify A). No need for ZeroProvenPath check. ---
+  if (TermOpc == V6C::JZ || TermOpc == V6C::JNZ) {
+    // Look at the two instructions before the terminator.
+    auto It2 = It;  // points at terminator
+    if (It2 != Pred->begin()) {
+      --It2; // instruction before terminator (CMP?)
+      MachineInstr &PreTerm = *It2;
+      if (PreTerm.getOpcode() == V6C::CMPr && It2 != Pred->begin()) {
+        --It2; // instruction before CMP (XRA?)
+        MachineInstr &PreCmp = *It2;
+        if (PreCmp.getOpcode() == V6C::XRAr &&
+            PreCmp.getOperand(0).getReg() == V6C::A &&
+            PreCmp.getOperand(2).getReg() == V6C::A) {
+          int AIdx = regIndex(V6C::A);
+          KnownVal[AIdx] = 0;
+          return true;
+        }
+      }
+    }
+  }
+
   // Determine if MBB receives the "zero proven" path:
   //   Case 1: NZ-branch (JNZ/RNZ) + MBB is layout fallthrough → Z path
   //   Case 2: Z-branch (JZ) + MBB is the branch target → Z path
@@ -246,6 +268,14 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
       }
       int64_t Imm = MI.getOperand(1).getImm() & 0xFF;
       int DstIdx = regIndex(DstReg);
+
+      // Try 0: Same register already holds the value → remove MVI entirely.
+      if (DstIdx >= 0 && KnownVal[DstIdx] &&
+          ((*KnownVal[DstIdx]) & 0xFF) == (Imm & 0xFF)) {
+        MI.eraseFromParent();
+        Changed = true;
+        continue;
+      }
 
       // Try 1: Another register holds the same value → MOV r, r'
       MCRegister SrcReg = findRegWithValue(Imm, DstReg);
@@ -360,6 +390,13 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
         KnownVal[Idx] = ((*KnownVal[Idx]) - 1) & 0xFF;
       else if (Idx >= 0)
         KnownVal[Idx] = std::nullopt;
+      continue;
+    }
+
+    // --- XRA A: A = A ^ A = 0 → track A as holding 0 ---
+    if (Opc == V6C::XRAr && MI.getOperand(2).getReg() == V6C::A) {
+      int AIdx = regIndex(V6C::A);
+      KnownVal[AIdx] = 0;
       continue;
     }
 

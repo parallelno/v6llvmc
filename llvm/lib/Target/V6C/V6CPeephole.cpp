@@ -53,6 +53,7 @@ private:
   bool eliminateRedundantMov(MachineBasicBlock &MBB);
   bool eliminateTailCall(MachineBasicBlock &MBB);
   bool foldCounterBranch(MachineBasicBlock &MBB);
+  bool foldXraCmpZeroTest(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -327,6 +328,90 @@ bool V6CPeephole::foldCounterBranch(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// Replace MOV A,r; ORA A; Jcc with XRA A; CMP r; Jcc (O38).
+///
+/// The transform saves 4cc (8cc vs 12cc) and leaves A = 0, which enables
+/// O13 (LoadImmCombine) to cascade-eliminate downstream MVI A, 0.
+///
+/// Safety: A changes from r to 0. Valid when:
+///  - Condition 1: A is dead on the fallthrough path, OR
+///  - Condition 2: the next instruction on fallthrough is MVI A, 0
+///    (so A = 0 is already the expected value).
+bool V6CPeephole::foldXraCmpZeroTest(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+  const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+
+  for (auto I = MBB.begin(), E = MBB.end(); I != E; ++I) {
+    MachineInstr &MovMI = *I;
+    // Match MOV A, r (r != A).
+    if (MovMI.getOpcode() != V6C::MOVrr ||
+        MovMI.getOperand(0).getReg() != V6C::A)
+      continue;
+    Register SrcReg = MovMI.getOperand(1).getReg();
+    if (SrcReg == V6C::A)
+      continue;
+
+    // Next must be ORA A or CPI 0.
+    auto OraIt = std::next(I);
+    if (OraIt == E)
+      continue;
+    if (!isRedundantZeroTest(*OraIt))
+      continue;
+
+    // Next must be JZ or JNZ.
+    auto BrIt = std::next(OraIt);
+    if (BrIt == E)
+      continue;
+    if (BrIt->getOpcode() != V6C::JZ && BrIt->getOpcode() != V6C::JNZ)
+      continue;
+
+    // Check safety: A must be dead or A=0 acceptable on fallthrough.
+    bool Safe = isRegDeadAfter(MBB, BrIt, V6C::A, TRI);
+    if (!Safe) {
+      // Condition 2: first non-debug instruction in the fallthrough successor
+      // is MVI A, 0. Since XRA A sets A=0, the value change is benign.
+      MachineBasicBlock *FallThrough = nullptr;
+      for (MachineBasicBlock *Succ : MBB.successors()) {
+        if (MBB.isLayoutSuccessor(Succ)) {
+          FallThrough = Succ;
+          break;
+        }
+      }
+      if (FallThrough) {
+        auto FTIt = FallThrough->begin();
+        while (FTIt != FallThrough->end() && FTIt->isDebugInstr())
+          ++FTIt;
+        if (FTIt != FallThrough->end() &&
+            FTIt->getOpcode() == V6C::MVIr &&
+            FTIt->getOperand(0).getReg() == V6C::A &&
+            FTIt->getOperand(1).isImm() &&
+            FTIt->getOperand(1).getImm() == 0)
+          Safe = true;
+      }
+    }
+    if (!Safe)
+      continue;
+
+    // Replace MOV A, r with XRA A.
+    BuildMI(MBB, MovMI, MovMI.getDebugLoc(), TII.get(V6C::XRAr), V6C::A)
+        .addReg(V6C::A)
+        .addReg(V6C::A);
+    // Replace ORA A with CMP r.
+    BuildMI(MBB, *OraIt, OraIt->getDebugLoc(), TII.get(V6C::CMPr))
+        .addReg(V6C::A)
+        .addReg(SrcReg);
+
+    // Advance iterator past the branch before erasing MOV and ORA.
+    I = BrIt;
+    MovMI.eraseFromParent();
+    OraIt->eraseFromParent();
+    Changed = true;
+  }
+  return Changed;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -336,6 +421,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
     Changed |= eliminateSelfMov(MBB);
     Changed |= eliminateRedundantMov(MBB);
     Changed |= foldCounterBranch(MBB);
+    Changed |= foldXraCmpZeroTest(MBB);
     Changed |= eliminateTailCall(MBB);
   }
   return Changed;
