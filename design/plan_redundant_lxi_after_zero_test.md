@@ -76,7 +76,7 @@ Recognized patterns:
 
 ## 3. Implementation Steps
 
-### Step 3.1 — Add `seedPredecessorValues()` to V6CLoadImmCombine [ ]
+### Step 3.1 — Add `seedPredecessorValues()` to V6CLoadImmCombine [x]
 
 **File**: `llvm-project/llvm/lib/Target/V6C/V6CLoadImmCombine.cpp`
 
@@ -107,9 +107,13 @@ because their fallthrough path means the zero condition was TRUE.
 > We keep the analysis simple: only look for the exact instruction sequence
 > (no gaps allowed between MOV A,rHi / ORA rLo / terminator).
 
-> **Implementation Notes**: <empty>
+> **Implementation Notes**: Handles BOTH directions: (1) NZ-branch (JNZ/RNZ)
+> fallthrough = Z path, (2) Z-branch (JZ) target = Z path. At LoadImmCombine
+> time (before BranchOpt), the compiler often emits JZ to the zero-proven block
+> rather than JNZ+fallthrough. Also added LXI rp elimination when both halves
+> are already known to hold the correct values.
 
-### Step 3.2 — Integrate seeding into processBlock [ ]
+### Step 3.2 — Integrate seeding into processBlock [x]
 
 **File**: `llvm-project/llvm/lib/Target/V6C/V6CLoadImmCombine.cpp`
 
@@ -126,15 +130,15 @@ seedPredecessorValues(MBB);
 This preserves the existing behavior (all values start unknown), then
 overlays any provable values from the predecessor's terminator.
 
-> **Implementation Notes**: <empty>
+> **Implementation Notes**: Added call after invalidateAll() in processBlock().
 
-### Step 3.3 — Build [ ]
+### Step 3.3 — Build [x]
 
 ```
 cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"" -arch=amd64 >nul 2>&1 && ninja -C llvm-build clang llc 2>&1"
 ```
 
-### Step 3.4 — Lit test: load-imm-combine-branch-seed.ll [ ]
+### Step 3.4 — Lit test: load-imm-combine-branch-seed.ll [x]
 
 **File**: `tests/lit/CodeGen/V6C/load-imm-combine-branch-seed.ll`
 
@@ -145,13 +149,13 @@ Tests:
 - Test 4: Multiple predecessors → no seeding (LXI kept).
 - Negative test: JZ/RZ fallthrough → no seeding (fallthrough is NZ path).
 
-### Step 3.5 — Run regression tests [ ]
+### Step 3.5 — Run regression tests [x]
 
 ```
 python tests\run_all.py
 ```
 
-### Step 3.6 — Verification assembly (`tests\features\README.md`) [ ]
+### Step 3.6 — Verification assembly (`tests\features\README.md`) [x]
 
 Compile the feature test case and analyze the output:
 ```
@@ -160,9 +164,9 @@ llvm-build\bin\clang -target i8080-unknown-v6c -O2 -S tests\features\15\v6llvmc.
 
 Verify that `test_cond_zero_tailcall` no longer has `LXI HL, 0`.
 
-### Step 3.7 — Make sure result.txt is created (`tests\features\README.md`) [ ]
+### Step 3.7 — Make sure result.txt is created (`tests\features\README.md`) [x]
 
-### Step 3.8 — Sync mirror [ ]
+### Step 3.8 — Sync mirror [x]
 
 ```
 powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1
@@ -232,7 +236,8 @@ be eliminated by the existing LoadImmCombine machinery.
 
 ## 7. Future Enhancements
 
-- General cross-BB value propagation (O29) would subsume this.
+None planned — the optimization already covers all register pairs and
+all three patterns (16-bit zero-test, 8-bit zero-test, CPI imm).
 
 ## 8. References
 

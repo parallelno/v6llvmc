@@ -82,6 +82,16 @@ private:
       KnownVal[I] = std::nullopt;
   }
 
+  /// Seed known register values at BB entry from a single predecessor's
+  /// terminator.  Only applicable when MBB has exactly one predecessor
+  /// and is that predecessor's layout-fallthrough successor.
+  ///
+  /// Recognized patterns (NZ-branch terminators only — fallthrough = Z):
+  ///   Pattern A: MOV A,rHi; ORA rLo; RNZ/JNZ  → H=0,L=0,A=0 (or D,E,A)
+  ///   Pattern B: ORA A / ANA A; RNZ/JNZ        → A=0
+  ///   Pattern C: CPI imm; JNZ                  → A=imm
+  bool seedPredecessorValues(MachineBasicBlock &MBB);
+
   /// Invalidate register and its sub/super-registers relevant to tracking.
   void invalidateWithSubSuper(MCRegister Reg) {
     invalidate(Reg);
@@ -116,11 +126,112 @@ private:
 
 char V6CLoadImmCombine::ID = 0;
 
+/// Check whether Opc is a NZ-branch terminator (JNZ or RNZ).
+/// Fallthrough of an NZ-branch means the Z flag was set (zero/equal).
+static bool isNZBranchTerminator(unsigned Opc) {
+  return Opc == V6C::JNZ || Opc == V6C::RNZ;
+}
+
+/// Check whether Opc is a Z-branch terminator (JZ only — RZ has no target).
+/// The taken path of a Z-branch receives the Z=1 (zero/equal) condition.
+static bool isZBranchTerminator(unsigned Opc) {
+  return Opc == V6C::JZ;
+}
+
+bool V6CLoadImmCombine::seedPredecessorValues(MachineBasicBlock &MBB) {
+  // Require exactly one predecessor.
+  if (MBB.pred_size() != 1)
+    return false;
+
+  MachineBasicBlock *Pred = *MBB.pred_begin();
+
+  // Scan backwards from the end of the predecessor to find the terminator
+  // sequence.  We need at least 2 instructions (flag-setter + branch).
+  auto It = Pred->end();
+  if (It == Pred->begin())
+    return false;
+  --It; // Last instruction (should be a branch terminator)
+
+  MachineInstr &Term = *It;
+  unsigned TermOpc = Term.getOpcode();
+
+  // Determine if MBB receives the "zero proven" path:
+  //   Case 1: NZ-branch (JNZ/RNZ) + MBB is layout fallthrough → Z path
+  //   Case 2: Z-branch (JZ) + MBB is the branch target → Z path
+  bool ZeroProvenPath = false;
+  if (isNZBranchTerminator(TermOpc) && Pred->isLayoutSuccessor(&MBB)) {
+    ZeroProvenPath = true;
+  } else if (isZBranchTerminator(TermOpc) &&
+             Term.getOperand(0).isMBB() &&
+             Term.getOperand(0).getMBB() == &MBB) {
+    ZeroProvenPath = true;
+  }
+
+  if (!ZeroProvenPath)
+    return false;
+
+  // Look at the instruction immediately before the terminator.
+  if (It == Pred->begin())
+    return false;
+  --It;
+  MachineInstr &FlagSetter = *It;
+  unsigned FSOpc = FlagSetter.getOpcode();
+
+  // --- Pattern B: ORA A / ANA A; Z-path proves A=0 ---
+  if ((FSOpc == V6C::ORAr || FSOpc == V6C::ANAr) &&
+      FlagSetter.getOperand(2).getReg() == V6C::A) {
+    // ORA A with $rs == A → testing A itself.
+    int AIdx = regIndex(V6C::A);
+    KnownVal[AIdx] = 0;
+    return true;
+  }
+
+  // --- Pattern A: MOV A,rHi; ORA rLo; Z-path proves rHi=0,rLo=0,A=0 ---
+  if (FSOpc == V6C::ORAr) {
+    MCRegister LoReg = FlagSetter.getOperand(2).getReg();
+    // ORA rLo with rLo != A  — check for preceding MOV A, rHi.
+    if (It == Pred->begin())
+      return false;
+    --It;
+    MachineInstr &MovInstr = *It;
+    if (MovInstr.getOpcode() == V6C::MOVrr &&
+        MovInstr.getOperand(0).getReg() == V6C::A) {
+      MCRegister HiReg = MovInstr.getOperand(1).getReg();
+      // Verify it forms a valid register pair (H/L or D/E).
+      if ((HiReg == V6C::H && LoReg == V6C::L) ||
+          (HiReg == V6C::D && LoReg == V6C::E) ||
+          (HiReg == V6C::B && LoReg == V6C::C)) {
+        int HiIdx = regIndex(HiReg);
+        int LoIdx = regIndex(LoReg);
+        int AIdx = regIndex(V6C::A);
+        if (HiIdx >= 0) KnownVal[HiIdx] = 0;
+        if (LoIdx >= 0) KnownVal[LoIdx] = 0;
+        KnownVal[AIdx] = 0;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // --- Pattern C: CPI imm; Z-path proves A=imm ---
+  if (FSOpc == V6C::CPI) {
+    if (FlagSetter.getOperand(1).isImm()) {
+      int64_t Imm = FlagSetter.getOperand(1).getImm() & 0xFF;
+      int AIdx = regIndex(V6C::A);
+      KnownVal[AIdx] = Imm;
+      return true;
+    }
+  }
+
+  return false;
+}
+
 bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
   bool Changed = false;
   const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
 
   invalidateAll();
+  seedPredecessorValues(MBB);
 
   for (MachineInstr &MI : llvm::make_early_inc_range(MBB)) {
     unsigned Opc = MI.getOpcode();
@@ -198,23 +309,32 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
       continue;
     }
 
-    // --- LXI rp, imm16: set both sub-registers ---
+    // --- LXI rp, imm16: eliminate if both halves already hold the value ---
     if (Opc == V6C::LXI) {
       MCRegister PairReg = MI.getOperand(0).getReg();
       if (MI.getOperand(1).isImm()) {
         int64_t Imm16 = MI.getOperand(1).getImm() & 0xFFFF;
         int64_t Lo = Imm16 & 0xFF;
         int64_t Hi = (Imm16 >> 8) & 0xFF;
+        int HiIdx = -1, LoIdx = -1;
         if (PairReg == V6C::BC) {
-          KnownVal[regIndex(V6C::B)] = Hi;
-          KnownVal[regIndex(V6C::C)] = Lo;
+          HiIdx = regIndex(V6C::B); LoIdx = regIndex(V6C::C);
         } else if (PairReg == V6C::DE) {
-          KnownVal[regIndex(V6C::D)] = Hi;
-          KnownVal[regIndex(V6C::E)] = Lo;
+          HiIdx = regIndex(V6C::D); LoIdx = regIndex(V6C::E);
         } else if (PairReg == V6C::HL) {
-          KnownVal[regIndex(V6C::H)] = Hi;
-          KnownVal[regIndex(V6C::L)] = Lo;
+          HiIdx = regIndex(V6C::H); LoIdx = regIndex(V6C::L);
         }
+        // If both halves already hold the correct values, eliminate LXI.
+        if (HiIdx >= 0 && LoIdx >= 0 &&
+            KnownVal[HiIdx] && *KnownVal[HiIdx] == Hi &&
+            KnownVal[LoIdx] && *KnownVal[LoIdx] == Lo) {
+          MI.eraseFromParent();
+          Changed = true;
+          continue;
+        }
+        // Otherwise, record the new values.
+        if (HiIdx >= 0) KnownVal[HiIdx] = Hi;
+        if (LoIdx >= 0) KnownVal[LoIdx] = Lo;
         // SP: not tracked.
       } else {
         // Non-immediate LXI (global address) — invalidate pair.

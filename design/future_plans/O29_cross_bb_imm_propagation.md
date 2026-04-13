@@ -54,45 +54,108 @@ This pattern appears beyond just BR_CC16_IMM zero comparisons:
 
 1. **BR_CC16_IMM with any repeated immediate**: When lo8 == hi8 (e.g.,
    comparing against 0x0101, 0x4242), the second MVI is redundant.
-2. **Sequential basic blocks with known accumulator value**: Any case where
-   a single-predecessor block starts with `MVI A, imm` and the predecessor
-   exits with A holding that same value.
-3. **Loop headers**: A loop body ending with A=const, and the loop header
-   starting with `MVI A, const`.
+2. **Sequential basic blocks with known register values**: Any case where
+   a single-predecessor block starts with `MVI r, imm` and the predecessor
+   exits with that register holding the same value. Applies to **all 7 GPRs**
+   (A, B, C, D, E, H, L), not just the accumulator.
+3. **LXI pair propagation**: When a predecessor block ends with a known
+   pair value (e.g., `LXI DE, 0x0000`), a successor starting with
+   `LXI DE, 0x0000` (or `MVI D, 0` / `MVI E, 0`) is redundant.
+4. **Loop headers**: A loop body ending with known register constants, and
+   the loop header re-loading the same constants.
+
+### Tracked state (inherited from O13)
+
+The cross-BB propagation uses the same per-register tracking as O13:
+
+| Register | Tracked? | Set by | Propagated by | Invalidated by |
+|----------|----------|--------|---------------|----------------|
+| **A** | Yes | MVI, MOV, LDA, LDAX | MOV | ALU ops, LDA, LDAX, POP PSW, CALL |
+| **B** | Yes | MVI, MOV, POP BC (hi) | MOV | POP BC, CALL, any def |
+| **C** | Yes | MVI, MOV, POP BC (lo) | MOV | POP BC, CALL, any def |
+| **D** | Yes | MVI, MOV, POP DE (hi) | MOV, XCHG (↔H) | POP DE, XCHG, CALL, any def |
+| **E** | Yes | MVI, MOV, POP DE (lo) | MOV, XCHG (↔L) | POP DE, XCHG, CALL, any def |
+| **H** | Yes | MVI, MOV, POP HL (hi) | MOV, XCHG (↔D) | POP HL, XCHG, INX/DCX HL, CALL, any def |
+| **L** | Yes | MVI, MOV, POP HL (lo) | MOV, XCHG (↔E) | POP HL, XCHG, INX/DCX HL, CALL, any def |
+| **BC** | Implicit | LXI BC | — | INX/DCX BC, POP BC, CALL |
+| **DE** | Implicit | LXI DE | — | INX/DCX DE, POP DE, XCHG, CALL |
+| **HL** | Implicit | LXI HL | — | INX/DCX HL, POP HL, XCHG, DAD, LHLD, CALL |
+
+**Not tracked**: SP (not GPR), FLAGS (not addressable), PSW (only via PUSH/POP).
+
+### Cross-BB examples beyond accumulator
+
+**Example 2: Redundant MVI for non-A register**
+```asm
+; BB0:
+    MVI  D, 0           ; D is now known to be 0
+    ...                  ; no instruction modifies D
+    JNZ  BB2
+; BB1 (single predecessor = BB0):
+    MVI  D, 0           ; REDUNDANT — D still holds 0
+    ...
+```
+
+**Example 3: Redundant LXI for register pair**
+```asm
+; BB0:
+    LXI  DE, 0x1234     ; D=0x12, E=0x34
+    ...                  ; no instruction modifies D or E
+    JZ   BB2
+; BB1 (single predecessor = BB0):
+    LXI  DE, 0x1234     ; REDUNDANT — DE still holds 0x1234
+    ...
+```
+The LXI case fires when both sub-registers match. If only one matches,
+the individual MVI for that sub-register can still be eliminated.
+
+**Example 4: XCHG-aware propagation**
+```asm
+; BB0:
+    LXI  HL, 0x0000     ; H=0, L=0
+    XCHG                 ; now D=0, E=0 (H,L unknown unless DE was known)
+    JNZ  BB2
+; BB1 (single predecessor = BB0):
+    MVI  D, 0           ; REDUNDANT — D=0 after XCHG
+    MVI  E, 0           ; REDUNDANT — E=0 after XCHG
+```
 
 ## Implementation
 
 ### Approach: Extend V6CLoadImmCombine with cross-BB propagation
 
-Add an optional cross-BB propagation pass to `V6CLoadImmCombine.cpp`:
+Add an optional cross-BB propagation phase to `V6CLoadImmCombine.cpp`.
+The existing `KnownVal[NumTracked]` array (A, B, C, D, E, H, L — 7 entries)
+is reused; we just change how it is initialized at block entry.
 
 ```cpp
 /// For blocks with a single predecessor, initialize KnownVal[] from
 /// the predecessor's exit state (if available).
+/// Covers all 7 GPRs: A, B, C, D, E, H, L.
 void V6CLoadImmCombine::initFromPredecessor(MachineBasicBlock &MBB) {
   if (MBB.pred_size() != 1)
     return;  // Only single-predecessor blocks (safe, conservative)
 
   MachineBasicBlock *Pred = *MBB.pred_begin();
 
-  // Walk backward from end of Pred to determine known register values.
-  // Stop at the first instruction that makes a value unknown.
-  // This is a simplified version of the forward scan — we only look
-  // at the last few instructions before the terminator.
+  // Reset all KnownVal[0..6] to std::nullopt.
+  invalidateAll();
 
-  // Reset all values to unknown.
-  resetKnownValues();
-
-  // Forward-scan the predecessor to compute exit state.
+  // Forward-scan the predecessor using existing updateKnownValues(MI)
+  // to compute exit state for all tracked registers.
   for (MachineInstr &MI : *Pred) {
-    updateKnownValues(MI);  // existing tracking logic
+    updateKnownValues(MI);  // handles MVI, MOV, LXI, INR, DCR,
+                            // XCHG, POP, ALU ops, CALL, etc.
   }
 
-  // Now KnownVal[] reflects the predecessor's exit register state.
+  // Now KnownVal[] reflects the predecessor's exit state for all 7 GPRs.
   // The per-BB forward scan in the current block will use these as
-  // initial values and can eliminate redundant MVIs.
+  // initial values and can eliminate redundant MVI/LXI for any register.
 }
 ```
+
+This leverages the full O13 tracking (MVI→set, MOV→propagate, LXI→set pair,
+INR/DCR→±1, XCHG→swap DE↔HL, POP/CALL→invalidate) without any new logic.
 
 ### Alternative: Fix at the source (V6C_BR_CC16_IMM expansion)
 
@@ -136,9 +199,12 @@ no second MVI at all. O29 remains valuable for:
 
 ## Benefit
 
-- **1B + 7cc** per eliminated MVI
-- **Frequency**: Medium — fires for BR_CC16_IMM when lo8(rhs) == hi8(rhs),
-  and for other cross-BB patterns with known accumulator values
+- **1B + 7cc** per eliminated `MVI r, imm` (any of A, B, C, D, E, H, L)
+- **2B + 10cc** per eliminated `LXI rp, imm16` (when both sub-regs match)
+- **Frequency**: Medium — fires for:
+  - BR_CC16_IMM when lo8(rhs) == hi8(rhs) (A register)
+  - Cross-BB patterns with known values in B, C, D, E, H, or L
+  - Redundant LXI reloads for BC, DE, or HL after linear fallthrough
 - Partially subsumed by O27 for the zero case
 
 ## Complexity

@@ -82,7 +82,7 @@
 | O33 | XCHG Peephole Relaxation | V6C | 12cc, 1B | Low | Very Low | Very Low | None | [ ] |
 | O34 | SELECT_CC Zero-Test ISel Gap | V6C | 15cc, 3B + spill savings | Medium | Low-Med | Low | O27 done | [x] |
 | O35 | Conditional Return Over RET (Jcc-over-RET → Rcc) | 18cc, 3B | Medium | Very Low | Very Low | O28 done | [x] |
-| O36 | Branch-Implied Value Propagation | 12cc, 3B+ | Medium | Low | Low | O27+O35+O13 done | [ ] |
+| O36 | Branch-Implied Value Propagation | 12cc, 3B+ | Medium | Low | Low | O27+O35+O13 done | [x] |
 
 ### Recommended order
 
@@ -103,7 +103,7 @@
 12. ~~**O34** — SELECT_CC zero-test ISel gap, 3B+15cc + spill cascade savings, ~30 lines~~ ✅
 13. ~~**O28** — branch threading through JMP-only blocks, 3B+10cc, synergy with O27, ~25 lines~~ ✅
 14. ~~**O35** — conditional return over RET (Jcc-over-RET → Rcc), 3B per instance, ~20 lines~~ ✅
-15. **O36** — branch-implied value propagation, 12cc+3B per instance, extends O13 seeding, ~50 lines
+15. ~~**O36** — branch-implied value propagation, 12cc+3B per instance, extends O13 seeding, ~50 lines~~ ✅
 16. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines
 16. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
 17. **O29** — cross-BB immediate propagation, 1B+7cc per redundant MVI, ~30 lines

@@ -1,0 +1,107 @@
+== O36: Redundant Immediate Load After Branch-Proven Value ==
+
+=== C Test Case ===
+
+extern int bar(int x);
+extern int baz(int x, int y);
+
+// Pattern 1: if (x == 0) return bar(0); return x;
+int test_cond_zero_tailcall(int x) {
+    if (x == 0) return bar(0);
+    return x;
+}
+
+// Pattern 2: if (x == 0) return bar(0); return 0;
+int test_cond_zero_return_zero(int x) {
+    if (x == 0) return bar(0);
+    return 0;
+}
+
+// Pattern 3: if (x != 0) return x; return bar(0);
+int test_nonzero_path(int x) {
+    if (x != 0) return x;
+    return bar(0);
+}
+
+=== c8080 ASM (i8080 syntax, main funcs only) ===
+
+test_cond_zero_tailcall:        ; 9 bytes, 8+4+16/8 cc
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    RNZ                         ; 16cc (taken) / 8cc (not taken), 1B
+    LXI  HL, 0                  ; 12cc, 3B
+    JMP  bar                    ; 12cc, 3B
+
+test_cond_zero_return_zero:     ; 15 bytes
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    JNZ  l_2                    ; 12cc, 3B
+    LXI  HL, 0                  ; 12cc, 3B
+    JMP  bar                    ; 12cc, 3B
+l_2:
+    LXI  HL, 0                  ; 12cc, 3B
+    RET                         ; 12cc, 1B (not counted in bytes above)
+
+test_nonzero_path:              ; 6 bytes
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    RNZ                         ; 16cc/8cc, 1B
+    LXI  HL, 0                  ; 12cc, 3B
+    ; falls through to bar
+
+c8080 stats:
+  test_cond_zero_tailcall:   9B, zero path: 32cc, nonzero path: 20cc
+  test_cond_zero_return_zero: 15B
+  test_nonzero_path:         6B, nonzero path: 20cc, zero path: 24cc
+
+=== v6llvmc ASM (before O36) ===
+
+test_cond_zero_tailcall:        ; 9 bytes
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    RNZ                         ; 16cc/8cc, 1B
+    LXI  HL, 0                  ; 12cc, 3B  <- REDUNDANT
+    JMP  bar                    ; 12cc, 3B
+
+test_nonzero_path:              ; 9 bytes (same pattern)
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    RNZ                         ; 16cc/8cc, 1B
+    LXI  HL, 0                  ; 12cc, 3B  <- REDUNDANT
+    JMP  bar                    ; 12cc, 3B
+
+v6llvmc stats (before):
+  test_cond_zero_tailcall:   9B, zero path: 36cc, nonzero path: 20cc
+  test_nonzero_path:         9B, zero path: 36cc, nonzero path: 20cc
+
+=== v6llvmc ASM (after O36) ===
+
+test_cond_zero_tailcall:        ; 6 bytes
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    JZ   bar                    ; 12cc, 3B  (LXI+JMP eliminated, branch inverted)
+    RET                         ; 12cc, 1B
+
+test_nonzero_path:              ; 6 bytes (same improvement)
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    JZ   bar                    ; 12cc, 3B
+    RET                         ; 12cc, 1B
+
+v6llvmc stats (after):
+  test_cond_zero_tailcall:   6B, zero path: 24cc, nonzero path: 24cc
+  test_nonzero_path:         6B, zero path: 24cc, nonzero path: 24cc
+
+=== Improvement Summary ===
+
+Per instance of the pattern:
+  Bytes saved: 3B (LXI HL,0 eliminated; BranchOpt then simplifies JMP→JZ)
+  Cycles saved: 12cc on zero path (LXI eliminated)
+  Pattern: MOV A,rHi; ORA rLo; (JZ target / JNZ+fallthrough)
+
+Both test_cond_zero_tailcall and test_nonzero_path now match c8080's
+optimal output (6 bytes each). The optimization also provides a bonus
+for 8-bit zero-test patterns (ORA A + JZ target seeds A=0).
+
+Lit tests: 90/90 passed (including new load-imm-combine-branch-seed.ll)
+Golden tests: 15/15 passed
