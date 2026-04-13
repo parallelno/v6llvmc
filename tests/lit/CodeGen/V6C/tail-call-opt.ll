@@ -39,10 +39,11 @@ entry:
 }
 
 ; Test 4: Dispatch — both branches get tail-call optimized.
+; Branch inversion converts JZ+V6C_TAILJMP into conditional JNZ.
 define void @dispatch(i8 %cmd) {
 ; CHECK-LABEL: dispatch:
+; CHECK:       JNZ	func_b
 ; CHECK:       JMP	func_a
-; CHECK:       JMP	func_b
 ; CHECK-NOT:   CALL
 entry:
   %cmp = icmp eq i8 %cmd, 1

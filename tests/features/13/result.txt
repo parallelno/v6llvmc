@@ -1,0 +1,121 @@
+## O28 Branch Threading Through JMP-Only Blocks — Test Results
+
+### C Test Case
+
+```c
+extern int bar(int x);
+
+int test_cond_zero_tailcall(int x) {
+    if (x == 0) return bar(0);
+    return 0;
+}
+
+int test_two_cond_tailcall(int x, int y) {
+    if (x) return bar(x);
+    if (y) return bar(x);
+    return 0;
+}
+
+int test_simple_tailcall(int x) {
+    if (x) return bar(x);
+    return 0;
+}
+```
+
+### c8080 Assembly (converted from Z80 to 8080 mnemonics)
+
+```asm
+test_cond_zero_tailcall:            ; 15B
+    SHLD __a_1                      ; 3B 20cc  save arg
+    MOV  A, H                       ; 1B  8cc
+    ORA  L                          ; 1B  4cc
+    JNZ  l_0                        ; 3B 12cc
+    LXI  HL, 0                      ; 3B 12cc
+    JMP  bar                        ; 3B 12cc
+l_0:
+    LXI  HL, 0                      ; 3B 12cc
+    RET                             ; 1B 12cc
+; Total: 18B (not counting bar), taken path: 68cc, not-taken: 48cc
+
+test_two_cond_tailcall:             ; 25B
+    SHLD __a_2                      ; 3B 20cc  save y
+    LHLD __a_1                      ; 3B 20cc  load x
+    MOV  A, H                       ; 1B  8cc
+    ORA  L                          ; 1B  4cc
+    JNZ  bar                        ; 3B 12cc  x!=0 → tail call
+    LHLD __a_2                      ; 3B 20cc  load y
+    MOV  A, H                       ; 1B  8cc
+    ORA  L                          ; 1B  4cc
+    JZ   l_4                        ; 3B 12cc
+    LHLD __a_1                      ; 3B 20cc  reload x
+    JMP  bar                        ; 3B 12cc
+l_4:
+    LXI  HL, 0                      ; 3B 12cc
+    RET                             ; 1B 12cc
+; Total: 30B, first-taken: 64cc, second-taken: 120cc, not-taken: 80cc
+
+test_simple_tailcall:               ; 9B
+    SHLD __a_1                      ; 3B 20cc
+    MOV  A, H                       ; 1B  8cc
+    ORA  L                          ; 1B  4cc
+    JNZ  bar                        ; 3B 12cc
+    LXI  HL, 0                      ; 3B 12cc
+    RET                             ; 1B 12cc
+; Total: 12B, taken: 44cc, not-taken: 48cc
+```
+
+c8080 stats: 60B total (test funcs only), uses static stack for args.
+
+### v6llvmc Assembly
+
+```asm
+test_cond_zero_tailcall:            ; WITH O28 threading
+    MOV  D, H                       ; 1B  8cc  save x
+    MOV  E, L                       ; 1B  8cc
+    LXI  HL, 0                      ; 3B 12cc  0 for both return and arg
+    MOV  A, D                       ; 1B  8cc  test x
+    ORA  E                          ; 1B  4cc
+    JZ   bar                        ; 3B 12cc  ← THREADED: was JZ .LBB → JMP bar
+; %bb.2:
+    RET                             ; 1B 12cc
+; Total: 11B, taken path: 52cc, not-taken: 52cc
+
+test_two_cond_tailcall:
+    MOV  A, H                       ; 1B  8cc  test x
+    ORA  L                          ; 1B  4cc
+    JNZ  .LBB1_2                    ; 3B 12cc
+    LXI  HL, 0                      ; 3B 12cc
+    MOV  A, D                       ; 1B  8cc
+    ORA  E                          ; 1B  4cc
+    JZ   .LBB1_3                    ; 3B 12cc
+.LBB1_2:
+    CALL bar                        ; 3B 24cc
+    XCHG                            ; 1B  4cc
+.LBB1_3:
+    XCHG                            ; 1B  4cc
+    RET                             ; 1B 12cc
+; Total: 19B, x-taken: 52cc, y-taken: 92cc, not-taken: 64cc
+
+test_simple_tailcall:
+    MOV  A, H                       ; 1B  8cc
+    ORA  L                          ; 1B  4cc
+    RZ                              ; 1B 16cc  (O30 conditional return)
+.LBB2_1:
+    JMP  bar                        ; 3B 12cc
+; Total: 6B, taken: 24cc, not-taken: 28cc
+```
+
+v6llvmc stats: 36B total (test funcs only). No static stack needed.
+
+### Comparison
+
+| Function | c8080 | v6llvmc | Savings |
+|----------|-------|---------|---------|
+| test_cond_zero_tailcall | 18B | 11B | 7B (39%) |
+| test_two_cond_tailcall | 30B | 19B | 11B (37%) |
+| test_simple_tailcall | 12B | 6B | 6B (50%) |
+| **Total** | **60B** | **36B** | **24B (40%)** |
+
+### O28 threading specifically saved:
+- test_cond_zero_tailcall: **3B, 12cc** (JZ .LBB → JZ bar, eliminated JMP-only block)
+- Other functions: threading did not fire (already handled by O30/O14 or not applicable)

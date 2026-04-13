@@ -26,11 +26,12 @@ ret:
 }
 
 ; Test 2: Pattern B — fallthrough tail call (if (x) return 0; return bar(x))
-; The CALL in the fallthrough block should become JMP.
+; The CALL in the fallthrough block should become JMP, then branch threading
+; redirects the conditional branch directly to bar.
 define i16 @cond_tail_b(i16 %x) {
 ; CHECK-LABEL: cond_tail_b:
 ; CHECK-NOT:   CALL{{[[:space:]]}}bar
-; CHECK:       JMP	bar
+; CHECK:       JZ	bar
 entry:
   %cmp = icmp eq i16 %x, 0
   br i1 %cmp, label %call, label %ret

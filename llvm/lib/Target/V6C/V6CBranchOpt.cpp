@@ -4,18 +4,22 @@
 //
 // Post-RA pass for branch optimizations:
 //
-// 1. Redundant JMP elimination: JMP to the immediately following block
+// 1. Branch threading: if a branch (Jcc or JMP) targets a block whose
+//    only instruction is JMP target, redirect the branch directly to
+//    target.
+//
+// 2. Redundant JMP elimination: JMP to the immediately following block
 //    (layout successor) is removed — the fall-through is free.
 //
-// 2. Conditional branch inversion: if a Jcc jumps over a JMP, invert the
+// 3. Conditional branch inversion: if a Jcc jumps over a JMP, invert the
 //    condition and remove the JMP.
 //    Example:  JZ .Ltmp1 / JMP .Ltmp2 / .Ltmp1:
 //           →  JNZ .Ltmp2 / .Ltmp1:
 //
-// 3. Dead block removal: blocks with no predecessors (after other opts)
+// 4. Dead block removal: blocks with no predecessors (after other opts)
 //    are removed.
 //
-// 4. Conditional return folding: Jcc to a block containing only RET is
+// 5. Conditional return folding: Jcc to a block containing only RET is
 //    replaced with the corresponding Rcc instruction (e.g. JZ→RZ).
 //
 //===----------------------------------------------------------------------===//
@@ -52,6 +56,7 @@ public:
   bool runOnMachineFunction(MachineFunction &MF) override;
 
 private:
+  bool threadJMPOnlyBlocks(MachineFunction &MF);
   bool removeRedundantJMP(MachineFunction &MF);
   bool invertConditionalBranch(MachineFunction &MF);
   bool foldConditionalReturns(MachineFunction &MF);
@@ -79,6 +84,68 @@ unsigned V6CBranchOpt::getInvertedJcc(unsigned Opc) {
   }
 }
 
+/// Thread branches through JMP-only successor blocks.
+/// If a branch (Jcc or JMP) targets a block whose only non-debug
+/// instruction is JMP/V6C_TAILJMP target, redirect the branch to
+/// target directly.
+bool V6CBranchOpt::threadJMPOnlyBlocks(MachineFunction &MF) {
+  bool Changed = false;
+
+  for (MachineBasicBlock &MBB : MF) {
+    for (MachineInstr &MI : MBB.terminators()) {
+      // Must be a branch to an MBB (Jcc or JMP).
+      if (MI.getOpcode() != V6C::JMP && !getInvertedJcc(MI.getOpcode()))
+        continue;
+      if (!MI.getOperand(0).isMBB())
+        continue;
+
+      MachineBasicBlock *Target = MI.getOperand(0).getMBB();
+
+      // Check if Target is a JMP-only block.
+      auto FirstNonDbg = Target->getFirstNonDebugInstr();
+      if (FirstNonDbg == Target->end())
+        continue;
+      if (FirstNonDbg->getOpcode() != V6C::JMP &&
+          FirstNonDbg->getOpcode() != V6C::V6C_TAILJMP)
+        continue;
+      // Verify it's the only non-debug instruction.
+      auto Next = std::next(FirstNonDbg);
+      while (Next != Target->end() && Next->isDebugInstr())
+        ++Next;
+      if (Next != Target->end())
+        continue;
+
+      // Redirect our branch to the JMP's final target.
+      MachineOperand &FinalTargetOp = FirstNonDbg->getOperand(0);
+
+      if (FinalTargetOp.isMBB()) {
+        // Internal branch: redirect to the final MBB.
+        MI.getOperand(0).setMBB(FinalTargetOp.getMBB());
+        MBB.replaceSuccessor(Target, FinalTargetOp.getMBB());
+      } else if (FinalTargetOp.isGlobal()) {
+        // External tail call (global address): redirect Jcc to symbol.
+        MI.getOperand(0).ChangeToGA(FinalTargetOp.getGlobal(),
+                                     FinalTargetOp.getOffset(),
+                                     FinalTargetOp.getTargetFlags());
+        MBB.removeSuccessor(Target);
+      } else if (FinalTargetOp.isSymbol()) {
+        MI.getOperand(0).ChangeToES(FinalTargetOp.getSymbolName(),
+                                     FinalTargetOp.getTargetFlags());
+        MBB.removeSuccessor(Target);
+      } else if (FinalTargetOp.isMCSymbol()) {
+        MI.getOperand(0).ChangeToMCSymbol(FinalTargetOp.getMCSymbol(),
+                                           FinalTargetOp.getTargetFlags());
+        MBB.removeSuccessor(Target);
+      } else {
+        continue; // Unknown operand type — skip.
+      }
+      Changed = true;
+    }
+  }
+
+  return Changed;
+}
+
 /// Remove unconditional JMP instructions that jump to the next block
 /// in layout order (fall-through).
 bool V6CBranchOpt::removeRedundantJMP(MachineFunction &MF) {
@@ -91,6 +158,8 @@ bool V6CBranchOpt::removeRedundantJMP(MachineFunction &MF) {
 
     MachineInstr &Last = MBB.back();
     if (Last.getOpcode() != V6C::JMP)
+      continue;
+    if (!Last.getOperand(0).isMBB())
       continue;
 
     // Check if the JMP target is the layout successor.
@@ -107,6 +176,7 @@ bool V6CBranchOpt::removeRedundantJMP(MachineFunction &MF) {
 
 /// Look for patterns: Jcc .Lskip / JMP .Ltarget / .Lskip:
 /// Transform to: Jcc_inv .Ltarget / .Lskip:
+/// Also handles V6C_TAILJMP (tail call) as the unconditional branch.
 /// Saves 3 bytes and ~12cc.
 bool V6CBranchOpt::invertConditionalBranch(MachineFunction &MF) {
   bool Changed = false;
@@ -119,7 +189,8 @@ bool V6CBranchOpt::invertConditionalBranch(MachineFunction &MF) {
     auto LastI = MBB.end();
     --LastI; // Points to last instruction.
     MachineInstr &Last = *LastI;
-    if (Last.getOpcode() != V6C::JMP)
+    if (Last.getOpcode() != V6C::JMP &&
+        Last.getOpcode() != V6C::V6C_TAILJMP)
       continue;
 
     --LastI; // Points to second-to-last instruction.
@@ -129,17 +200,19 @@ bool V6CBranchOpt::invertConditionalBranch(MachineFunction &MF) {
       continue;
 
     // The Jcc target must be the layout successor (fall-through after the JMP).
+    if (!Prev.getOperand(0).isMBB())
+      continue;
     MachineBasicBlock *JccTarget = Prev.getOperand(0).getMBB();
     MachineFunction::iterator NextBB = std::next(MBB.getIterator());
     if (NextBB == MF.end() || &*NextBB != JccTarget)
       continue;
 
-    // Transform: invert the Jcc to jump to the JMP's target, remove JMP.
-    MachineBasicBlock *JmpTarget = Last.getOperand(0).getMBB();
+    // Transform: invert the Jcc to jump to the JMP/V6C_TAILJMP's target,
+    // remove the unconditional branch.
     const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
 
     BuildMI(MBB, Prev, Prev.getDebugLoc(), TII.get(InvOpc))
-        .addMBB(JmpTarget);
+        .add(Last.getOperand(0));
 
     // Update CFG: MBB now branches to JmpTarget and falls through to JccTarget.
     // The old successors are still correct since we flipped the condition.
@@ -186,6 +259,8 @@ bool V6CBranchOpt::foldConditionalReturns(MachineFunction &MF) {
          I != E; ++I) {
       unsigned RccOpc = getConditionalReturn(I->getOpcode());
       if (!RccOpc)
+        continue;
+      if (!I->getOperand(0).isMBB())
         continue;
 
       MachineBasicBlock *Target = I->getOperand(0).getMBB();
@@ -236,6 +311,7 @@ bool V6CBranchOpt::runOnMachineFunction(MachineFunction &MF) {
     return false;
 
   bool Changed = false;
+  Changed |= threadJMPOnlyBlocks(MF);
   Changed |= invertConditionalBranch(MF);
   Changed |= removeRedundantJMP(MF);
   Changed |= foldConditionalReturns(MF);
