@@ -66,7 +66,7 @@
 | O24 | SUI/SBI Immediate Unsigned CMP | V6C | 2cc, 1B + free reg pair | Med-high | Medium | Low | None | [ ] |
 | O25 | LXI 16-bit Value Combining | V6C | 10cc, 3B | Medium | Low-Med | Very Low | O13 done | [ ] |
 | O26 | Cost Model Infra (getInstrCost) | V6C | N/A (infra) | N/A | Low | Very Low | O11 done | [ ] |
-| O27 | i16 Zero-Test (MOV+ORA) | V6C | 24cc, 10B | Very high | Low-Med | Low | None | [ ] |
+| O27 | i16 Zero-Test (MOV+ORA) | V6C | 24cc, 10B | Very high | Low-Med | Low | None | [x] |
 | O28 | Branch Threading (JMP-only blocks) | V6C | 10cc, 3B | Medium | Low | Very Low | O27 enables | [ ] |
 | O29 | Cross-BB Immediate Propagation | V6C | 7cc, 1B | Medium | Low-Med | Low | O13 done | [ ] |
 
@@ -83,7 +83,7 @@
 **Phase 2 — Quick extensions (Low complexity, builds on completed work)**:
 7. ~~**O21** — LHLD/SHLD for i16 globals, ISel patterns like O6, ~20 lines~~ ✅
 8. ~~**O23** — conditional tail call, extends O14 peephole, ~20 lines~~ ✅
-9. **O27** — i16 zero-test (MOV A,H; ORA L), 10B+24cc per zero comparison, ~15 lines
+9. ~~**O27** — i16 zero-test (MOV A,H; ORA L), 10B+24cc per zero comparison, ~15 lines~~ ✅
 10. **O28** — branch threading through JMP-only blocks, 3B+10cc, synergy with O27, ~25 lines
 11. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines
 12. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines

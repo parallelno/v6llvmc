@@ -1,0 +1,128 @@
+== O27: i16 Zero-Test Optimization (MOV+ORA) ==
+
+=== C Test Case ===
+
+extern int bar(int x);
+
+// Pattern A: if (x) — basic non-zero test
+int test_ne_zero(int x) {
+    if (x) return bar(x);
+    return 0;
+}
+
+// Pattern B: if (!x) — zero test
+int test_eq_zero(int x) {
+    if (!x) return 0;
+    return bar(x);
+}
+
+// Pattern D: null pointer check
+int test_null_ptr(int *p) {
+    if (p) return *p;
+    return -1;
+}
+
+=== c8080 assembly (i8080 syntax) ===
+
+test_ne_zero:
+    SHLD __a_1_test_ne_zero   ; 16cc, 3B  (static stack store)
+    MOV  A, H                 ;  4cc, 1B
+    ORA  L                    ;  4cc, 1B
+    JNZ  bar                  ; 10cc, 3B
+    LXI  H, 0                ; 10cc, 3B
+    RET                       ; 10cc, 1B
+; Total: 54cc, 12B
+
+test_eq_zero:
+    SHLD __a_1_test_eq_zero   ; 16cc, 3B
+    MOV  A, H                 ;  4cc, 1B
+    ORA  L                    ;  4cc, 1B
+    JNZ  l_2                  ; 10cc, 3B
+    LXI  H, 0                ; 10cc, 3B
+    RET                       ; 10cc, 1B
+l_2:
+    JMP  bar                  ; 10cc, 3B
+; Total: 64cc, 15B (non-zero path); 54cc, 12B (zero path)
+
+test_null_ptr:
+    SHLD __a_1_test_null_ptr  ; 16cc, 3B
+    MOV  A, H                 ;  4cc, 1B
+    ORA  L                    ;  4cc, 1B
+    JZ   l_6                  ; 10cc, 3B
+    MOV  E, M                 ;  8cc, 1B
+    INX  H                    ;  6cc, 1B
+    MOV  D, M                 ;  8cc, 1B
+    XCHG                      ;  4cc, 1B
+    RET                       ; 10cc, 1B
+l_6:
+    LXI  H, 0xFFFF           ; 10cc, 3B
+    RET                       ; 10cc, 1B
+; Total: 90cc, 16B (non-null); 54cc, 12B (null)
+
+c8080 stats:
+  test_ne_zero:  54cc worst, 12B
+  test_eq_zero:  64cc worst, 15B
+  test_null_ptr: 90cc worst, 16B
+
+=== v6llvmc assembly ===
+
+test_ne_zero:
+    MOV  D, H                 ;  8cc, 1B
+    MOV  E, L                 ;  8cc, 1B
+    LXI  H, 0                ; 10cc, 3B  (return value 0)
+    MOV  A, D                 ;  8cc, 1B
+    ORA  E                    ;  4cc, 1B  ← O27
+    JZ   .LBB0_2              ; 10cc, 3B
+    MOV  H, D                 ;  8cc, 1B
+    MOV  L, E                 ;  8cc, 1B
+    JMP  bar                  ; 10cc, 3B
+.LBB0_2:
+    RET                       ; 10cc, 1B
+; Total: 84cc, 16B (non-zero); 58cc, 11B (zero)
+
+test_eq_zero:
+    MOV  D, H                 ;  8cc, 1B
+    MOV  E, L                 ;  8cc, 1B
+    LXI  H, 0                ; 10cc, 3B
+    MOV  A, D                 ;  8cc, 1B
+    ORA  E                    ;  4cc, 1B  ← O27
+    JZ   .LBB1_2              ; 10cc, 3B
+    MOV  H, D                 ;  8cc, 1B
+    MOV  L, E                 ;  8cc, 1B
+    JMP  bar                  ; 10cc, 3B
+.LBB1_2:
+    RET                       ; 10cc, 1B
+; Total: 84cc, 16B (non-zero); 58cc, 11B (zero)
+
+test_null_ptr:
+    LXI  D, 0xFFFF           ; 10cc, 3B
+    MOV  A, H                 ;  8cc, 1B
+    ORA  L                    ;  4cc, 1B  ← O27
+    JZ   .LBB3_2              ; 10cc, 3B
+    MOV  E, M                 ;  8cc, 1B
+    INX  H                    ;  6cc, 1B
+    MOV  D, M                 ;  8cc, 1B
+.LBB3_2:
+    MOV  H, D                 ;  8cc, 1B
+    MOV  L, E                 ;  8cc, 1B
+    RET                       ; 10cc, 1B
+; Total: 80cc, 14B (non-null); 58cc, 11B (null)
+
+v6llvmc stats:
+  test_ne_zero:  84cc worst, 16B
+  test_eq_zero:  84cc worst, 16B
+  test_null_ptr: 80cc worst, 14B
+
+=== Improvement (O27 vs old v6llvmc) ===
+
+Old v6llvmc (before O27) used MVI+CMP with MBB splitting:
+  test_ne_zero:  old 84cc, 19B → new 84cc, 16B  (saved 3B)
+  test_eq_zero:  old 84cc, 19B → new 84cc, 16B  (saved 3B)
+  test_null_ptr: old 80cc, 17B → new 80cc, 14B  (saved 3B)
+
+Per zero-comparison instance: saved 3 instructions (MVI A,0 + CMP + Jcc = 6B)
+replaced by 2 instructions (MOV A,Hi + ORA Lo = 2B), net: -4B per instance.
+Also eliminated 1 MBB split per instance (cleaner CFG).
+
+Note: In the while loop (test_while_loop), the loop back-edge comparison
+also uses MOV+ORA instead of MVI+CMP, saving 4B per loop zero-test.

@@ -809,6 +809,20 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     MCRegister LhsLo = RI.getSubReg(LhsReg, V6C::sub_lo);
     MCRegister LhsHi = RI.getSubReg(LhsReg, V6C::sub_hi);
 
+    // --- O27: Fast zero-test path (MOV A, Hi; ORA Lo; Jcc) ---
+    // When comparing against immediate 0, use the 8080 idiom:
+    //   MOV A, Hi; ORA Lo → Z flag set iff (Hi|Lo)==0, i.e. pair==0
+    // This avoids the MBB split and saves 10B+24cc per instance.
+    if (RhsOp.isImm() && RhsOp.getImm() == 0) {
+      unsigned JccOpc = (CC == V6CCC::COND_Z) ? V6C::JZ : V6C::JNZ;
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(LhsHi);
+      BuildMI(MBB, MI, DL, get(V6C::ORAr), V6C::A)
+          .addReg(V6C::A).addReg(LhsLo);
+      BuildMI(MBB, MI, DL, get(JccOpc)).addMBB(Target);
+      MI.eraseFromParent();
+      return true;
+    }
+
     // Build MVI operands: for plain integers, mask directly.
     // For global addresses, use target flags (MO_LO8/MO_HI8) — the
     // AsmPrinter wraps them in V6CMCExpr for lo8/hi8 assembly output.
