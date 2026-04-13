@@ -37,7 +37,7 @@ exit:
 ;
 ; CHECK-LABEL: dcr_a_jz:
 ; CHECK:       DCR A
-; CHECK-NEXT:  JZ
+; CHECK-NEXT:  RZ
 ; CHECK-NOT:   ORA
 ; CHECK-NOT:   CPI
 define void @dcr_a_jz(i8 %n) {

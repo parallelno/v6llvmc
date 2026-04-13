@@ -15,6 +15,9 @@
 // 3. Dead block removal: blocks with no predecessors (after other opts)
 //    are removed.
 //
+// 4. Conditional return folding: Jcc to a block containing only RET is
+//    replaced with the corresponding Rcc instruction (e.g. JZ→RZ).
+//
 //===----------------------------------------------------------------------===//
 
 #include "V6C.h"
@@ -51,6 +54,7 @@ public:
 private:
   bool removeRedundantJMP(MachineFunction &MF);
   bool invertConditionalBranch(MachineFunction &MF);
+  bool foldConditionalReturns(MachineFunction &MF);
   bool removeDeadBlocks(MachineFunction &MF);
 
   /// Get the inverted opcode for a conditional jump, or 0 if not invertible.
@@ -147,6 +151,61 @@ bool V6CBranchOpt::invertConditionalBranch(MachineFunction &MF) {
   return Changed;
 }
 
+/// Map Jcc opcode to corresponding Rcc opcode, or 0 if not a Jcc.
+static unsigned getConditionalReturn(unsigned JccOpc) {
+  switch (JccOpc) {
+  case V6C::JZ:  return V6C::RZ;
+  case V6C::JNZ: return V6C::RNZ;
+  case V6C::JC:  return V6C::RC;
+  case V6C::JNC: return V6C::RNC;
+  case V6C::JPE: return V6C::RPE;
+  case V6C::JPO: return V6C::RPO;
+  case V6C::JP:  return V6C::RP;
+  case V6C::JM:  return V6C::RM;
+  default: return 0;
+  }
+}
+
+/// Return true if MBB contains only RET (ignoring debug instructions).
+static bool isReturnOnlyBlock(const MachineBasicBlock &MBB) {
+  for (const MachineInstr &MI : MBB) {
+    if (MI.isDebugInstr())
+      continue;
+    return MI.getOpcode() == V6C::RET;
+  }
+  return false; // empty block
+}
+
+/// Replace Jcc .Lret with Rcc when .Lret contains only RET.
+bool V6CBranchOpt::foldConditionalReturns(MachineFunction &MF) {
+  bool Changed = false;
+  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
+
+  for (MachineBasicBlock &MBB : MF) {
+    for (auto I = MBB.terminators().begin(), E = MBB.terminators().end();
+         I != E; ++I) {
+      unsigned RccOpc = getConditionalReturn(I->getOpcode());
+      if (!RccOpc)
+        continue;
+
+      MachineBasicBlock *Target = I->getOperand(0).getMBB();
+      if (!isReturnOnlyBlock(*Target))
+        continue;
+
+      // Replace Jcc with Rcc.
+      BuildMI(MBB, *I, I->getDebugLoc(), TII.get(RccOpc));
+
+      // Update CFG: remove the edge to the RET block.
+      MBB.removeSuccessor(Target);
+
+      I->eraseFromParent();
+      Changed = true;
+      break; // terminators changed, move to next MBB
+    }
+  }
+  return Changed;
+}
+
 /// Remove basic blocks that have no predecessors (dead code).
 /// Skip the entry block.
 bool V6CBranchOpt::removeDeadBlocks(MachineFunction &MF) {
@@ -179,6 +238,7 @@ bool V6CBranchOpt::runOnMachineFunction(MachineFunction &MF) {
   bool Changed = false;
   Changed |= invertConditionalBranch(MF);
   Changed |= removeRedundantJMP(MF);
+  Changed |= foldConditionalReturns(MF);
   Changed |= removeDeadBlocks(MF);
   return Changed;
 }

@@ -71,7 +71,7 @@
 | O27 | i16 Zero-Test (MOV+ORA) | V6C | 24cc, 10B | Very high | Low-Med | Low | None | [x] |
 | O28 | Branch Threading (JMP-only blocks) | V6C | 10cc, 3B | Medium | Low | Very Low | O27 enables | [ ] |
 | O29 | Cross-BB Immediate Propagation | V6C | 7cc, 1B | Medium | Low-Med | Low | O13 done | [ ] |
-| O30 | Conditional Return (Jcc RET→Rcc) | V6C | 3B, 1 instr | Med-High | Low | Very Low | O27 done | [ ] |
+| O30 | Conditional Return (Jcc RET→Rcc) | V6C | 3B, 1 instr | Med-High | Low | Very Low | O27 done | [x] |
 | O31 | Dead PHI-Constant Elimination | V6C | 9-11B, 40-60cc | Very high | Medium | Low | O27 done | [x] |
 
 ### Recommended order
@@ -92,7 +92,7 @@
 11. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines
 12. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
 13. **O29** — cross-BB immediate propagation, 1B+7cc per redundant MVI, ~30 lines
-14. **O30** — conditional return peephole (Jcc RET → Rcc), 3B per instance, ~30 lines
+14. ~~**O30** — conditional return peephole (Jcc RET → Rcc), 3B per instance, ~30 lines~~ ✅
 15. ~~**O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:

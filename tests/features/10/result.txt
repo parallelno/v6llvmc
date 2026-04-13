@@ -1,0 +1,152 @@
+== O30: Conditional Return Peephole (Jcc RET → Rcc) ==
+
+== C Test Case ==
+
+extern int bar(int x);
+
+int test_ne_zero(int x) {
+    if (x) return bar(x);
+    return 0;
+}
+
+int test_eq_zero(int x) {
+    if (!x) return 0;
+    return bar(x);
+}
+
+int test_multi_cond(int x) {
+    if (x == 1) return 10;
+    if (x == 2) return 20;
+    return bar(x);
+}
+
+int test_null_guard(int *p) {
+    if (p) return *p;
+    return -1;
+}
+
+== c8080 ASM (i8080 mnemonics, functions only) ==
+
+test_ne_zero:                           ; 12B
+    SHLD __a_1                          ; 3B 20cc
+    MOV  A, H                           ; 1B  8cc
+    ORA  L                              ; 1B  4cc
+    JNZ  bar                            ; 3B 12cc
+    LXI  HL, 0                          ; 3B 12cc
+    RET                                 ; 1B 12cc
+
+test_eq_zero:                           ; 15B
+    SHLD __a_1                          ; 3B 20cc
+    MOV  A, H                           ; 1B  8cc
+    ORA  L                              ; 1B  4cc
+    JNZ  l_2                            ; 3B 12cc
+    LXI  HL, 0                          ; 3B 12cc
+    RET                                 ; 1B 12cc
+l_2:
+    JMP  bar                            ; 3B 12cc
+
+test_multi_cond:                        ; 33B
+    SHLD __a_1                          ; 3B 20cc
+    LXI  DE, 1                          ; 3B 12cc
+    CALL __o_xor_16                     ; 3B 24cc
+    JNZ  l_4                            ; 3B 12cc
+    LXI  HL, 10                         ; 3B 12cc
+    RET                                 ; 1B 12cc
+l_4:
+    LHLD __a_1                          ; 3B 20cc
+    LXI  DE, 2                          ; 3B 12cc
+    CALL __o_xor_16                     ; 3B 24cc
+    JNZ  l_6                            ; 3B 12cc
+    LXI  HL, 20                         ; 3B 12cc
+    RET                                 ; 1B 12cc
+l_6:
+    LHLD __a_1                          ; 3B 20cc
+    JMP  bar                            ; 3B 12cc
+
+test_null_guard:                        ; 14B
+    SHLD __a_1                          ; 3B 20cc
+    MOV  A, H                           ; 1B  8cc
+    ORA  L                              ; 1B  4cc
+    JZ   l_8                            ; 3B 12cc
+    MOV  E, M                           ; 1B  8cc
+    INX  HL                             ; 1B  8cc
+    MOV  D, M                           ; 1B  8cc
+    XCHG                                ; 1B  4cc
+    RET                                 ; 1B 12cc
+l_8:
+    LXI  HL, 0xFFFF                     ; 3B 12cc
+    RET                                 ; 1B 12cc
+
+c8080 stats: test_ne_zero 12B 68cc | test_eq_zero 15B 68cc | test_multi_cond 33B ~184cc | test_null_guard 14B 76cc
+Total: 74B
+
+== v6llvmc ASM ==
+
+test_ne_zero:                           ; 6B
+    MOV  A, H                           ; 1B  4cc
+    ORA  L                              ; 1B  4cc
+    RZ                                  ; 1B 16cc (taken) / 8cc (not taken)
+    JMP  bar                            ; 3B 12cc
+
+test_eq_zero:                           ; 6B
+    MOV  A, H                           ; 1B  4cc
+    ORA  L                              ; 1B  4cc
+    RZ                                  ; 1B 16cc (taken) / 8cc (not taken)
+    JMP  bar                            ; 3B 12cc
+
+test_multi_cond:                        ; 27B
+    MOV  D, H                           ; 1B  8cc
+    MOV  E, L                           ; 1B  8cc
+    LXI  HL, 0xa                        ; 3B 12cc
+    MVI  A, 1                           ; 2B  8cc
+    CMP  E                              ; 1B  4cc
+    JNZ  .LBB2_1                        ; 3B 12cc
+    MVI  A, 0                           ; 2B  8cc
+    CMP  D                              ; 1B  4cc
+    RZ                                  ; 1B 16cc (taken) / 8cc (not taken)
+.LBB2_1:
+    MVI  A, 2                           ; 2B  8cc
+    CMP  E                              ; 1B  4cc
+    JNZ  .LBB2_3                        ; 3B 12cc
+    MVI  A, 0                           ; 2B  8cc
+    CMP  D                              ; 1B  4cc
+    JZ   .LBB2_2                        ; 3B 12cc
+.LBB2_3:
+    MOV  H, D                           ; 1B  8cc
+    MOV  L, E                           ; 1B  8cc
+    JMP  bar                            ; 3B 12cc
+.LBB2_2:
+    LXI  HL, 0x14                       ; 3B 12cc
+    RET                                 ; 1B 12cc
+
+test_null_guard:                        ; 12B
+    LXI  DE, 0xFFFF                     ; 3B 12cc
+    MOV  A, H                           ; 1B  4cc
+    ORA  L                              ; 1B  4cc
+    JZ   .LBB3_2                        ; 3B 12cc
+    MOV  E, M                           ; 1B  8cc
+    INX  HL                             ; 1B  8cc
+    MOV  D, M                           ; 1B  8cc
+.LBB3_2:
+    MOV  H, D                           ; 1B  8cc
+    MOV  L, E                           ; 1B  8cc
+    RET                                 ; 1B 12cc
+
+v6llvmc stats: test_ne_zero 6B 24cc | test_eq_zero 6B 24cc | test_multi_cond 27B ~80cc | test_null_guard 12B 68cc
+Total: 51B
+
+== Comparison ==
+
+| Function       | c8080  | v6llvmc | Savings |
+|----------------|--------|---------|---------|
+| test_ne_zero   | 12B    | 6B      | -6B (50%) |
+| test_eq_zero   | 15B    | 6B      | -9B (60%) |
+| test_multi_cond| 33B    | 27B     | -6B (18%) |
+| test_null_guard| 14B    | 12B     | -2B (14%) |
+| **Total**      | **74B**| **51B** | **-23B (31%)** |
+
+O30-specific savings (vs v6llvmc_old.asm):
+- test_ne_zero: 9B → 6B (-3B, JZ+RET block → RZ)
+- test_eq_zero: 9B → 6B (-3B, JZ+RET block → RZ)
+- test_multi_cond: 30B → 27B (-3B, first JZ+RET block → RZ)
+- test_null_guard: 12B → 12B (no change, RET block not RET-only)

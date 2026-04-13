@@ -12,7 +12,7 @@ define i16 @phi_zero_eq(i16 %x) {
 ; CHECK-NOT:   LXI
 ; CHECK:       MOV A, H
 ; CHECK-NEXT:  ORA L
-; CHECK-NEXT:  JZ
+; CHECK-NEXT:  RZ
 ; CHECK:       JMP bar
 entry:
   %cmp = icmp eq i16 %x, 0

@@ -4,9 +4,9 @@
 define void @ne_branch(i16 %a, i16 %b) {
 ; CHECK-LABEL: ne_branch:
 ; CHECK:       CMP
-; CHECK:       J{{N?}}Z
+; CHECK:       {{J|R}}{{N?}}Z
 ; CHECK:       CMP
-; CHECK:       J{{N?}}Z
+; CHECK:       {{J|R}}{{N?}}Z
 ; CHECK-NOT:   XRA
 entry:
   %cmp = icmp ne i16 %a, %b

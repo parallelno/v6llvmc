@@ -8,7 +8,7 @@ define void @ne_zero(i16 %x) {
 ; CHECK-LABEL: ne_zero:
 ; CHECK:       MOV A,
 ; CHECK-NEXT:  ORA
-; CHECK-NEXT:  J
+; CHECK-NEXT:  {{J|R}}
 ; CHECK-NOT:   MVI A, 0
 entry:
   %cmp = icmp ne i16 %x, 0
@@ -27,7 +27,7 @@ define void @eq_zero(i16 %x) {
 ; CHECK-LABEL: eq_zero:
 ; CHECK:       MOV A,
 ; CHECK-NEXT:  ORA
-; CHECK-NEXT:  J
+; CHECK-NEXT:  {{J|R}}
 ; CHECK-NOT:   MVI A, 0
 entry:
   %cmp = icmp eq i16 %x, 0
@@ -63,7 +63,7 @@ define void @ne_null_ptr(ptr %p) {
 ; CHECK-LABEL: ne_null_ptr:
 ; CHECK:       MOV A,
 ; CHECK-NEXT:  ORA
-; CHECK-NEXT:  J
+; CHECK-NEXT:  {{J|R}}
 ; CHECK-NOT:   MVI A, 0
 entry:
   %cmp = icmp ne ptr %p, null
