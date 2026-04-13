@@ -1,0 +1,146 @@
+== O31: Dead PHI-Constant Elimination ==
+
+== C test case ==
+
+int bar(int x) { return x + 1; }  // extern in v6llvmc, concrete in c8080
+
+int test_ne_zero(int x) {
+    if (x)
+        return bar(x);
+    return 0;
+}
+
+int test_eq_zero(int x) {
+    if (!x)
+        return 0;
+    return bar(x);
+}
+
+int test_const_42(int x) {
+    if (x == 42)
+        return 42;
+    return bar(x);
+}
+
+int test_different_const(int x) {
+    if (x == 1)
+        return 0;
+    return bar(x);
+}
+
+== c8080 assembly (Z80 → i8080 translation) ==
+
+test_ne_zero:                          ; if (x) return bar(x); return 0;
+    SHLD __a_1_test_ne_zero     ; 3B  20cc  save x to static
+    MOV  A, H                   ; 1B   8cc
+    ORA  L                      ; 1B   4cc
+    JNZ  bar                    ; 3B  12cc
+    LXI  HL, 0                  ; 3B  12cc
+    RET                         ; 1B  12cc
+                                ; Total: 12B, 68cc (taken), 56cc (return 0)
+
+test_eq_zero:                          ; if (!x) return 0; return bar(x);
+    SHLD __a_1_test_eq_zero     ; 3B  20cc  save x to static
+    MOV  A, H                   ; 1B   8cc
+    ORA  L                      ; 1B   4cc
+    JNZ  l_2                    ; 3B  12cc
+    LXI  HL, 0                  ; 3B  12cc
+    RET                         ; 1B  12cc
+l_2:
+    JMP  bar                    ; 3B  12cc
+                                ; Total: 15B, 68cc (return 0), 56cc (call bar)
+
+test_const_42:                         ; if (x == 42) return 42; return bar(x);
+    SHLD __a_1_test_const_42    ; 3B  20cc  save x to static
+    LXI  DE, 42                 ; 3B  12cc
+    CALL __o_xor_16             ; 3B  18cc  XOR comparison (destroys HL)
+    JNZ  l_4                    ; 3B  12cc
+    LXI  HL, 42                 ; 3B  12cc
+    RET                         ; 1B  12cc
+l_4:
+    LHLD __a_1_test_const_42    ; 3B  20cc  reload x from static
+    JMP  bar                    ; 3B  12cc
+                                ; Total: 22B, 86cc (return 42), 94cc (call bar)
+
+test_different_const:                  ; if (x == 1) return 0; return bar(x);
+    SHLD __a_1_test_different_const  ; 3B 20cc
+    LXI  DE, 1                  ; 3B  12cc
+    CALL __o_xor_16             ; 3B  18cc
+    JNZ  l_6                    ; 3B  12cc
+    LXI  HL, 0                  ; 3B  12cc
+    RET                         ; 1B  12cc
+l_6:
+    LHLD __a_1_test_different_const  ; 3B 20cc
+    JMP  bar                    ; 3B  12cc
+                                ; Total: 22B, 86cc (return 0), 94cc (call bar)
+
+c8080 stats:
+  test_ne_zero:         12B, 56-68cc
+  test_eq_zero:         15B, 56-68cc
+  test_const_42:        22B, 86-94cc  (uses __o_xor_16 helper: adds ~60cc)
+  test_different_const: 22B, 86-94cc  (uses __o_xor_16 helper: adds ~60cc)
+
+== v6llvmc assembly ==
+
+test_ne_zero:                          ; if (x) return bar(x); return 0;
+    MOV  A, H                   ; 1B   8cc
+    ORA  L                      ; 1B   4cc
+    JZ   .LBB0_2                ; 3B  12cc
+    JMP  bar                    ; 3B  12cc
+.LBB0_2:
+    RET                         ; 1B  12cc
+                                ; Total: 9B, 36cc (call bar), 36cc (return 0)
+
+test_eq_zero:                          ; if (!x) return 0; return bar(x);
+    MOV  A, H                   ; 1B   8cc
+    ORA  L                      ; 1B   4cc
+    JZ   .LBB1_2                ; 3B  12cc
+    JMP  bar                    ; 3B  12cc
+.LBB1_2:
+    RET                         ; 1B  12cc
+                                ; Total: 9B, 36cc (call bar), 36cc (return 0)
+
+test_const_42:                         ; if (x == 42) return 42; return bar(x);
+    MVI  A, 0x2a                ; 2B   8cc
+    CMP  L                      ; 1B   4cc
+    JNZ  .LBB2_1                ; 3B  12cc
+    MVI  A, 0                   ; 2B   8cc
+    CMP  H                      ; 1B   4cc
+    JZ   .LBB2_2                ; 3B  12cc
+.LBB2_1:
+    JMP  bar                    ; 3B  12cc
+.LBB2_2:
+    RET                         ; 1B  12cc
+                                ; Total: 16B, 48cc (return 42), 36cc (call bar early exit)
+
+test_different_const:                  ; if (x == 1) return 0; return bar(x);
+    MOV  D, H                   ; 1B   8cc  (negative: LXI 0 preserved)
+    MOV  E, L                   ; 1B   8cc
+    LXI  HL, 0                  ; 3B  12cc
+    MVI  A, 1                   ; 2B   8cc
+    CMP  E                      ; 1B   4cc
+    JNZ  .LBB3_1                ; 3B  12cc
+    MVI  A, 0                   ; 2B   8cc
+    CMP  D                      ; 1B   4cc
+    JZ   .LBB3_2                ; 3B  12cc
+.LBB3_1:
+    MOV  H, D                   ; 1B   8cc
+    MOV  L, E                   ; 1B   8cc
+    JMP  bar                    ; 3B  12cc
+.LBB3_2:
+    RET                         ; 1B  12cc
+                                ; Total: 23B, ~76cc (no optimization, different consts)
+
+v6llvmc stats:
+  test_ne_zero:         9B,  36cc
+  test_eq_zero:         9B,  36cc
+  test_const_42:        16B, 36-48cc
+  test_different_const: 23B, ~76cc  (negative test, no optimization)
+
+== Comparison (positive test functions only) ==
+
+| Function       | c8080     | v6llvmc (before) | v6llvmc (after) | Savings vs before |
+|----------------|-----------|------------------|-----------------|-------------------|
+| test_ne_zero   | 12B, 68cc | 16B, ~72cc       | 9B, 36cc        | -7B, -36cc        |
+| test_eq_zero   | 15B, 68cc | 16B, ~72cc       | 9B, 36cc        | -7B, -36cc        |
+| test_const_42  | 22B, 94cc | 21B, ~80cc       | 16B, 48cc       | -5B, -32cc        |

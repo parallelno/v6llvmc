@@ -76,6 +76,10 @@ public:
     return false;
   }
 
+  void addPreRegAlloc() override {
+    addPass(createV6CDeadPhiConstPass());
+  }
+
   void addPreEmitPass() override {
     // Post-RA optimization pipeline per design §8.1 Phase 3.
     // Order: AccumulatorPlanning → Peephole → LoadStoreOpt → XchgOpt →

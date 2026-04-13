@@ -21,6 +21,7 @@ add_llvm_target(V6CCodeGen
   V6CAccumulatorPlanning.cpp
   V6CAsmPrinter.cpp
   V6CBranchOpt.cpp
+  V6CDeadPhiConst.cpp
   V6CFrameLowering.cpp
   V6CISelDAGToDAG.cpp
   V6CISelLowering.cpp
