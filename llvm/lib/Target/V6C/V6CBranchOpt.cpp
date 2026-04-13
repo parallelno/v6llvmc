@@ -22,6 +22,11 @@
 // 5. Conditional return folding: Jcc to a block containing only RET is
 //    replaced with the corresponding Rcc instruction (e.g. JZ→RZ).
 //
+// 6. Conditional return over RET: if a Jcc jumps over a fallthrough RET
+//    to its layout successor, replace Jcc+RET with the inverted Rcc.
+//    Example:  JZ .Lskip / RET / .Lskip:
+//           →  RNZ / .Lskip:
+//
 //===----------------------------------------------------------------------===//
 
 #include "V6C.h"
@@ -56,6 +61,7 @@ public:
   bool runOnMachineFunction(MachineFunction &MF) override;
 
 private:
+  bool invertConditionalOverRET(MachineFunction &MF);
   bool threadJMPOnlyBlocks(MachineFunction &MF);
   bool removeRedundantJMP(MachineFunction &MF);
   bool invertConditionalBranch(MachineFunction &MF);
@@ -249,6 +255,118 @@ static bool isReturnOnlyBlock(const MachineBasicBlock &MBB) {
   return false; // empty block
 }
 
+/// Look for the pattern:
+///   MBB: ... Jcc target [JMP retBB]
+///   retBB: RET                          (layout successor of MBB, RET-only)
+///   target: ...                         (layout successor of retBB)
+///
+/// Transform to:
+///   MBB: ... Rcc_inv                    (inverted conditional return)
+///   target: ...                         (falls through from MBB)
+///
+/// The retBB is removed (dead — no other predecessors).
+bool V6CBranchOpt::invertConditionalOverRET(MachineFunction &MF) {
+  bool Changed = false;
+  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
+  SmallVector<MachineBasicBlock *, 4> DeadBlocks;
+
+  for (MachineBasicBlock &MBB : MF) {
+    if (MBB.empty())
+      continue;
+
+    // Find Jcc (and optional JMP to RET block).
+    MachineInstr *JccMI = nullptr;
+    MachineInstr *JmpMI = nullptr;
+
+    MachineInstr &Last = MBB.back();
+    if (getInvertedJcc(Last.getOpcode())) {
+      // Pattern A: block ends with single Jcc.
+      JccMI = &Last;
+    } else if (Last.getOpcode() == V6C::JMP && Last.getOperand(0).isMBB()) {
+      // Pattern B: block ends with Jcc + JMP.
+      auto It = Last.getIterator();
+      if (It != MBB.begin()) {
+        --It;
+        if (getInvertedJcc(It->getOpcode())) {
+          JccMI = &*It;
+          JmpMI = &Last;
+        }
+      }
+    }
+
+    if (!JccMI || !JccMI->getOperand(0).isMBB())
+      continue;
+
+    MachineBasicBlock *JccTarget = JccMI->getOperand(0).getMBB();
+
+    // Layout successor of MBB must be a RET-only block.
+    MachineFunction::iterator NextIt = std::next(MBB.getIterator());
+    if (NextIt == MF.end())
+      continue;
+    MachineBasicBlock &RetBB = *NextIt;
+    if (!isReturnOnlyBlock(RetBB))
+      continue;
+
+    // If JMP present, it must target RetBB (the RET-only layout successor).
+    if (JmpMI && JmpMI->getOperand(0).getMBB() != &RetBB)
+      continue;
+
+    // RetBB must have exactly one predecessor (MBB).
+    if (RetBB.pred_size() != 1)
+      continue;
+
+    // JccTarget must be the layout successor of RetBB.
+    MachineFunction::iterator AfterRet = std::next(NextIt);
+    if (AfterRet == MF.end() || &*AfterRet != JccTarget)
+      continue;
+
+    // Don't fire if JccTarget is a JMP-only block — threading handles
+    // that case better (redirects Jcc to the final target directly).
+    {
+      auto FirstNonDbg = JccTarget->getFirstNonDebugInstr();
+      if (FirstNonDbg != JccTarget->end() &&
+          (FirstNonDbg->getOpcode() == V6C::JMP ||
+           FirstNonDbg->getOpcode() == V6C::V6C_TAILJMP)) {
+        auto NextInst = std::next(FirstNonDbg);
+        while (NextInst != JccTarget->end() && NextInst->isDebugInstr())
+          ++NextInst;
+        if (NextInst == JccTarget->end())
+          continue; // JMP-only block — let threading handle it
+      }
+    }
+
+    // Map inverted Jcc → Rcc.
+    unsigned InvOpc = getInvertedJcc(JccMI->getOpcode());
+    unsigned RccOpc = getConditionalReturn(InvOpc);
+    if (!RccOpc)
+      continue;
+
+    // Replace with Rcc_inv.
+    BuildMI(MBB, *JccMI, JccMI->getDebugLoc(), TII.get(RccOpc));
+
+    // Remove old instructions.
+    if (JmpMI)
+      JmpMI->eraseFromParent();
+    JccMI->eraseFromParent();
+
+    // Remove successor edge to RetBB.
+    MBB.removeSuccessor(&RetBB);
+
+    // RetBB is now dead.
+    DeadBlocks.push_back(&RetBB);
+    Changed = true;
+  }
+
+  // Remove dead RET blocks.
+  for (MachineBasicBlock *Dead : DeadBlocks) {
+    while (!Dead->succ_empty())
+      Dead->removeSuccessor(Dead->succ_begin());
+    Dead->eraseFromParent();
+  }
+
+  return Changed;
+}
+
 /// Replace Jcc .Lret with Rcc when .Lret contains only RET.
 bool V6CBranchOpt::foldConditionalReturns(MachineFunction &MF) {
   bool Changed = false;
@@ -311,6 +429,7 @@ bool V6CBranchOpt::runOnMachineFunction(MachineFunction &MF) {
     return false;
 
   bool Changed = false;
+  Changed |= invertConditionalOverRET(MF);
   Changed |= threadJMPOnlyBlocks(MF);
   Changed |= invertConditionalBranch(MF);
   Changed |= removeRedundantJMP(MF);

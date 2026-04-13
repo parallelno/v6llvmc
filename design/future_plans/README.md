@@ -38,6 +38,7 @@
 | O32 | XCHG in copyPhysReg (RA-Time DE↔HL Swap) | [O32_xchg_in_copy_phys_reg.md](O32_xchg_in_copy_phys_reg.md) | V6C |
 | O33 | XCHG Peephole Relaxation (Drop isRegLiveBefore Guard) | [O33_xchg_peephole_relaxation.md](O33_xchg_peephole_relaxation.md) | V6C |
 | O34 | SELECT_CC Zero-Test ISel Gap | [O34_select_cc_zero_test.md](O34_select_cc_zero_test.md) | V6C |
+| O35 | Conditional Return Over RET (Jcc-over-RET → Rcc) | [O35_conditional_return_over_ret.md](O35_conditional_return_over_ret.md) | V6C |
 
 ---
 
@@ -79,6 +80,7 @@
 | O32 | XCHG in copyPhysReg (RA-time swap) | V6C | 12cc, 1B | Med-High | Very Low | Very Low | None | [x] |
 | O33 | XCHG Peephole Relaxation | V6C | 12cc, 1B | Low | Very Low | Very Low | None | [ ] |
 | O34 | SELECT_CC Zero-Test ISel Gap | V6C | 15cc, 3B + spill savings | Medium | Low-Med | Low | O27 done | [x] |
+| O35 | Conditional Return Over RET (Jcc-over-RET → Rcc) | 18cc, 3B | Medium | Very Low | Very Low | O28 done | [x] |
 
 ### Recommended order
 
@@ -98,11 +100,12 @@
 11. **O33** — XCHG peephole relaxation, drop isRegLiveBefore guard, ~10 lines
 12. ~~**O34** — SELECT_CC zero-test ISel gap, 3B+15cc + spill cascade savings, ~30 lines~~ ✅
 13. ~~**O28** — branch threading through JMP-only blocks, 3B+10cc, synergy with O27, ~25 lines~~ ✅
-14. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines
-15. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
-16. **O29** — cross-BB immediate propagation, 1B+7cc per redundant MVI, ~30 lines
-17. ~~**O30** — conditional return peephole (Jcc RET → Rcc), 3B per instance, ~30 lines~~ ✅
-18. ~~**O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines~~ ✅
+14. **O35** — conditional return over RET (Jcc-over-RET → Rcc), 3B per instance, ~20 lines
+15. **O25** — LXI 16-bit value combining, extends O13 tracking, ~40 lines
+16. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
+17. **O29** — cross-BB immediate propagation, 1B+7cc per redundant MVI, ~30 lines
+18. ~~**O30** — conditional return peephole (Jcc RET → Rcc), 3B per instance, ~30 lines~~ ✅
+19. ~~**O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines

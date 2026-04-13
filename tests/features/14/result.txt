@@ -1,0 +1,87 @@
+# O35: Conditional Return Over RET (Jcc-over-RET → Rcc)
+## Feature test: tests/features/14/
+
+## C Test Case (test_two_arg_tailcall — primary O35 pattern)
+
+```c
+extern int bar(int x);
+
+int test_two_arg_tailcall(int x, int y) {
+    if (x == 0) return bar(y);
+    return 0;
+}
+```
+
+## c8080 Assembly (Z80 → i8080 translation)
+
+```asm
+test_two_arg_tailcall:
+    SHLD  __a_2                 ; 3B, 20cc  store y
+    LHLD  __a_1                 ; 3B, 20cc  load x
+    MOV   A, H                  ; 1B, 8cc
+    ORA   L                     ; 1B, 4cc
+    JNZ   l_0                   ; 3B, 12cc  if x != 0, goto l_0
+    LHLD  __a_2                 ; 3B, 20cc  load y
+    JMP   bar                   ; 3B, 12cc  tail call bar(y)
+l_0:
+    LXI   HL, 0                 ; 3B, 12cc  return 0
+    RET                         ; 1B, 12cc
+```
+
+c8080 stats:
+- Return path (x != 0):  8B executed, 56cc (SHLD+LHLD+MOV+ORA+JNZ+LXI+RET)
+- Tail-call path (x == 0): 14B executed, 76cc (SHLD+LHLD+MOV+ORA+JNZ_notaken+LHLD+JMP)
+- Total code size: 21B
+
+## v6llvmc Assembly (with O35)
+
+```asm
+test_two_arg_tailcall:
+    MOV   B, H                  ; 1B, 8cc   save x.hi
+    MOV   C, L                  ; 1B, 8cc   save x.lo
+    LXI   HL, 0                 ; 3B, 12cc  return value 0
+    MOV   A, B                  ; 1B, 8cc
+    ORA   C                     ; 1B, 4cc   zero-test x
+    RNZ                         ; 1B, 12cc/6cc  return if x != 0
+.LBB0_1:
+    XCHG                        ; 1B, 4cc   y (DE) → HL
+    JMP   bar                   ; 3B, 12cc  tail call bar(y)
+```
+
+v6llvmc stats:
+- Return path (x != 0):  8B executed, 52cc (MOV+MOV+LXI+MOV+ORA+RNZ_taken)
+- Tail-call path (x == 0): 12B executed, 62cc (MOV+MOV+LXI+MOV+ORA+RNZ_not+XCHG+JMP)
+- Total code size: 12B
+
+## v6llvmc Assembly (without O35, branch-opt disabled)
+
+```asm
+test_two_arg_tailcall:
+    MOV   B, H                  ; 1B, 8cc
+    MOV   C, L                  ; 1B, 8cc
+    LXI   HL, 0                 ; 3B, 12cc
+    MOV   A, B                  ; 1B, 8cc
+    ORA   C                     ; 1B, 4cc
+    JZ    .LBB0_1               ; 3B, 12cc  conditional branch
+    RET                         ; 1B, 12cc  return 0
+.LBB0_1:
+    XCHG                        ; 1B, 4cc
+    JMP   bar                   ; 3B, 12cc
+```
+
+Without O35 stats:
+- Return path (x != 0):  11B executed, 64cc (MOV+MOV+LXI+MOV+ORA+JZ_notaken+RET)
+- Tail-call path (x == 0): 14B executed, 68cc (MOV+MOV+LXI+MOV+ORA+JZ_taken+XCHG+JMP)
+- Total code size: 15B
+
+## O35 Improvement
+
+| Metric          | Without O35 | With O35 | Savings |
+|-----------------|-------------|----------|---------|
+| Code size       | 15B         | 12B      | 3B      |
+| Return path cc  | 64cc        | 52cc     | 12cc    |
+| Tail-call path  | 68cc        | 62cc     | 6cc     |
+
+O35 eliminates `JZ` (3B) + `RET` (1B) = 4B and replaces with `RNZ` (1B) = 3B savings.
+Return path: saves 18cc (JZ not-taken 12cc + RET 12cc → RNZ taken 12cc).
+Tail-call path: saves 6cc (JZ taken 12cc → RNZ not-taken 6cc).
