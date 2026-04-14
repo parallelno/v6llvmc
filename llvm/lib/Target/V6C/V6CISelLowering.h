@@ -62,6 +62,9 @@ public:
   EmitInstrWithCustomInserter(MachineInstr &MI,
                               MachineBasicBlock *BB) const override;
 
+  EVT getSetCCResultType(const DataLayout &DL, LLVMContext &C,
+                         EVT VT) const override;
+
 private:
   SDValue LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv,
                                bool isVarArg,

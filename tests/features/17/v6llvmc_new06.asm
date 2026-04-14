@@ -17,15 +17,9 @@ test_two_cond_tailcall:                 ; @test_two_cond_tailcall
 test_simple_zero_check:                 ; @test_simple_zero_check
 ; %bb.0:
 	ORA	A
-	JZ	.LBB1_2
-; %bb.1:
-	LXI	HL, 1
-	JMP	.LBB1_3
-.LBB1_2:
-	LXI	HL, 0
-.LBB1_3:
-	MOV	A, L
-	ANI	1
+	RZ
+.LBB1_1:
+	MVI	A, 1
 	RET
                                         ; -- End function
 	.globl	test_nz_branch                  ; -- Begin function test_nz_branch

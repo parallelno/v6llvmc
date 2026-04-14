@@ -38,6 +38,10 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
 
   setStackPointerRegisterToSaveRestore(V6C::SP);
 
+  // Boolean values from setcc are exactly 0 or 1 in an i8 register.
+  setBooleanContents(ZeroOrOneBooleanContent);
+  setBooleanVectorContents(ZeroOrOneBooleanContent);
+
   // --- Type legalization ---
 
   // i8: Legal via TableGen patterns.
@@ -175,6 +179,15 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
 
   // Enable DAG combine for i16 ADD → DAD optimization.
   setTargetDAGCombine(ISD::ADD);
+}
+
+//===----------------------------------------------------------------------===//
+// getSetCCResultType — booleans are i8 on V6C (not the default i16 pointer)
+//===----------------------------------------------------------------------===//
+
+EVT V6CTargetLowering::getSetCCResultType(const DataLayout &DL,
+                                           LLVMContext &C, EVT VT) const {
+  return MVT::i8;
 }
 
 //===----------------------------------------------------------------------===//
