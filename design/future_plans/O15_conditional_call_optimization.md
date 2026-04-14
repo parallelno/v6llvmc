@@ -56,3 +56,15 @@ and carefully handling result register COPYs.
 
 Low. Both `JNZ target / CALL fn / target:` and `CNZ fn` have identical
 semantics. Only applies when the skipped block contains just the call.
+
+## IPRA Compatibility
+
+O39 enabled IPRA by default. The ordinary `CALL` MachineInstr carries a
+register mask operand (added by `LowerCall`) that IPRA narrows to the callee's
+true clobber set. When the peephole replaces `Jcc + CALL` with a conditional
+call, it **must copy the register mask operand** from the original `CALL` to
+the new `CNZ`/`CZ`/etc. If the mask is not copied, the conditional call will
+lack IPRA data and fall back to the conservative all-clobber default, losing
+the spill-elimination benefit for that call site.
+
+See [O39 plan](../plan_ipra_integration.md) §7 Future Enhancements.

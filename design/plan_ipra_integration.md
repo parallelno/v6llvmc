@@ -280,11 +280,15 @@ features even need to act.
 
 ## 7. Future Enhancements
 
-- Add targeted MIR or llc coverage for recursive SCC cases once IPRA is working.
+- ~~Add targeted MIR or llc coverage for recursive SCC cases once IPRA is working.~~
+  Done — `tests/lit/CodeGen/V6C/ipra-recursive-scc.ll` covers mutual-recursion
+  SCC conservative behavior and contrasts it with leaf-call IPRA narrowing.
 - Consider adding a debug-only verifier check that V6C `CALL` instructions carry
   a register mask after instruction selection.
-- Revisit conditional-call peepholes for any missed IPRA exposure, even though
-  `CNZ`/`CZ` already avoid the hard-def issue.
+- When O15 (conditional-call peephole) is implemented, ensure it copies the
+  register mask operand from the original `CALL` to the new `CNZ`/`CZ`.
+  Without that, IPRA's narrowed per-call-site mask is lost and the conditional
+  call falls back to the conservative all-clobber default.
 
 ## 8. References
 
