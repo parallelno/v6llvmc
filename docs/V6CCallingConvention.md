@@ -40,6 +40,12 @@ void m(uint8_t a, uint8_t b, uint8_t c, uint8_t d); // a → A, b → E, c → C
 
 **None.** All registers are caller-saved. With only 7 GPRs, callee-save obligations would force excessive spilling. Leaf functions benefit from full register availability; the call-graph optimizer can inline aggressively.
 
+At optimized levels, V6C also enables LLVM IPRA by default. This does **not**
+change the ABI: registers remain caller-saved at the calling-convention level.
+It only allows the compiler to prove that a particular direct callee leaves a
+subset of caller-saved registers untouched, reducing spill/reload traffic at
+that specific call site.
+
 ## Stack Frame Layout
 
 ```

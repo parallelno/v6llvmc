@@ -31,6 +31,8 @@ public:
 
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
 
+  bool useIPRA() const override { return true; }
+
   TargetTransformInfo getTargetTransformInfo(const Function &F) const override;
 
   TargetLoweringObjectFile *getObjFileLowering() const override {

@@ -2,6 +2,12 @@
 
 The V6C backend includes 10 custom optimization passes targeting the specific constraints of the Intel 8080 architecture. Each pass is individually toggleable via a command-line flag.
 
+In addition to these custom passes, the target now enables LLVM's built-in
+interprocedural register allocation (IPRA) by default at optimized levels.
+IPRA is not a V6C-specific pass, but it materially reduces call-site spill /
+reload traffic by narrowing preserved-register masks for direct calls when the
+callee's real register usage is known.
+
 ## Pass Pipeline Order
 
 1. **IR-level** (in `addIRPasses()`): V6CLoopPointerInduction → V6CTypeNarrowing

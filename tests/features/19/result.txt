@@ -1,0 +1,235 @@
+== O39: Interprocedural Register Allocation (IPRA) Integration ==
+
+Cycle counts below use docs/V6CInstructionTimings.md.
+
+=== C Test Case ===
+
+```c
+volatile int sink;
+
+__attribute__((noinline))
+void action_a(void) {
+    sink = 1;
+}
+
+__attribute__((noinline))
+void action_b(void) {
+    sink = 2;
+}
+
+int test_ne_same_bytes(int x) {
+    if (x != 0x4242) {
+        action_a();
+    }
+    action_b();
+    return x;
+}
+
+int test_eq_same_bytes(int x) {
+    if (x == 0x4242) {
+        action_a();
+    }
+    action_b();
+    return x;
+}
+```
+
+=== c8080 ASM (i8080 syntax, relevant funcs) ===
+
+```asm
+test_ne_same_bytes:
+    SHLD __a_1_test_ne_same_bytes
+    LXI  DE, 0x4242
+    CALL __o_xor_16
+    CNZ  action_a
+    CALL action_b
+    LHLD __a_1_test_ne_same_bytes
+    RET
+
+test_eq_same_bytes:
+    SHLD __a_1_test_eq_same_bytes
+    LXI  DE, 0x4242
+    CALL __o_xor_16
+    CZ   action_a
+    CALL action_b
+    LHLD __a_1_test_eq_same_bytes
+    RET
+
+__o_xor_16:
+    MOV  A, H
+    XRA  D
+    MOV  H, A
+    MOV  A, L
+    XRA  E
+    MOV  L, A
+    ORA  H
+    RET
+
+action_a:
+    LXI  HL, 1
+    SHLD sink
+    RET
+
+action_b:
+    LXI  HL, 2
+    SHLD sink
+    RET
+```
+
+c8080 stats (local function bodies):
+  action_a:              7B, 44cc
+  action_b:              7B, 44cc
+  __o_xor_16:            8B, 56cc
+  test_ne_same_bytes:   19B, 136cc
+  test_eq_same_bytes:   19B, 136cc
+
+=== v6llvmc ASM (before O39, baseline) ===
+
+```asm
+test_ne_same_bytes:
+    MOV  D, H
+    MOV  E, L
+    LXI  HL, 0xfffe
+    DAD  SP
+    SPHL
+    MOV  H, D
+    MOV  L, E
+    PUSH DE
+    XCHG
+    LXI  HL, 2
+    DAD  SP
+    MOV  M, E
+    INX  HL
+    MOV  M, D
+    XCHG
+    POP  DE
+    MVI  A, 0x42
+    CMP  L
+    JNZ  .LBB2_1
+    CMP  H
+    JZ   .LBB2_2
+.LBB2_1:
+    CALL action_a
+.LBB2_2:
+    CALL action_b
+    PUSH DE
+    LXI  HL, 2
+    DAD  SP
+    MOV  E, M
+    INX  HL
+    MOV  D, M
+    XCHG
+    POP  DE
+    XCHG
+    LXI  HL, 2
+    DAD  SP
+    SPHL
+    XCHG
+    RET
+
+test_eq_same_bytes:
+    MOV  D, H
+    MOV  E, L
+    LXI  HL, 0xfffe
+    DAD  SP
+    SPHL
+    MOV  H, D
+    MOV  L, E
+    PUSH DE
+    XCHG
+    LXI  HL, 2
+    DAD  SP
+    MOV  M, E
+    INX  HL
+    MOV  M, D
+    XCHG
+    POP  DE
+    MVI  A, 0x42
+    CMP  L
+    JNZ  .LBB3_2
+    CMP  H
+    JNZ  .LBB3_2
+    CALL action_a
+.LBB3_2:
+    CALL action_b
+    PUSH DE
+    LXI  HL, 2
+    DAD  SP
+    MOV  E, M
+    INX  HL
+    MOV  D, M
+    XCHG
+    POP  DE
+    XCHG
+    LXI  HL, 2
+    DAD  SP
+    SPHL
+    XCHG
+    RET
+```
+
+v6llvmc stats (before O39):
+  action_a:              7B, 44cc
+  action_b:              7B, 44cc
+  test_ne_same_bytes:   53B, 360cc
+  test_eq_same_bytes:   53B, 360cc
+
+=== v6llvmc ASM (after O39) ===
+
+```asm
+test_ne_same_bytes:
+    MOV  D, H
+    MOV  E, L
+    MVI  A, 0x42
+    CMP  E
+    JNZ  .LBB2_1
+    CMP  D
+    JZ   .LBB2_2
+.LBB2_1:
+    CALL action_a
+.LBB2_2:
+    CALL action_b
+    XCHG
+    RET
+
+test_eq_same_bytes:
+    MOV  D, H
+    MOV  E, L
+    MVI  A, 0x42
+    CMP  E
+    JNZ  .LBB3_2
+    CMP  D
+    JNZ  .LBB3_2
+    CALL action_a
+.LBB3_2:
+    CALL action_b
+    XCHG
+    RET
+```
+
+v6llvmc stats (after O39):
+  action_a:              7B, 44cc
+  action_b:              7B, 44cc
+  test_ne_same_bytes:   20B, 120cc
+  test_eq_same_bytes:   20B, 120cc
+
+=== Improvement Summary ===
+
+Per affected function (test_ne_same_bytes, test_eq_same_bytes):
+  Before: 53B, 360cc, stack frame + spill/reload around both direct calls
+  After:  20B, 120cc, no frame, no spill/reload, DE preserved across calls
+  Savings: 33B, 240cc, 13 instructions removed
+
+What changed:
+  1. CALL no longer advertises hard implicit defs for A/B/C/D/E/H/L/FLAGS.
+  2. V6CTargetMachine enables LLVM IPRA by default.
+  3. LowerCall's existing register mask becomes authoritative, so direct-call
+     sites use callee-specific preserved-register info.
+
+Observed behavior:
+  - Direct internal calls (action_a, action_b) stop forcing x out to the stack.
+  - Conservative behavior remains for unknown callees; the dedicated lit test
+    keeps an external-call case spilling with IPRA enabled.
+  - main still has unrelated stack traffic due to its own volatile local and
+    surrounding code shape; O39's target improvement is the live-across-call
+    preservation in the two test functions above.

@@ -429,7 +429,7 @@ def PCHL : V6CInstImplied<0xE9,
 // All registers clobbered (no callee-saved per design §6.1).
 // The register mask on the MachineInstr (added by LowerCall) handles clobbers;
 // Defs here just lists SP (for stack adjustment).
-let isCall = 1, Uses = [SP], Defs = [SP, A, B, C, D, E, H, L, FLAGS] in
+let isCall = 1, Uses = [SP], Defs = [SP] in
 def CALL : V6CInstImm16Opc<0xCD,
     (outs), (ins brtarget:$addr),
     "CALL\t$addr", []>;

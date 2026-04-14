@@ -23,7 +23,7 @@ The user provides a feature description — one of the files in
 
 ---
 
-## Phase 2 — Implementation Cycles
+## Phase 2 — Pause
 
 1. **Pause** — let the user review the plan, test cases, and baseline assembly before proceeding.
 
