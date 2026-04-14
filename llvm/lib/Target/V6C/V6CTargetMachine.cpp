@@ -8,6 +8,8 @@
 #include "V6CTargetObjectFile.h"
 #include "V6CTargetTransformInfo.h"
 
+#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/MC/TargetRegistry.h"
@@ -61,6 +63,43 @@ V6CTargetMachine::~V6CTargetMachine() = default;
 
 namespace {
 
+// Debug-only verifier: every V6C CALL MachineInstr must carry a register mask
+// operand after instruction selection.  Without a mask, IPRA cannot narrow
+// the call-site clobber set and the allocator silently under-spills.
+#ifndef NDEBUG
+class V6CCallRegMaskVerifier : public MachineFunctionPass {
+public:
+  static char ID;
+  V6CCallRegMaskVerifier() : MachineFunctionPass(ID) {}
+
+  StringRef getPassName() const override {
+    return "V6C CALL register-mask verifier (debug)";
+  }
+
+  bool runOnMachineFunction(MachineFunction &MF) override {
+    for (const MachineBasicBlock &MBB : MF) {
+      for (const MachineInstr &MI : MBB) {
+        if (!MI.isCall())
+          continue;
+        bool HasMask = false;
+        for (const MachineOperand &MO : MI.operands()) {
+          if (MO.isRegMask()) {
+            HasMask = true;
+            break;
+          }
+        }
+        assert(HasMask &&
+               "V6C CALL instruction missing register mask operand; "
+               "IPRA requires every call to carry a mask (see O39).");
+      }
+    }
+    return false;
+  }
+};
+
+char V6CCallRegMaskVerifier::ID = 0;
+#endif // NDEBUG
+
 class V6CPassConfig : public TargetPassConfig {
 public:
   V6CPassConfig(V6CTargetMachine &TM, PassManagerBase &PM)
@@ -79,6 +118,9 @@ public:
   void addPreRegAlloc() override {
     addPass(createV6CDeadPhiConstPass());
     addPass(createV6CConstantSinkingPass());
+#ifndef NDEBUG
+    addPass(new V6CCallRegMaskVerifier());
+#endif
   }
 
   void addPreEmitPass() override {

@@ -283,8 +283,12 @@ features even need to act.
 - ~~Add targeted MIR or llc coverage for recursive SCC cases once IPRA is working.~~
   Done — `tests/lit/CodeGen/V6C/ipra-recursive-scc.ll` covers mutual-recursion
   SCC conservative behavior and contrasts it with leaf-call IPRA narrowing.
-- Consider adding a debug-only verifier check that V6C `CALL` instructions carry
-  a register mask after instruction selection.
+- ~~Consider adding a debug-only verifier check that V6C `CALL` instructions carry
+  a register mask after instruction selection.~~
+  Done — `V6CCallRegMaskVerifier` in `V6CTargetMachine.cpp` runs pre-RA under
+  `#ifndef NDEBUG`, asserting every `isCall()` instruction has a `RegMask`
+  operand.  Activates with `-DLLVM_ENABLE_ASSERTIONS=ON`; compiled out in
+  release builds.
 - When O15 (conditional-call peephole) is implemented, ensure it copies the
   register mask operand from the original `CALL` to the new `CNZ`/`CZ`.
   Without that, IPRA's narrowed per-call-site mask is lost and the conditional
