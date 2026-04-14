@@ -25,59 +25,128 @@ unsigned char test_nz_branch(unsigned char a, unsigned char b) {
     return 0;
 }
 
+=== c8080 ASM (i8080 syntax, main funcs only) ===
+
+; Note: c8080 promotes unsigned char to int (16-bit).  All args passed
+; via static variables.  Converted from Z80 mnemonics.
+
+test_two_cond_tailcall:         ; 30B, 140cc
+    SHLD __a_2                  ; 20cc, 3B — store y
+    LHLD __a_1                  ; 20cc, 3B — load x
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    JNZ  bar                    ; 12cc, 3B — if (x) bar(x)
+    LHLD __a_2                  ; 20cc, 3B — load y
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    JZ   l_2                    ; 12cc, 3B — if (!y) goto ret0
+    LHLD __a_1                  ; 20cc, 3B — load x for bar(x)
+    JMP  bar                    ; 12cc, 3B
+l_2:
+    LXI  HL, 0                  ; 12cc, 3B
+    RET                         ; 12cc, 1B
+
+test_simple_zero_check:         ; 16B, 68cc
+    SHLD __a_1                  ; 20cc, 3B
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    JZ   l_4                    ; 12cc, 3B
+    LXI  HL, 1                  ; 12cc, 3B
+    RET                         ; 12cc, 1B
+l_4:
+    LXI  HL, 0                  ; 12cc, 3B
+    RET                         ; 12cc, 1B
+
+test_nz_branch:                 ; 19B, 96cc
+    SHLD __a_2                  ; 20cc, 3B
+    LHLD __a_1                  ; 20cc, 3B
+    MOV  A, H                   ; 8cc, 1B
+    ORA  L                      ; 4cc, 1B
+    JZ   l_6                    ; 12cc, 3B
+    LHLD __a_2                  ; 20cc, 3B
+    RET                         ; 12cc, 1B
+l_6:
+    LXI  HL, 0                  ; 12cc, 3B
+    RET                         ; 12cc, 1B
+
+c8080 stats:
+  test_two_cond_tailcall:  30B, 140cc
+  test_simple_zero_check:  16B, 68cc
+  test_nz_branch:          19B, 96cc
+
 === v6llvmc ASM (before O38 — baseline) ===
 
-test_two_cond_tailcall:         ; 13B (second-test path)
-    ORA  A                      ; 4cc, 1B — first test (x==0)
+test_two_cond_tailcall:         ; 20B, 60cc
+    ORA  A                      ; 4cc, 1B — test x (A=x on entry)
     JZ   .LBB0_1               ; 12cc, 3B
     JMP  bar                    ; 12cc, 3B
 .LBB0_1:
     MOV  A, E                   ; 8cc, 1B — copy y to A
-    ORA  A                      ; 4cc, 1B — zero-test y
+    ORA  A                      ; 4cc, 1B — test y
     JZ   .LBB0_4               ; 12cc, 3B
-    MVI  A, 0                   ; 8cc, 2B — A was clobbered
+    MVI  A, 0                   ; 8cc, 2B — bar(0) needs A=0
     JMP  bar                    ; 12cc, 3B
 .LBB0_4:
     MVI  A, 0                   ; 8cc, 2B — return 0
     RET                         ; 12cc, 1B
 
+test_simple_zero_check:         ; 14B, 68cc (unchanged by O38)
+    ORA  A                      ; 4cc, 1B
+    LXI  HL, 1                  ; 12cc, 3B
+    JMP  .LBB1_3               ; 12cc, 3B
+.LBB1_2:
+    LXI  HL, 0                  ; 12cc, 3B
+.LBB1_3:
+    MOV  A, L                   ; 8cc, 1B
+    ANI  1                      ; 8cc, 2B
+    RET                         ; 12cc, 1B
+
+test_nz_branch:                 ; 7B, 44cc (unchanged by O38)
+    ORA  A                      ; 4cc, 1B
+    JNZ  .LBB2_2               ; 12cc, 3B
+    MOV  E, A                   ; 8cc, 1B
+.LBB2_2:
+    MOV  A, E                   ; 8cc, 1B
+    RET                         ; 12cc, 1B
+
+v6llvmc stats (before O38):
+  test_two_cond_tailcall:  20B, 60cc
+  test_simple_zero_check:  14B, 68cc
+  test_nz_branch:          7B, 44cc
+
 === v6llvmc ASM (after O38) ===
 
-test_two_cond_tailcall:         ; 6B (second-test path)
-    ORA  A                      ; 4cc, 1B — first test (x==0)
+test_two_cond_tailcall:         ; 13B, 44cc
+    ORA  A                      ; 4cc, 1B — test x (A=x on entry)
     JZ   .LBB0_1               ; 12cc, 3B
     JMP  bar                    ; 12cc, 3B
 .LBB0_1:
-    XRA  A                      ; 4cc, 1B — sets A=0, sets Z from E
-    CMP  E                      ; 4cc, 1B — compares A(=0) with E
-    RZ                          ; 12cc, 1B — conditional return (JZ+RET folded)
+    XRA  A                      ; 4cc, 1B — A=0, sets flags
+    CMP  E                      ; 4cc, 1B — Z iff E==0 (A unchanged)
+    RZ                          ; 16/8cc, 1B — conditional return
     JMP  bar                    ; 12cc, 3B — A already 0 for bar(0)
+
+test_simple_zero_check:         ; 14B, 68cc (unchanged)
+test_nz_branch:                 ; 7B, 44cc (unchanged)
+
+v6llvmc stats (after O38):
+  test_two_cond_tailcall:  13B, 44cc
+  test_simple_zero_check:  14B, 68cc (unchanged)
+  test_nz_branch:          7B, 44cc (unchanged)
 
 === Improvement Summary ===
 
-Primary pattern (test_two_cond_tailcall, second-test path):
-  Bytes saved: 7B (13B → 6B)
-  Cycles saved: 24cc on NZ path, 16cc on Z path (worst case)
-  Eliminated: MOV A,E (8cc,1B), 2× MVI A,0 (16cc,4B)
-  Gained: XRA A (4cc,1B), CMP E (4cc,1B) — net +2B +8cc for compare
-  JZ+RET folded to RZ: saves 2B, 12cc (conditional return O23)
+Primary pattern (test_two_cond_tailcall):
+  Bytes saved: 7B (20B → 13B)
+  Cycles saved: 16cc (60cc → 44cc)
+  Eliminated: MOV A,E (8cc,1B), 2× MVI A,0 (16cc,4B), JZ+RET → RZ (12cc,2B)
+  Gained: XRA A (4cc,1B), CMP E (4cc,1B)
+
+vs c8080:
+  test_two_cond_tailcall:  v6llvmc 13B vs c8080 30B (17B smaller)
+  test_nz_branch:          v6llvmc 7B vs c8080 19B (12B smaller)
 
 Transformation chain:
   1. V6CPeephole: MOV A,E; ORA A; JZ → XRA A; CMP E; JZ
-     (condition: A is dead after branch OR fallthrough needs A=0)
   2. V6CBranchOpt: JZ + RET → RZ (conditional return folding)
-  3. V6CLoadImmCombine: XRA A seeds A=0 → downstream MVI A,0
-     eliminated on both paths via branch-seed propagation
-
-Pipeline ordering:
-  Peephole runs before LoadImmCombine so XRA A is visible as A=0
-  source. LoadImmCombine's seed propagation (Pattern D) recognizes
-  XRA A; CMP r; JZ/JNZ and propagates A=0 to all successors.
-
-New LoadImmCombine enhancements:
-  - XRA A tracking: A=0 for value-tracking (was treated as ALU clobber)
-  - Pattern D before ZeroProvenPath gate: seeds A=0 unconditionally
-  - Try 0 elimination: if register already holds target value, erase MVI
-
-test_simple_zero_check: unchanged (no MOV+ORA pattern)
-test_nz_branch: unchanged (no MOV+ORA pattern)
+  3. V6CLoadImmCombine: XRA A seeds A=0 → MVI A,0 eliminated on both paths

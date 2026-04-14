@@ -38,9 +38,9 @@ v6llvmc.c - test for this compiler
 ## result.txt structure
 - The C test case code.
 - c8080 asm, but only the main func and dependent funcs body converted from Z80 asm to i8080 asm.
-- c8080 stats: total CPU cc, length in bytes.
+- c8080 stats: worst CPU cycles, length in bytes for each function.
 - v6llvmc asm.
-- v6llvmc stats: total CPU cc, length in bytes.
+- v6llvmc stats: worst CPU cycles, length in bytes for each function.
 
 
 ## After verification each folder must have:

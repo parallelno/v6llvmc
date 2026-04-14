@@ -884,15 +884,11 @@ V6CTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     // Expand V6C_SELECT_CC into a diamond control flow:
     //   BB:
     //     ... (FLAGS set by preceding CMP)
-    //     Jcc TrueBB
-    //     JMP FalseBB
-    //   TrueBB:
+    //     J_inv SinkBB        ; branch on inverted condition (false path)
+    //   TrueBB:               ; fallthrough from BB (true path)
     //     ... = TrueVal
-    //     JMP SinkBB
-    //   FalseBB:
-    //     ... = FalseVal
-    //   SinkBB:
-    //     ... = PHI(TrueVal, FalseVal)
+    //   SinkBB:               ; fallthrough from TrueBB
+    //     ... = PHI(TrueVal from TrueBB, FalseVal from BB)
 
     const TargetInstrInfo &TII = *BB->getParent()->getSubtarget().getInstrInfo();
     DebugLoc DL = MI.getDebugLoc();
@@ -916,23 +912,23 @@ V6CTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
                    std::next(MachineBasicBlock::iterator(MI)), BB->end());
     SinkBB->transferSuccessorsAndUpdatePHIs(BB);
 
-    // BB: emit conditional branch to TrueBB, fallthrough to FalseBB=SinkBB.
-    // On the TRUE condition, jump to TrueBB. Otherwise fall through to SinkBB.
-    // Note: The condition code selects the "true" branch.
-    unsigned JccOpc;
+    // BB: emit inverted conditional branch to SinkBB (false path).
+    // Layout is BB → TrueBB → SinkBB, so TrueBB is the fallthrough.
+    // Branch on the INVERTED condition to SinkBB; fall through to TrueBB.
+    unsigned InvJccOpc;
     switch (CC) {
     default: llvm_unreachable("Unknown V6C condition code");
-    case V6CCC::COND_NZ: JccOpc = V6C::JNZ; break;
-    case V6CCC::COND_Z:  JccOpc = V6C::JZ;  break;
-    case V6CCC::COND_NC: JccOpc = V6C::JNC; break;
-    case V6CCC::COND_C:  JccOpc = V6C::JC;  break;
-    case V6CCC::COND_PO: JccOpc = V6C::JPO; break;
-    case V6CCC::COND_PE: JccOpc = V6C::JPE; break;
-    case V6CCC::COND_P:  JccOpc = V6C::JP;  break;
-    case V6CCC::COND_M:  JccOpc = V6C::JM;  break;
+    case V6CCC::COND_NZ: InvJccOpc = V6C::JZ;  break;
+    case V6CCC::COND_Z:  InvJccOpc = V6C::JNZ; break;
+    case V6CCC::COND_NC: InvJccOpc = V6C::JC;  break;
+    case V6CCC::COND_C:  InvJccOpc = V6C::JNC; break;
+    case V6CCC::COND_PO: InvJccOpc = V6C::JPE; break;
+    case V6CCC::COND_PE: InvJccOpc = V6C::JPO; break;
+    case V6CCC::COND_P:  InvJccOpc = V6C::JM;  break;
+    case V6CCC::COND_M:  InvJccOpc = V6C::JP;  break;
     }
 
-    BuildMI(BB, DL, TII.get(JccOpc)).addMBB(TrueBB);
+    BuildMI(BB, DL, TII.get(InvJccOpc)).addMBB(SinkBB);
     BB->addSuccessor(TrueBB);
     BB->addSuccessor(SinkBB);
 
