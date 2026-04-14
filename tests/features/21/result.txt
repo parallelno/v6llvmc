@@ -40,16 +40,16 @@ int main(void) {
 ## c8080 assembly (Z80 → i8080 mnemonics, function bodies only)
 
 ```asm
-use_val:
+use_val: ; 52 cc, 7 bytes
     SHLD    __a_1_use_val
     SHLD    sink_val
     RET
 
-get_val:
+get_val: ; 32 cc, 4 bytes
     LHLD    sink_val
     RET
 
-heavy_spill:
+heavy_spill: ; 436 cc, 61 byte
     SHLD    __a_2_heavy_spill
     LHLD    __a_1_heavy_spill
     INX     HL
@@ -78,7 +78,7 @@ heavy_spill:
     DAD     DE
     RET
 
-nested_calls:
+nested_calls: ; 312 cc, 43 bytes
     SHLD    __a_1_nested_calls
     CALL    get_val
     SHLD    nested_calls_a
@@ -99,7 +99,7 @@ nested_calls:
     DAD     DE
     RET
 
-main:
+main: ; 276 cc, 43 bytes
     LXI     HL, 0
     SHLD    __a_1_main
     SHLD    __a_2_main
@@ -131,15 +131,15 @@ main:
 ## v6llvmc assembly (with -mv6c-static-stack)
 
 ```asm
-use_val:
+use_val: ; 32 cc, 4 bytes
     SHLD    sink_val
     RET
 
-get_val:
+get_val: ; 32 cc, 4 bytes
     LHLD    sink_val
     RET
 
-heavy_spill:
+heavy_spill: ; 364 cc, 49 bytes
     MOV     B, D
     MOV     C, E
     SHLD    __v6c_ss.heavy_spill+2
@@ -174,7 +174,7 @@ heavy_spill:
     DAD     DE
     RET
 
-nested_calls:
+nested_calls: ; 212 cc, 28 bytes
     MOV     D, H
     MOV     E, L
     CALL    get_val

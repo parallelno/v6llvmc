@@ -533,6 +533,81 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       return true;
     }
 
+    // --- Path A: one operand is HL, DstReg != HL ---
+    // Use DAD + copy result out (via XCHG for DE, MOV pair for BC).
+    if (DstReg != V6C::HL &&
+        (LhsReg == V6C::HL || RhsReg == V6C::HL)) {
+      Register OtherReg = (LhsReg == V6C::HL) ? RhsReg : LhsReg;
+      bool HLDead = isRegDeadAfter(MBB, MI.getIterator(), V6C::HL, &RI);
+
+      if (DstReg == V6C::DE) {
+        if (HLDead) {
+          // A1-DE: DAD OtherReg; XCHG → 16cc, 2B
+          BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(OtherReg);
+          BuildMI(MBB, MI, DL, get(V6C::XCHG));
+          MI.eraseFromParent();
+          return true;
+        }
+        if (OtherReg == V6C::DE) {
+          // A2-DE: DE = HL + DE, HL live. XCHG; DAD DE; XCHG → 20cc, 3B
+          BuildMI(MBB, MI, DL, get(V6C::XCHG));
+          BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(V6C::DE);
+          BuildMI(MBB, MI, DL, get(V6C::XCHG));
+          MI.eraseFromParent();
+          return true;
+        }
+        // dest=DE, HL live, OtherReg!=DE → fall to byte chain.
+      }
+
+      if (HLDead) {
+        // A-general (dest=BC): DAD + MOV pair → 28cc, 3B
+        BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(OtherReg);
+        MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
+        MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::H);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::L);
+        MI.eraseFromParent();
+        return true;
+      }
+      // HL live, not A2-DE → fall through to byte chain.
+    }
+
+    // --- Path B: DstReg == HL, neither operand is HL ---
+    // Copy one operand into HL (via XCHG for DE, MOV pair otherwise),
+    // then DAD the other.
+    if (DstReg == V6C::HL && LhsReg != V6C::HL && RhsReg != V6C::HL) {
+      // B1-DE: one operand is DE (not both), DE dead → XCHG + DAD
+      if (LhsReg != RhsReg) {
+        Register DEOp = Register();
+        Register NonDEOp = Register();
+        if (LhsReg == V6C::DE) {
+          DEOp = LhsReg;
+          NonDEOp = RhsReg;
+        } else if (RhsReg == V6C::DE) {
+          DEOp = RhsReg;
+          NonDEOp = LhsReg;
+        }
+        if (DEOp && isRegDeadAfter(MBB, MI.getIterator(), V6C::DE, &RI)) {
+          // XCHG; DAD NonDEOp → 16cc, 2B
+          BuildMI(MBB, MI, DL, get(V6C::XCHG));
+          BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(NonDEOp);
+          MI.eraseFromParent();
+          return true;
+        }
+      }
+
+      // B-general: MOV pair + DAD → 28cc, 3B
+      {
+        MCRegister LhsHi = RI.getSubReg(LhsReg, V6C::sub_hi);
+        MCRegister LhsLo = RI.getSubReg(LhsReg, V6C::sub_lo);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::H).addReg(LhsHi);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::L).addReg(LhsLo);
+        BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(RhsReg);
+        MI.eraseFromParent();
+        return true;
+      }
+    }
+
     // General case: expand to 8-bit chain.
     MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
     MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);

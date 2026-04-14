@@ -42,6 +42,7 @@
 | O37 | Deferred Zero-Load After Zero-Test | [O37_deferred_zero_load.md](O37_deferred_zero_load.md) | V6C |
 | O38 | XRA+CMP i8 Zero-Test Peephole | [O38_xra_cmp_zero_test.md](O38_xra_cmp_zero_test.md) | V6C |
 | O39 | Interprocedural Register Allocation (IPRA) Integration | [O39_ipra_integration.md](O39_ipra_integration.md) | V6C |
+| O40 | ADD16 DAD-Based Expansion (Post-RA) | [O40_add16_dad_expansion.md](O40_add16_dad_expansion.md) | V6C |
 
 ---
 
@@ -87,6 +88,7 @@
 | O37 | Deferred Zero-Load After Zero-Test | 16cc, 4B | Medium | Low-Med | Low | O36 done | [x] |
 | O38 | XRA+CMP i8 Zero-Test | 4cc + cascade 4B+16cc | Med-high | Low | Very Low | O13 benefits | [x] |
 | O39 | IPRA Integration (eliminate call spills) | 13-18 instr/func | Very high | Medium | Medium | None | [x] |
+| O40 | ADD16 DAD-Based Expansion | V6C | 12cc, 3B | Med-High | Very Low | Very Low | None | [x] |
 
 ### Recommended order
 
@@ -114,6 +116,7 @@
 19. ~~**O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines~~ ✅
 20. ~~**O37** — deferred zero-load after zero-test, 4B+16cc, sink LXI past branch, ~40 lines~~ ✅
 21. ~~**O38** — XRA+CMP i8 zero-test, 4cc + cascade MVI elimination, ~40 lines~~ ✅
+22. ~~**O40** — ADD16 DAD-based expansion, 12cc+3B per non-HL ADD16, ~30 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅
