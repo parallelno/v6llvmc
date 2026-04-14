@@ -26,9 +26,7 @@ test_simple_zero_check:                 ; @test_simple_zero_check
 test_nz_branch:                         ; @test_nz_branch
 ; %bb.0:
 	ORA	A
-	JNZ	.LBB2_2
-; %bb.1:
-	MOV	E, A
+	RZ
 .LBB2_2:
 	MOV	A, E
 	RET

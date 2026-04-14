@@ -27,6 +27,12 @@
 //    Example:  JZ .Lskip / RET / .Lskip:
 //           →  RNZ / .Lskip:
 //
+// 7. Zero-select return folding: a triangle CFG from select_cc where the
+//    fallthrough arm materializes the same value already in A is replaced
+//    with a conditional return.
+//    Example:  CPI 0 / JNZ .Lskip / MVI E,0 / .Lskip: MOV A,E / RET
+//           →  CPI 0 / RZ / MOV A,E / RET
+//
 //===----------------------------------------------------------------------===//
 
 #include "V6C.h"
@@ -62,6 +68,7 @@ public:
 
 private:
   bool invertConditionalOverRET(MachineFunction &MF);
+  bool foldZeroSelectReturn(MachineFunction &MF);
   bool threadJMPOnlyBlocks(MachineFunction &MF);
   bool removeRedundantJMP(MachineFunction &MF);
   bool invertConditionalBranch(MachineFunction &MF);
@@ -367,6 +374,142 @@ bool V6CBranchOpt::invertConditionalOverRET(MachineFunction &MF) {
   return Changed;
 }
 
+/// Fold zero-select triangle into conditional return.
+///
+/// Pattern:
+///   bb.0: CPI $a, Imm; JNZ SkipBB    (compare A with Imm, skip if not equal)
+///   FallthroughBB: MOV Rx, A          (exactly one non-debug instruction,
+///                  or MVI Rx, Imm      copies value already in A to Rx)
+///   SkipBB: MOV A, Rx; RET            (exactly two non-debug instructions)
+///
+/// On JNZ fallthrough (Z set, A == Imm), FallthroughBB sets Rx = A(=Imm),
+/// then SkipBB copies Rx back to A and returns. Since A already holds Imm,
+/// the entire fallthrough path is a no-op for the return value.
+///
+/// Transform to:
+///   bb.0: CPI $a, Imm; RZ             (return if A == Imm)
+///   SkipBB: MOV A, Rx; RET            (A != Imm path, unchanged)
+///
+/// FallthroughBB is removed as dead code.
+bool V6CBranchOpt::foldZeroSelectReturn(MachineFunction &MF) {
+  bool Changed = false;
+  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
+  SmallVector<MachineBasicBlock *, 4> DeadBlocks;
+
+  for (MachineBasicBlock &MBB : MF) {
+    if (MBB.empty())
+      continue;
+
+    // 1. Last instruction must be JNZ targeting a local MBB.
+    MachineInstr &Jcc = MBB.back();
+    if (Jcc.getOpcode() != V6C::JNZ || !Jcc.getOperand(0).isMBB())
+      continue;
+    MachineBasicBlock *SkipBB = Jcc.getOperand(0).getMBB();
+
+    // 2. Previous non-debug instruction must be CPI $a, Imm.
+    auto PrevIt = Jcc.getIterator();
+    if (PrevIt == MBB.begin())
+      continue;
+    --PrevIt;
+    while (PrevIt != MBB.begin() && PrevIt->isDebugInstr())
+      --PrevIt;
+    if (PrevIt->isDebugInstr() || PrevIt->getOpcode() != V6C::CPI)
+      continue;
+    if (!PrevIt->getOperand(1).isImm())
+      continue;
+    int64_t CpiImm = PrevIt->getOperand(1).getImm() & 0xFF;
+
+    // 3. FallthroughBB = layout successor of MBB.
+    MachineFunction::iterator NextIt = std::next(MBB.getIterator());
+    if (NextIt == MF.end())
+      continue;
+    MachineBasicBlock &FallthroughBB = *NextIt;
+    if (!MBB.isSuccessor(&FallthroughBB))
+      continue;
+
+    // FallthroughBB must have exactly one non-debug instruction that
+    // assigns CpiImm to some register Rx. Two forms:
+    //   (a) MVI Rx, CpiImm   (before LoadImmCombine)
+    //   (b) MOV Rx, A         (after LoadImmCombine when CpiImm == value in A)
+    auto FTI = FallthroughBB.getFirstNonDebugInstr();
+    if (FTI == FallthroughBB.end())
+      continue;
+    Register Rx;
+    if (FTI->getOpcode() == V6C::MVIr) {
+      if (!FTI->getOperand(1).isImm() ||
+          (FTI->getOperand(1).getImm() & 0xFF) != CpiImm)
+        continue;
+      Rx = FTI->getOperand(0).getReg();
+    } else if (FTI->getOpcode() == V6C::MOVrr) {
+      // MOV Rx, A — on Z fallthrough, A holds CpiImm.
+      if (FTI->getOperand(1).getReg() != V6C::A)
+        continue;
+      Rx = FTI->getOperand(0).getReg();
+    } else {
+      continue;
+    }
+    {
+      auto FTNext = std::next(FTI);
+      while (FTNext != FallthroughBB.end() && FTNext->isDebugInstr())
+        ++FTNext;
+      if (FTNext != FallthroughBB.end())
+        continue; // More than one non-debug instruction.
+    }
+
+    // 4. SkipBB must be the layout successor of FallthroughBB.
+    MachineFunction::iterator AfterFT = std::next(NextIt);
+    if (AfterFT == MF.end() || &*AfterFT != SkipBB)
+      continue;
+
+    // 5. SkipBB must have exactly: MOV A, Rx; RET.
+    auto SI = SkipBB->getFirstNonDebugInstr();
+    if (SI == SkipBB->end() || SI->getOpcode() != V6C::MOVrr)
+      continue;
+    if (SI->getOperand(0).getReg() != V6C::A ||
+        SI->getOperand(1).getReg() != Rx)
+      continue;
+    {
+      auto SI2 = std::next(SI);
+      while (SI2 != SkipBB->end() && SI2->isDebugInstr())
+        ++SI2;
+      if (SI2 == SkipBB->end() || SI2->getOpcode() != V6C::RET)
+        continue;
+      auto SI3 = std::next(SI2);
+      while (SI3 != SkipBB->end() && SI3->isDebugInstr())
+        ++SI3;
+      if (SI3 != SkipBB->end())
+        continue; // More than two non-debug instructions.
+    }
+
+    // 6. FallthroughBB must fall through to SkipBB (single successor)
+    //    and have only MBB as predecessor (so we can safely delete it).
+    if (FallthroughBB.succ_size() != 1 ||
+        *FallthroughBB.succ_begin() != SkipBB)
+      continue;
+    if (FallthroughBB.pred_size() != 1)
+      continue;
+
+    // Transform: replace JNZ with RZ.
+    BuildMI(MBB, Jcc, Jcc.getDebugLoc(), TII.get(V6C::RZ));
+    Jcc.eraseFromParent();
+
+    // Update CFG: remove fallthrough edge to FallthroughBB,
+    // keep SkipBB as successor (NZ fallthrough after RZ).
+    MBB.removeSuccessor(&FallthroughBB);
+
+    // FallthroughBB is now dead (only predecessor was MBB).
+    FallthroughBB.removeSuccessor(SkipBB);
+    DeadBlocks.push_back(&FallthroughBB);
+
+    Changed = true;
+  }
+
+  for (MachineBasicBlock *Dead : DeadBlocks)
+    Dead->eraseFromParent();
+
+  return Changed;
+}
+
 /// Replace Jcc .Lret with Rcc when .Lret contains only RET.
 bool V6CBranchOpt::foldConditionalReturns(MachineFunction &MF) {
   bool Changed = false;
@@ -430,6 +573,7 @@ bool V6CBranchOpt::runOnMachineFunction(MachineFunction &MF) {
 
   bool Changed = false;
   Changed |= invertConditionalOverRET(MF);
+  Changed |= foldZeroSelectReturn(MF);
   Changed |= threadJMPOnlyBlocks(MF);
   Changed |= invertConditionalBranch(MF);
   Changed |= removeRedundantJMP(MF);
