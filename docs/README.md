@@ -19,6 +19,7 @@ Goal: **C source → Clang → LLVM IR → V6C backend → flat binary → Vecto
 |----------|-------------|
 | [V6CArchitecture.md](V6CArchitecture.md) | Target CPU, data layout, memory map |
 | [V6CInstructionTimings.md](V6CInstructionTimings.md) | Intel 8080 instruction cycle costs, TableGen `SchedWriteRes` cross-reference |
+| [V6CIPRA.md](V6CIPRA.md) | Interprocedural Register Allocation on V6C, default behavior, safety model, and disable flags |
 | [Design Document](../design/design.md) | Authoritative architecture specification (registers, instructions, calling convention) |
 | [Implementation Plan](../design/plan.md) | Milestone-driven development sequence with steps, tests, and status markers |
 
