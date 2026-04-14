@@ -49,6 +49,9 @@ FunctionPass *createV6CLoopPointerInductionPass();
 /// Post-RA pass: static stack allocation for non-reentrant functions (O10).
 FunctionPass *createV6CStaticStackAllocPass();
 
+/// Post-RA pass: spill forwarding (O16).
+FunctionPass *createV6CSpillForwardingPass();
+
 } // namespace llvm
 
 #endif // LLVM_LIB_TARGET_V6C_V6C_H

@@ -578,16 +578,15 @@ def V6C_STORE8_G : V6CPseudo<(outs), (ins GR8:$src, imm16:$addr),
     "# STORE8 $src, $addr", []>;
 
 // V6C_LOAD8_P — Load i8 from i16 pointer (in register pair).
-// Pseudo: expands to HL = ptr, MOV $dst, M
-// The ptr must be copied to HL first; expansion handles this.
-let mayLoad = 1, Defs = [HL] in
+// Expansion preserves HL in all paths (LDAX, PUSH/POP, or direct MOV r,M).
+let mayLoad = 1 in
 def V6C_LOAD8_P : V6CPseudo<(outs GR8:$dst), (ins GR16:$addr),
     "# LOAD8P $dst, ($addr)",
     [(set i8:$dst, (load i16:$addr))]>;
 
 // V6C_STORE8_P — Store i8 to i16 pointer (in register pair).
-// Pseudo: expands to HL = ptr, MOV M, $src
-let mayStore = 1, Defs = [HL] in
+// Expansion preserves HL in all paths (STAX, PUSH/POP, or direct MOV M,r).
+let mayStore = 1 in
 def V6C_STORE8_P : V6CPseudo<(outs), (ins GR8:$src, GR16:$addr),
     "# STORE8P $src, ($addr)",
     [(store i8:$src, i16:$addr)]>;

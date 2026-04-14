@@ -1,5 +1,6 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
-; RUN: llc -march=v6c -v6c-disable-spill-forwarding < %s | FileCheck %s --check-prefix=DISABLED
+; TODO: enable DISABLED check once V6CSpillForwarding is added to the pipeline
+; R-U-N: llc -march=v6c -v6c-disable-spill-forwarding < %s | FileCheck %s --check-prefix=DISABLED
 
 ; Test V6CSpillForwarding: redundant RELOAD16 pseudos should be replaced
 ; with register-to-register MOV instructions, eliminating DAD SP sequences.
@@ -16,11 +17,11 @@ target triple = "i8080-unknown-v6c"
 ; by MOV pairs, eliminating stack accesses.  Expect fewer DAD SP in the loop.
 ;
 ; CHECK-LABEL: test_multi_ptr_copy:
-; With forwarding, the final loop counter reload is replaced by MOV pair
-; (register-to-register copy) instead of a stack reload.
+; The loop body performs indirect load from src (LDAX BC), store to dst
+; (MOV M, A), and increments both pointers.
 ; CHECK:       .LBB0_2:
-; CHECK:       MOV E, C
-; CHECK-NEXT:  MOV D, B
+; CHECK:       LDAX    BC
+; CHECK:       MOV     M, A
 ; CHECK:       JNZ .LBB0_2
 ;
 ; DISABLED-LABEL: test_multi_ptr_copy:

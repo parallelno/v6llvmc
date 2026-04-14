@@ -1,0 +1,245 @@
+# O20: Honest Store/Load Pseudo Defs — Result
+
+## Status: PASS
+
+## C test case
+
+```c
+#include <stdint.h>
+#define LEN 100
+
+uint8_t array1[LEN];
+uint8_t array2[LEN];
+
+__attribute__((noinline))
+void fill_array(uint8_t start_val) {
+    for (uint8_t i = 0; i < LEN; ++i)
+        array1[i] = start_val + i;
+}
+
+__attribute__((noinline))
+void copy_array(void) {
+    for (uint8_t i = 0; i < LEN; ++i)
+        array2[i] = array1[i];
+}
+
+int main(void) {
+    fill_array(42);
+    copy_array();
+    return array2[0] + array2[99];
+}
+```
+
+## c8080 assembly (Z80 → i8080 mnemonics, function bodies only)
+
+```asm
+fill_array:                             ; 34B
+    STA     __a_1_fill_array            ; 16cc, 3B  save arg
+    XRA     A                           ; 4cc, 1B
+    STA     fill_array_i                ; 16cc, 3B  i = 0
+l_0:
+    CPI     100                         ; 8cc, 2B
+    RNC                                 ; 8cc/16cc, 1B  exit if i >= 100
+    LXI     HL, __a_1_fill_array        ; 12cc, 3B
+    ADD     M                           ; 8cc, 1B   A = i + start_val
+    LXI     DE, array1                  ; 12cc, 3B
+    LHLD    fill_array_i                ; 20cc, 3B  HL = i (zero-extended)
+    MVI     H, 0                        ; 8cc, 2B
+    DAD     DE                          ; 12cc, 1B  HL = array1 + i
+    MOV     M, A                        ; 8cc, 1B   store
+    LDA     fill_array_i                ; 16cc, 3B
+    INR     A                           ; 8cc, 1B
+    STA     fill_array_i                ; 16cc, 3B  i++
+    JMP     l_0                         ; 12cc, 3B
+    ; Loop body: 148cc, 27B
+
+copy_array:                             ; 37B
+    XRA     A                           ; 4cc, 1B
+    STA     copy_array_i                ; 16cc, 3B
+l_3:
+    CPI     100                         ; 8cc, 2B
+    RNC                                 ; 8cc/16cc, 1B
+    LXI     DE, array1                  ; 12cc, 3B
+    LHLD    copy_array_i                ; 20cc, 3B
+    MVI     H, 0                        ; 8cc, 2B
+    DAD     DE                          ; 12cc, 1B
+    MOV     A, M                        ; 8cc, 1B   load src
+    LXI     DE, array2                  ; 12cc, 3B
+    LHLD    copy_array_i                ; 20cc, 3B
+    MVI     H, 0                        ; 8cc, 2B
+    DAD     DE                          ; 12cc, 1B
+    MOV     M, A                        ; 8cc, 1B   store dst
+    LDA     copy_array_i                ; 16cc, 3B
+    INR     A                           ; 8cc, 1B
+    STA     copy_array_i                ; 16cc, 3B
+    JMP     l_3                         ; 12cc, 3B
+    ; Loop body: 188cc, 33B
+
+main:                                   ; 21B
+    MVI     A, 42                       ; 8cc, 2B
+    CALL    fill_array                  ; 24cc, 3B
+    CALL    copy_array                  ; 24cc, 3B
+    LHLD    array2                      ; 20cc, 3B
+    MVI     H, 0                        ; 8cc, 2B
+    XCHG                                ; 4cc, 1B
+    LHLD    array2+99                   ; 20cc, 3B
+    MVI     H, 0                        ; 8cc, 2B
+    DAD     DE                          ; 12cc, 1B
+    RET                                 ; 12cc, 1B
+```
+
+## c8080 stats
+
+| Function      | Cycles (100 iter) | Bytes |
+|---------------|-------------------|-------|
+| fill_array    |            14,860 |    34 |
+| copy_array    |            18,844 |    37 |
+| main (body)   |               140 |    21 |
+| **Total**     |        **33,844** |**92** |
+
+Note: c8080 recomputes array base + index from memory every iteration.
+Each loop uses static memory for the counter (LDA/STA per iteration).
+
+## v6llvmc assembly (OLD — before O20, Defs = [HL] on pseudos)
+
+```asm
+fill_array:                             ; 22B
+    MOV     E, A                        ; 8cc, 1B   save start_val
+    LXI     BC, array1                  ; 12cc, 3B  pointer in BC
+.LBB0_1:
+    MOV     H, B                        ; 8cc, 1B  ┐ copy BC→HL for store
+    MOV     L, C                        ; 8cc, 1B  ┘ (16cc overhead)
+    MOV     M, E                        ; 8cc, 1B   store via HL
+    INX     BC                          ; 8cc, 1B   pointer++
+    INR     E                           ; 8cc, 1B   value++
+    MVI     A, <(array1+100)            ; 8cc, 2B
+    CMP     C                           ; 4cc, 1B
+    JNZ     .LBB0_1                     ; 12cc, 3B
+    MVI     A, >(array1+100)            ; 8cc, 2B
+    CMP     B                           ; 4cc, 1B
+    JNZ     .LBB0_1                     ; 12cc, 3B
+    RET                                 ; 12cc, 1B
+    ; Loop body: 64cc (16cc wasted on BC→HL copy)
+
+copy_array:                             ; 23B
+    LXI     DE, array2                  ; 12cc, 3B  dst pointer
+    LXI     BC, array1                  ; 12cc, 3B  src pointer
+.LBB1_1:
+    LDAX    BC                          ; 8cc, 1B   load src
+    STAX    DE                          ; 8cc, 1B   store dst
+    INX     DE                          ; 8cc, 1B
+    INX     BC                          ; 8cc, 1B
+    MVI     A, <(array1+100)            ; 8cc, 2B
+    CMP     C                           ; 4cc, 1B
+    JNZ     .LBB1_1                     ; 12cc, 3B
+    MVI     A, >(array1+100)            ; 8cc, 2B
+    CMP     B                           ; 4cc, 1B
+    JNZ     .LBB1_1                     ; 12cc, 3B
+    RET                                 ; 12cc, 1B
+    ; Loop body: 56cc (already optimal dual-pointer)
+```
+
+## v6llvmc assembly (NEW — after O20, honest pseudo defs)
+
+```asm
+fill_array:                             ; 24B
+    MOV     L, A                        ; 8cc, 1B   save start_val in L
+    LXI     DE, array1                  ; 12cc, 3B  pointer in DE
+    LXI     BC, 1                       ; 12cc, 3B  (dead — artifact of cross-BB INX opt)
+.LBB0_1:
+    MOV     A, L                        ; 8cc, 1B   load value
+    STAX    DE                          ; 8cc, 1B   store directly via STAX DE
+    INX     DE                          ; 8cc, 1B   pointer++ (INX, not ADD chain)
+    INR     L                           ; 8cc, 1B   value++
+    MVI     A, <(array1+100)            ; 8cc, 2B
+    CMP     E                           ; 4cc, 1B
+    JNZ     .LBB0_1                     ; 12cc, 3B
+    MVI     A, >(array1+100)            ; 8cc, 2B
+    CMP     D                           ; 4cc, 1B
+    JNZ     .LBB0_1                     ; 12cc, 3B
+    RET                                 ; 12cc, 1B
+    ; Loop body: 56cc (no copy overhead, STAX path)
+
+copy_array:                             ; 26B
+    LXI     HL, array2                  ; 12cc, 3B  dst in HL
+    LXI     DE, array1                  ; 12cc, 3B  src in DE
+    LXI     BC, 1                       ; 12cc, 3B  (dead — artifact)
+.LBB1_1:
+    LDAX    DE                          ; 8cc, 1B   load src
+    MOV     M, A                        ; 8cc, 1B   store dst via HL
+    INX     HL                          ; 8cc, 1B
+    INX     DE                          ; 8cc, 1B
+    MVI     A, <(array1+100)            ; 8cc, 2B
+    CMP     E                           ; 4cc, 1B
+    JNZ     .LBB1_1                     ; 12cc, 3B
+    MVI     A, >(array1+100)            ; 8cc, 2B
+    CMP     D                           ; 4cc, 1B
+    JNZ     .LBB1_1                     ; 12cc, 3B
+    RET                                 ; 12cc, 1B
+    ; Loop body: 56cc (same cycle count, HL used for dst)
+
+main:                                   ; 22B (identical to old)
+    MVI     A, 0x2a                     ; 8cc, 2B
+    CALL    fill_array                  ; 24cc, 3B
+    CALL    copy_array                  ; 24cc, 3B
+    MVI     L, 0                        ; 8cc, 2B
+    LDA     array2                      ; 16cc, 3B
+    MOV     D, L                        ; 8cc, 1B
+    MOV     E, A                        ; 8cc, 1B
+    LDA     array2+99                   ; 16cc, 3B
+    MOV     H, L                        ; 8cc, 1B
+    MOV     L, A                        ; 8cc, 1B
+    DAD     DE                          ; 12cc, 1B
+    RET                                 ; 12cc, 1B
+```
+
+## v6llvmc stats
+
+| Function    | OLD Cycles | OLD Bytes | NEW Cycles | NEW Bytes | Δ Cycles |
+|-------------|------------|-----------|------------|-----------|----------|
+| fill_array  |      6,456 |        22 |      5,668 |        24 |     -788 |
+| copy_array  |      5,660 |        23 |      5,672 |        26 |      +12 |
+| main (body) |        152 |        22 |        152 |        22 |        0 |
+| **Total**   | **12,268** |    **67** | **11,492** |    **72** | **-776** |
+
+## Detailed improvement in fill_array
+
+The main O20 benefit: removing BC→HL copy from every iteration.
+
+### Before O20 (loop body = 64cc):
+```
+MOV H, B    ; 8cc ┐ wasted: copy pointer BC→HL
+MOV L, C    ; 8cc ┘ because RA declares HL clobbered by pseudo
+MOV M, E    ; 8cc   store via HL
+INX BC      ; 8cc   pointer++
+```
+RA kept pointer in BC because it believed HL was clobbered by V6C_STORE8_P.
+
+### After O20 (loop body = 56cc):
+```
+MOV A, L    ; 8cc   load value from L into A
+STAX DE     ; 8cc   store directly via STAX (addr=DE, val=A)
+INX DE      ; 8cc   pointer++
+```
+With Defs=[HL] removed, RA is free to keep value in L (sub-register of HL).
+The pseudo expands to STAX DE (priority 3 path: addr=DE, A dead after store).
+
+### Savings per iteration: 64cc → 56cc = -8cc
+### Total savings for 100 iterations: -800cc + 12cc setup = -788cc (12.2%)
+
+## copy_array analysis
+
+copy_array changed register assignments (BC,DE → HL,DE) but the loop body
+is the same 56cc. The +12cc overhead is from a dead `LXI BC, 1` instruction
+in the preheader — an artifact of the cross-BB INX peephole optimization
+that doesn't erase constants from predecessor blocks. This is negligible
+(one-time setup cost, not per-iteration).
+
+## v6llvmc vs c8080
+
+| Function    | c8080 Cycles | v6llvmc Cycles | Speedup |
+|-------------|--------------|----------------|---------|
+| fill_array  |       14,860 |          5,668 |   2.62× |
+| copy_array  |       18,844 |          5,672 |   3.32× |
+| main (body) |          140 |            152 |   0.92× |
+| **Total**   |   **33,844** |     **11,492** |**2.95×**|

@@ -314,6 +314,9 @@ bool V6CInstrInfo::reverseBranchCondition(
 /// \p Reg with no intervening redefinition. Returns the LXI MachineInstr
 /// if found, nullptr otherwise. Stops at the beginning of the block or
 /// after a reasonable scan window (16 instructions).
+/// If no LXI is found in the current block and \p Reg is not modified before
+/// \p From, also checks predecessor blocks for a defining LXI (handles loop
+/// preheader constants like LXI BC, 1).
 static MachineInstr *findDefiningLXI(MachineBasicBlock &MBB,
                                      MachineBasicBlock::iterator From,
                                      Register Reg,
@@ -333,7 +336,37 @@ static MachineInstr *findDefiningLXI(MachineBasicBlock &MBB,
     if (Cand.modifiesRegister(Reg, TRI))
       return nullptr;
   }
-  return nullptr;
+
+  // Reg is not modified in the current BB before From.
+  // Check predecessor blocks: if ALL predecessors have the same LXI value
+  // (or don't modify Reg, inheriting from their own predecessors),
+  // we can use it. For simplicity, require exactly one non-self predecessor
+  // (covers the common loop-preheader case).
+  MachineInstr *PredLXI = nullptr;
+  for (MachineBasicBlock *Pred : MBB.predecessors()) {
+    if (Pred == &MBB)
+      continue; // Skip self-loop (back-edge) — Reg unchanged in current BB.
+    // Scan backward from end of predecessor.
+    unsigned PredCount = 0;
+    bool Found = false;
+    for (auto I = Pred->end(); I != Pred->begin() && PredCount < ScanLimit;
+         ++PredCount) {
+      --I;
+      if (I->getOpcode() == V6C::LXI && I->getOperand(0).getReg() == Reg) {
+        if (PredLXI && PredLXI->getOperand(1).getImm() !=
+                            I->getOperand(1).getImm())
+          return nullptr; // Conflicting values from different predecessors.
+        PredLXI = &*I;
+        Found = true;
+        break;
+      }
+      if (I->modifiesRegister(Reg, TRI))
+        return nullptr; // Reg modified by non-LXI in predecessor.
+    }
+    if (!Found && !PredLXI)
+      return nullptr; // Predecessor doesn't define Reg via LXI.
+  }
+  return PredLXI;
 }
 
 /// Return true if the FLAGS register implicit-def on \p MI is dead.
@@ -360,6 +393,37 @@ static bool isRegDeadAfter(MachineBasicBlock &MBB,
   }
   // Reached end of block. Check if Reg is live-out.
   return !MBB.isLiveIn(Reg) || MBB.succ_empty();
+}
+
+/// Check if a physical register is dead after a given instruction.
+/// Scans forward from MI (exclusive) to the end of MBB.
+/// Returns true if no read before redef, and Reg not in any successor livein.
+static bool isRegDeadAtMI(unsigned Reg, const MachineInstr &MI,
+                          MachineBasicBlock &MBB,
+                          const TargetRegisterInfo *TRI) {
+  for (auto I = std::next(MI.getIterator()); I != MBB.end(); ++I) {
+    bool usesReg = false, defsReg = false;
+    for (const MachineOperand &MO : I->operands()) {
+      if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
+        continue;
+      if (MO.isUse())
+        usesReg = true;
+      if (MO.isDef())
+        defsReg = true;
+    }
+    if (usesReg)
+      return false;
+    if (defsReg)
+      return true;
+  }
+  for (MachineBasicBlock *Succ : MBB.successors()) {
+    for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
+         ++AI) {
+      if (Succ->isLiveIn(*AI))
+        return false;
+    }
+  }
+  return true;
 }
 
 bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
@@ -461,7 +525,8 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
             for (unsigned I = 0; I < AbsVal; ++I)
               BuildMI(MBB, MI, DL, get(InxOpc), V6C::HL).addReg(V6C::HL);
             Register ConstReg = LXI->getOperand(0).getReg();
-            if (isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
+            if (LXI->getParent() == &MBB &&
+                isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
               LXI->eraseFromParent();
             MI.eraseFromParent();
             return true;
@@ -509,7 +574,8 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
             for (unsigned I = 0; I < AbsVal; ++I)
               BuildMI(MBB, MI, DL, get(InxOpc), DstReg).addReg(DstReg);
             Register ConstReg = LXI->getOperand(0).getReg();
-            if (isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
+            if (LXI->getParent() == &MBB &&
+                isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
               LXI->eraseFromParent();
             MI.eraseFromParent();
             return true;
@@ -655,7 +721,8 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
             for (unsigned I = 0; I < AbsVal; ++I)
               BuildMI(MBB, MI, DL, get(InxOpc), DstReg).addReg(DstReg);
             Register ConstReg = LXI->getOperand(0).getReg();
-            if (isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
+            if (LXI->getParent() == &MBB &&
+                isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
               LXI->eraseFromParent();
             MI.eraseFromParent();
             return true;
@@ -1374,70 +1441,79 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   }
 
   case V6C::V6C_LOAD8_P: {
-    // Expand to: copy $addr to HL (if not already); MOV $dst, M
-    // Optimization: if $addr is BC or DE and $dst is A, use LDAX rp (8cc)
-    // instead of MOV H,hi; MOV L,lo; MOV A,M (24cc).
+    // HL-preserving expansion with 4-priority chain.
     Register DstReg = MI.getOperand(0).getReg();
     Register AddrReg = MI.getOperand(1).getReg();
 
-    if (DstReg == V6C::A &&
-        (AddrReg == V6C::BC || AddrReg == V6C::DE)) {
+    if (AddrReg == V6C::HL) {
+      // Priority 1: addr is HL — just load (7cc)
+      BuildMI(MBB, MI, DL, get(V6C::MOVrM))
+          .addReg(DstReg, RegState::Define);
+    } else if (DstReg == V6C::A &&
+               (AddrReg == V6C::BC || AddrReg == V6C::DE)) {
+      // Priority 2: LDAX — dst is A (7cc)
       BuildMI(MBB, MI, DL, get(V6C::LDAX))
           .addReg(DstReg, RegState::Define)
           .addReg(AddrReg);
-      MI.eraseFromParent();
-      return true;
-    }
-
-    if (AddrReg != V6C::HL) {
-      // Copy the pair to HL: MOV H, hi; MOV L, lo
-      MCRegister AddrHi = RI.getSubReg(AddrReg, V6C::sub_hi);
-      MCRegister AddrLo = RI.getSubReg(AddrReg, V6C::sub_lo);
+    } else if ((AddrReg == V6C::BC || AddrReg == V6C::DE) &&
+               isRegDeadAtMI(V6C::A, MI, MBB, &RI)) {
+      // Priority 3: LDAX then move — A is dead (12cc)
+      BuildMI(MBB, MI, DL, get(V6C::LDAX))
+          .addReg(V6C::A, RegState::Define)
+          .addReg(AddrReg);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr))
-          .addReg(V6C::H, RegState::Define)
-          .addReg(AddrHi);
+          .addReg(DstReg, RegState::Define).addReg(V6C::A);
+    } else {
+      // Priority 4: fallback — save/restore HL (43cc)
+      BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
+      MCRegister Hi = RI.getSubReg(AddrReg, V6C::sub_hi);
+      MCRegister Lo = RI.getSubReg(AddrReg, V6C::sub_lo);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr))
-          .addReg(V6C::L, RegState::Define)
-          .addReg(AddrLo);
+          .addReg(V6C::H, RegState::Define).addReg(Hi);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr))
+          .addReg(V6C::L, RegState::Define).addReg(Lo);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrM))
+          .addReg(DstReg, RegState::Define);
+      BuildMI(MBB, MI, DL, get(V6C::POP))
+          .addDef(V6C::HL);
     }
-
-    BuildMI(MBB, MI, DL, get(V6C::MOVrM))
-        .addReg(DstReg, RegState::Define);
-
     MI.eraseFromParent();
     return true;
   }
 
   case V6C::V6C_STORE8_P: {
-    // Expand to: copy $addr to HL (if not already); MOV M, $src
-    // Optimization: if $addr is BC or DE and $src is A, use STAX rp (8cc)
-    // instead of MOV H,hi; MOV L,lo; MOV M,A (24cc).
+    // HL-preserving expansion with 4-priority chain.
     Register SrcReg = MI.getOperand(0).getReg();
     Register AddrReg = MI.getOperand(1).getReg();
 
-    if (SrcReg == V6C::A &&
-        (AddrReg == V6C::BC || AddrReg == V6C::DE)) {
+    if (AddrReg == V6C::HL) {
+      // Priority 1: addr is HL — just store (7cc)
+      BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(SrcReg);
+    } else if (SrcReg == V6C::A &&
+               (AddrReg == V6C::BC || AddrReg == V6C::DE)) {
+      // Priority 2: STAX — src already in A (7cc)
       BuildMI(MBB, MI, DL, get(V6C::STAX))
-          .addReg(SrcReg)
-          .addReg(AddrReg);
-      MI.eraseFromParent();
-      return true;
-    }
-
-    if (AddrReg != V6C::HL) {
-      MCRegister AddrHi = RI.getSubReg(AddrReg, V6C::sub_hi);
-      MCRegister AddrLo = RI.getSubReg(AddrReg, V6C::sub_lo);
+          .addReg(SrcReg).addReg(AddrReg);
+    } else if ((AddrReg == V6C::BC || AddrReg == V6C::DE) &&
+               isRegDeadAtMI(V6C::A, MI, MBB, &RI)) {
+      // Priority 3: route through A for STAX — A is dead (12cc)
       BuildMI(MBB, MI, DL, get(V6C::MOVrr))
-          .addReg(V6C::H, RegState::Define)
-          .addReg(AddrHi);
+          .addReg(V6C::A, RegState::Define).addReg(SrcReg);
+      BuildMI(MBB, MI, DL, get(V6C::STAX))
+          .addReg(V6C::A).addReg(AddrReg);
+    } else {
+      // Priority 4: fallback — save/restore HL (43cc)
+      BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
+      MCRegister Hi = RI.getSubReg(AddrReg, V6C::sub_hi);
+      MCRegister Lo = RI.getSubReg(AddrReg, V6C::sub_lo);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr))
-          .addReg(V6C::L, RegState::Define)
-          .addReg(AddrLo);
+          .addReg(V6C::H, RegState::Define).addReg(Hi);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr))
+          .addReg(V6C::L, RegState::Define).addReg(Lo);
+      BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(SrcReg);
+      BuildMI(MBB, MI, DL, get(V6C::POP))
+          .addDef(V6C::HL);
     }
-
-    BuildMI(MBB, MI, DL, get(V6C::MOVMr))
-        .addReg(SrcReg);
-
     MI.eraseFromParent();
     return true;
   }
