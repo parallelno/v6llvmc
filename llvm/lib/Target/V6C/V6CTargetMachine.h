@@ -8,6 +8,7 @@
 #define LLVM_LIB_TARGET_V6C_V6CTARGETMACHINE_H
 
 #include "V6CSubtarget.h"
+#include "V6CMachineFunctionInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include <memory>
 #include <optional>
@@ -37,6 +38,13 @@ public:
 
   TargetLoweringObjectFile *getObjFileLowering() const override {
     return TLOF.get();
+  }
+
+  MachineFunctionInfo *
+  createMachineFunctionInfo(BumpPtrAllocator &Allocator, const Function &F,
+                            const TargetSubtargetInfo *STI) const override {
+    return new (Allocator.Allocate<V6CMachineFunctionInfo>())
+        V6CMachineFunctionInfo(F, STI);
   }
 
 private:

@@ -1,6 +1,6 @@
 # V6C Optimization Passes
 
-The V6C backend includes 10 custom optimization passes targeting the specific constraints of the Intel 8080 architecture. Each pass is individually toggleable via a command-line flag.
+The V6C backend includes 11 custom optimization passes targeting the specific constraints of the Intel 8080 architecture. Each pass is individually toggleable via a command-line flag.
 
 In addition to these custom passes, the target now enables LLVM's built-in
 interprocedural register allocation (IPRA) by default at optimized levels.
@@ -11,8 +11,9 @@ callee's real register usage is known.
 ## Pass Pipeline Order
 
 1. **IR-level** (in `addIRPasses()`): V6CLoopPointerInduction → V6CTypeNarrowing
-2. **Pre-register allocation** (in `addPreRegAlloc()`): V6CDeadPhiConst
-3. **Pre-emit** (in `addPreEmitPass()`): V6CAccumulatorPlanning → V6CLoadImmCombine → V6CPeephole → V6CLoadStoreOpt → V6CXchgOpt → V6CBranchOpt → V6CZeroTestOpt → V6CRedundantFlagElim → V6CSPTrickOpt
+2. **Post-register allocation** (in `addPostRegAlloc()`): V6CStaticStackAlloc
+3. **Pre-register allocation** (in `addPreRegAlloc()`): V6CDeadPhiConst
+4. **Pre-emit** (in `addPreEmitPass()`): V6CAccumulatorPlanning → V6CLoadImmCombine → V6CPeephole → V6CLoadStoreOpt → V6CXchgOpt → V6CBranchOpt → V6CZeroTestOpt → V6CRedundantFlagElim → V6CSPTrickOpt
 
 ## Pass Descriptions
 
@@ -219,3 +220,38 @@ After:  DI              ; disable interrupts (SP is unsafe)
 **Toggle:** `-v6c-disable-type-narrowing`
 
 **Impact:** Eliminates unnecessary 16-bit pseudo-instruction expansions. A loop counter bounded 0..255 narrows from a 6-instruction 16-bit compare to a single `CPI` instruction.
+
+---
+
+### V6CStaticStackAlloc
+
+**Purpose:** Replace the dynamic stack frame of provably non-reentrant functions with a statically-allocated global memory region. On the 8080, SP-relative access requires expensive `LXI HL, offset; DAD SP` sequences (20+ cycles, 4+ bytes). Static allocation replaces these with direct `SHLD`/`LHLD`/`STA`/`LDA` instructions and eliminates the stack frame prologue/epilogue entirely.
+
+**Eligibility criteria** (see [V6CStaticStackAlloc.md](V6CStaticStackAlloc.md) for full details):
+1. Function has `norecurse` attribute (inferred by `PostOrderFunctionAttrs` at `-O2`)
+2. Function does not have `__attribute__((interrupt))` (the `"interrupt"` function attribute)
+3. Function is not reachable from any interrupt handler (module-wide BFS from all `"interrupt"` functions)
+4. Function's address is not taken
+5. Function has non-fixed frame objects (spill slots or locals)
+
+**Allocation scheme:** Each eligible function gets its own BSS symbol (`__v6c_ss.<funcname>`), sized to the function's stack frame. `eliminateFrameIndex` expands spill/reload pseudos to direct memory operations:
+
+```
+Before (SP-relative):
+  PUSH HL             ; 16cc, 1B — save HL
+  LXI  HL, offset     ; 12cc, 3B — compute stack address
+  DAD  SP             ; 12cc, 1B
+  MOV  M, E           ; 8cc,  1B — store low byte
+  INX  HL             ; 8cc,  1B
+  MOV  M, D           ; 8cc,  1B — store high byte
+  POP  HL             ; 12cc, 1B — restore HL
+  Total: 76cc, 9B
+
+After (static, pair in HL):
+  SHLD __v6c_ss.func+N  ; 20cc, 3B
+  Total: 20cc, 3B
+```
+
+**Toggle:** `-mv6c-static-stack` (opt-in, disabled by default)
+
+**Impact:** For spill-heavy functions, saves 32-56 cycles and 4-6 bytes per spill/reload operation. Eliminates prologue (PUSH + LXI + DAD SP + SPHL) and epilogue (LXI + DAD SP + SPHL + restore) entirely. In the feature test, `heavy_spill` improved by 404cc (53%) and 53B (52%).

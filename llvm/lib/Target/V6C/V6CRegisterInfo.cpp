@@ -7,6 +7,7 @@
 #include "V6CRegisterInfo.h"
 #include "V6C.h"
 #include "V6CFrameLowering.h"
+#include "V6CMachineFunctionInfo.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -78,6 +79,179 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
   int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
   int Offset = MFI.getObjectOffset(FrameIndex) + MFI.getStackSize() + SPAdj;
+
+  // --- Static stack expansion (O10) ---
+  // If this function uses static stack allocation, expand spill/reload
+  // pseudos using direct global addresses instead of SP-relative sequences.
+  auto *FuncInfo = MF.getInfo<V6CMachineFunctionInfo>();
+  if (FuncInfo && FuncInfo->hasStaticStack() &&
+      FuncInfo->hasStaticSlot(FrameIndex)) {
+    GlobalVariable *GV = FuncInfo->getStaticStackGV();
+    int64_t StaticOffset = FuncInfo->getStaticOffset(FrameIndex);
+
+    unsigned Opc = MI.getOpcode();
+
+    if (Opc == V6C::V6C_LEA_FI) {
+      // LXI HL, __v6c_static_stack+offset (no DAD SP needed)
+      Register DstReg = MI.getOperand(0).getReg();
+      BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+          .addReg(DstReg, RegState::Define)
+          .addGlobalAddress(GV, StaticOffset);
+      MI.eraseFromParent();
+      return true;
+    }
+
+    if (Opc == V6C::V6C_SPILL8) {
+      Register SrcReg = MI.getOperand(0).getReg();
+      if (SrcReg == V6C::A) {
+        // STA __v6c_ss+offset (16cc, 3B)
+        BuildMI(MBB, II, DL, TII.get(V6C::STA))
+            .addReg(V6C::A)
+            .addGlobalAddress(GV, StaticOffset);
+      } else if (SrcReg == V6C::H || SrcReg == V6C::L) {
+        // Spilling H or L: use DE as temp.
+        bool SpillingH = (SrcReg == V6C::H);
+        Register ValReg = SpillingH ? V6C::D : V6C::E;
+        Register OtherReg = SpillingH ? V6C::E : V6C::D;
+        Register OtherHL = SpillingH ? V6C::L : V6C::H;
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+            .addReg(ValReg, RegState::Define).addReg(SrcReg);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+            .addReg(OtherReg, RegState::Define).addReg(OtherHL);
+        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+            .addReg(V6C::HL, RegState::Define)
+            .addGlobalAddress(GV, StaticOffset);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVMr)).addReg(ValReg);
+        // Restore HL from DE.
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+            .addReg(V6C::H, RegState::Define).addReg(V6C::D);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+            .addReg(V6C::L, RegState::Define).addReg(V6C::E);
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+      } else {
+        // B,C,D,E: PUSH HL; LXI HL, addr; MOV M, r; POP HL (42cc, 6B)
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+            .addReg(V6C::HL, RegState::Define)
+            .addGlobalAddress(GV, StaticOffset);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
+            .addReg(SrcReg, getKillRegState(MI.getOperand(0).isKill()));
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+      }
+      MI.eraseFromParent();
+      return true;
+    }
+
+    if (Opc == V6C::V6C_RELOAD8) {
+      Register DstReg = MI.getOperand(0).getReg();
+      if (DstReg == V6C::A) {
+        // LDA __v6c_ss+offset (16cc, 3B)
+        BuildMI(MBB, II, DL, TII.get(V6C::LDA), V6C::A)
+            .addGlobalAddress(GV, StaticOffset);
+      } else if (DstReg == V6C::H || DstReg == V6C::L) {
+        // Reloading into H or L: use DE as temp.
+        bool LoadingH = (DstReg == V6C::H);
+        Register SaveOther = V6C::D;
+        Register OtherHL = LoadingH ? V6C::L : V6C::H;
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+            .addReg(SaveOther, RegState::Define).addReg(OtherHL);
+        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+            .addReg(V6C::HL, RegState::Define)
+            .addGlobalAddress(GV, StaticOffset);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+            .addReg(DstReg, RegState::Define);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+            .addReg(OtherHL, RegState::Define).addReg(SaveOther);
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+      } else {
+        // B,C,D,E: PUSH HL; LXI HL, addr; MOV r, M; POP HL (42cc, 6B)
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+            .addReg(V6C::HL, RegState::Define)
+            .addGlobalAddress(GV, StaticOffset);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+            .addReg(DstReg, RegState::Define);
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+      }
+      MI.eraseFromParent();
+      return true;
+    }
+
+    if (Opc == V6C::V6C_SPILL16) {
+      Register SrcReg = MI.getOperand(0).getReg();
+      bool IsKill = MI.getOperand(0).isKill();
+      if (SrcReg == V6C::HL) {
+        // SHLD __v6c_ss+offset (16cc, 3B)
+        BuildMI(MBB, II, DL, TII.get(V6C::SHLD))
+            .addReg(V6C::HL)
+            .addGlobalAddress(GV, StaticOffset);
+      } else if (SrcReg == V6C::DE) {
+        // XCHG; SHLD addr; XCHG (24cc, 5B)
+        BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+        BuildMI(MBB, II, DL, TII.get(V6C::SHLD))
+            .addReg(V6C::HL)
+            .addGlobalAddress(GV, StaticOffset);
+        if (!IsKill)
+          BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+      } else {
+        // BC: PUSH HL; LXI HL, addr; MOV M, C; INX HL; MOV M, B; POP HL
+        MCRegister SrcLo = getSubReg(SrcReg, V6C::sub_lo);
+        MCRegister SrcHi = getSubReg(SrcReg, V6C::sub_hi);
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+            .addReg(V6C::HL, RegState::Define)
+            .addGlobalAddress(GV, StaticOffset);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
+            .addReg(SrcLo, getKillRegState(IsKill));
+        BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
+            .addReg(SrcHi, getKillRegState(IsKill));
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+      }
+      MI.eraseFromParent();
+      return true;
+    }
+
+    if (Opc == V6C::V6C_RELOAD16) {
+      Register DstReg = MI.getOperand(0).getReg();
+      if (DstReg == V6C::HL) {
+        // LHLD __v6c_ss+offset (16cc, 3B)
+        BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
+            .addGlobalAddress(GV, StaticOffset);
+      } else if (DstReg == V6C::DE) {
+        // XCHG; LHLD addr; XCHG (24cc, 5B)
+        BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+        BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
+            .addGlobalAddress(GV, StaticOffset);
+        BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+      } else {
+        // BC: PUSH HL; LXI HL, addr; MOV C, M; INX HL; MOV B, M; POP HL
+        MCRegister DstLo = getSubReg(DstReg, V6C::sub_lo);
+        MCRegister DstHi = getSubReg(DstReg, V6C::sub_hi);
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+            .addReg(V6C::HL, RegState::Define)
+            .addGlobalAddress(GV, StaticOffset);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+            .addReg(DstLo, RegState::Define);
+        BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+            .addReg(DstHi, RegState::Define);
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+      }
+      MI.eraseFromParent();
+      return true;
+    }
+
+    // Fallback for other instructions with frame indices in static mode:
+    // replace with global address offset. This shouldn't normally happen.
+    MI.getOperand(FIOperandNum)
+        .ChangeToGA(GV, StaticOffset, MI.getOperand(FIOperandNum).getTargetFlags());
+    return false;
+  }
+  // --- End static stack expansion ---
 
   unsigned Opc = MI.getOpcode();
   if (Opc == V6C::V6C_LEA_FI) {

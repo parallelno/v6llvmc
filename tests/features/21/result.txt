@@ -1,0 +1,295 @@
+# O10: Static Stack Allocation for Non-Reentrant Functions — Result
+
+## Status: PASS
+
+## C test case
+
+```c
+volatile int sink_val;
+__attribute__((noinline)) void use_val(int x) { sink_val = x; }
+__attribute__((noinline)) int get_val(void)    { return sink_val; }
+
+int heavy_spill(int a, int b) {
+    int x = a + 1;
+    int y = b + 2;
+    int z = a + b;
+    use_val(x);
+    use_val(y);
+    use_val(z);
+    return x + y + z;
+}
+
+int nested_calls(int n) {
+    int a = get_val();
+    int b = get_val();
+    int c = a + b + n;
+    use_val(c);
+    return a + b;
+}
+
+int main(void) {
+    int r;
+    r = heavy_spill(10, 20);
+    use_val(r);
+    r = nested_calls(5);
+    use_val(r);
+    return r;
+}
+```
+
+## c8080 assembly (Z80 → i8080 mnemonics, function bodies only)
+
+```asm
+use_val:
+    SHLD    __a_1_use_val
+    SHLD    sink_val
+    RET
+
+get_val:
+    LHLD    sink_val
+    RET
+
+heavy_spill:
+    SHLD    __a_2_heavy_spill
+    LHLD    __a_1_heavy_spill
+    INX     HL
+    SHLD    heavy_spill_x
+    LHLD    __a_2_heavy_spill
+    INX     HL
+    INX     HL
+    SHLD    heavy_spill_y
+    LHLD    __a_1_heavy_spill
+    XCHG
+    LHLD    __a_2_heavy_spill
+    DAD     DE
+    SHLD    heavy_spill_z
+    LHLD    heavy_spill_x
+    CALL    use_val
+    LHLD    heavy_spill_y
+    CALL    use_val
+    LHLD    heavy_spill_z
+    CALL    use_val
+    LHLD    heavy_spill_x
+    XCHG
+    LHLD    heavy_spill_y
+    DAD     DE
+    XCHG
+    LHLD    heavy_spill_z
+    DAD     DE
+    RET
+
+nested_calls:
+    SHLD    __a_1_nested_calls
+    CALL    get_val
+    SHLD    nested_calls_a
+    CALL    get_val
+    SHLD    nested_calls_b
+    LHLD    nested_calls_a
+    XCHG
+    LHLD    nested_calls_b
+    DAD     DE
+    XCHG
+    LHLD    __a_1_nested_calls
+    DAD     DE
+    SHLD    nested_calls_c
+    CALL    use_val
+    LHLD    nested_calls_a
+    XCHG
+    LHLD    nested_calls_b
+    DAD     DE
+    RET
+
+main:
+    LXI     HL, 0
+    SHLD    __a_1_main
+    SHLD    __a_2_main
+    LXI     HL, 10
+    SHLD    __a_1_heavy_spill
+    LXI     HL, 20
+    CALL    heavy_spill
+    SHLD    main_r
+    CALL    use_val
+    LXI     HL, 5
+    CALL    nested_calls
+    SHLD    main_r
+    CALL    use_val
+    LHLD    main_r
+    RET
+```
+
+## c8080 stats
+
+| Function      | Cycles | Bytes |
+|---------------|--------|-------|
+| use_val       |     52 |     7 |
+| get_val       |     32 |     4 |
+| heavy_spill   |    436 |    62 |
+| nested_calls  |    332 |    43 |
+| main          |    276 |    43 |
+| **Total**     |**1128**|**159**|
+
+## v6llvmc assembly (with -mv6c-static-stack)
+
+```asm
+use_val:
+    SHLD    sink_val
+    RET
+
+get_val:
+    LHLD    sink_val
+    RET
+
+heavy_spill:
+    MOV     B, D
+    MOV     C, E
+    SHLD    __v6c_ss.heavy_spill+2
+    INX     HL
+    SHLD    __v6c_ss.heavy_spill
+    CALL    use_val
+    LXI     HL, 2
+    MOV     A, C
+    ADD     L
+    MOV     E, A
+    MOV     A, B
+    ADC     H
+    MOV     D, A
+    MOV     H, D
+    MOV     L, E
+    CALL    use_val
+    LHLD    __v6c_ss.heavy_spill+2
+    DAD     BC
+    CALL    use_val
+    PUSH    HL
+    LXI     HL, __v6c_ss.heavy_spill
+    MOV     C, M
+    INX     HL
+    MOV     B, M
+    POP     HL
+    MOV     A, E
+    ADD     C
+    MOV     E, A
+    MOV     A, D
+    ADC     B
+    MOV     D, A
+    DAD     DE
+    RET
+
+nested_calls:
+    MOV     D, H
+    MOV     E, L
+    CALL    get_val
+    MOV     B, H
+    MOV     C, L
+    CALL    get_val
+    MOV     A, L
+    ADD     C
+    MOV     C, A
+    MOV     A, H
+    ADC     B
+    MOV     B, A
+    MOV     A, C
+    ADD     E
+    MOV     L, A
+    MOV     A, B
+    ADC     D
+    MOV     H, A
+    CALL    use_val
+    MOV     H, B
+    MOV     L, C
+    RET
+
+main:
+    LXI     HL, 0xb
+    CALL    use_val
+    LXI     HL, 0x16
+    CALL    use_val
+    LXI     HL, 0x1e
+    CALL    use_val
+    LXI     HL, 0x3f
+    CALL    use_val
+    CALL    get_val
+    MOV     D, H
+    MOV     E, L
+    CALL    get_val
+    MOV     A, L
+    ADD     E
+    MOV     E, A
+    MOV     A, H
+    ADC     D
+    MOV     D, A
+    LXI     HL, 5
+    DAD     DE
+    CALL    use_val
+    XCHG
+    JMP     use_val
+```
+
+## v6llvmc stats (with -mv6c-static-stack)
+
+| Function      | Cycles | Bytes |
+|---------------|--------|-------|
+| use_val       |     32 |     4 |
+| get_val       |     32 |     4 |
+| heavy_spill   |    364 |    49 |
+| nested_calls  |    196 |    28 |
+| main          |    326 |    49 |
+| **Total**     | **950**|**134**|
+
+## v6llvmc baseline stats (without -mv6c-static-stack)
+
+| Function      | Cycles | Bytes |
+|---------------|--------|-------|
+| use_val       |     32 |     4 |
+| get_val       |     32 |     4 |
+| heavy_spill   |    768 |   102 |
+| nested_calls  |    196 |    28 |
+| main          |    326 |    49 |
+| **Total**     |**1354**|**187**|
+
+## Comparison
+
+### heavy_spill (the spill-heavy function where O10 applies)
+
+| Metric              | c8080 (static) | v6llvmc baseline (SP) | v6llvmc O10 (static) |
+|---------------------|----------------|-----------------------|----------------------|
+| Cycles              |            436 |                   768 |                  364 |
+| Bytes               |             62 |                   102 |                   49 |
+| DAD SP instructions |              0 |                     7 |                    0 |
+| Prologue            |           none |      5 instr (64cc)   |                 none |
+| Epilogue            |           none |      6 instr (52cc)   |                 none |
+
+### Key improvements in heavy_spill with O10:
+- vs baseline: **-404cc (−53%)**, **-53B (−52%)**
+- vs c8080:    **-72cc (−17%)**, **-13B (−21%)**
+
+### Whole-program totals:
+
+| Compiler         | Cycles | Bytes |
+|------------------|--------|-------|
+| c8080 (static)   |   1128 |   159 |
+| v6llvmc baseline |   1354 |   187 |
+| v6llvmc + O10    |    950 |   134 |
+
+- O10 vs baseline: **-404cc (−30%)**, **-53B (−28%)**
+- O10 vs c8080:    **-178cc (−16%)**, **-25B (−16%)**
+
+## Notes
+
+- Only heavy_spill benefits from O10 (it's the only function with spill slots).
+- nested_calls and main have no spills — register allocation alone is sufficient.
+- main inlines heavy_spill and nested_calls at -O2, constant-folding the results.
+- c8080 uses a shared static stack for all functions (all variables in BSS, 18B).
+- v6llvmc O10 allocates per-function: __v6c_ss.heavy_spill (4B in BSS).
+
+## Files Changed
+
+### New files:
+- llvm-project/llvm/lib/Target/V6C/V6CMachineFunctionInfo.h
+- llvm-project/llvm/lib/Target/V6C/V6CStaticStackAlloc.cpp
+
+### Modified files:
+- llvm-project/llvm/lib/Target/V6C/V6CTargetMachine.h
+- llvm-project/llvm/lib/Target/V6C/V6CTargetMachine.cpp
+- llvm-project/llvm/lib/Target/V6C/V6CRegisterInfo.cpp
+- llvm-project/llvm/lib/Target/V6C/V6C.h
+- llvm-project/llvm/lib/Target/V6C/CMakeLists.txt

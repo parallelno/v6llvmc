@@ -58,7 +58,7 @@
 | O7 | Loop Strength Reduction (TTI) | V6C | 120-160cc/iter | High (loops) | Medium | Medium | None | [x] |
 | O8 | Spill Optimization (T1/T2) | V6C | 64-76cc/pair | Very high | High | Med-High | O10 enhances T2 | [ ] |
 | O9 | Inline Assembly (MC parser) | V6C | N/A (feature) | N/A | High | Low | None | [ ] |
-| O10 | Static Stack (non-reentrant) | llvm-mos | 32-36cc/access | Very high | Medium | Medium | LTO/single-TU | [ ] |
+| O10 | Static Stack (non-reentrant) | llvm-mos | 32-36cc/access | Very high | Medium | Medium | LTO/single-TU | [x] |
 | O11 | Dual Cost Model (Bytes+Cycles) | llvm-mos | N/A (infra) | N/A | Low | Very Low | None | [x] |
 | O12 | Global Copy Opt (cross-BB) | llvm-mos | 8cc, 1B | Very high | Medium | Low | O11 | [ ] |
 | O13 | LdImm Combining (value track) | llvm-mos | 1B or 4cc+1B | High | Low | Very Low | None | [x] |
@@ -129,7 +129,7 @@
 **Phase 4 — Loop & stack (Medium-High complexity, massive payoff)**:
 27. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
 28. **O22** — TTI cost hooks (arithmetic, memory, cmp costs), extends O7
-29. **O10** — static stack allocation for non-reentrant functions, supersedes O8 T2
+29. ~~**O10** — static stack allocation for non-reentrant functions, supersedes O8 T2~~ ✅
 30. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
 
 **Phase 5 — Advanced (High complexity)**:

@@ -20,6 +20,9 @@ FunctionPass *createV6CISelDag(V6CTargetMachine &TM,
 /// Get the configured V6C start address (-mv6c-start-address, default 0x0100).
 unsigned getV6CStartAddress();
 
+/// Whether static stack allocation is enabled (-mv6c-static-stack).
+bool getV6CStaticStackEnabled();
+
 /// Pre-RA optimization pass: constant sinking past branches (O37).
 FunctionPass *createV6CConstantSinkingPass();
 
@@ -42,6 +45,9 @@ FunctionPass *createV6CTypeNarrowingPass();
 
 /// IR-level pass: convert loop base+counter to running pointer induction.
 FunctionPass *createV6CLoopPointerInductionPass();
+
+/// Post-RA pass: static stack allocation for non-reentrant functions (O10).
+FunctionPass *createV6CStaticStackAllocPass();
 
 } // namespace llvm
 

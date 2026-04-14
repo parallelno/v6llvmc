@@ -26,9 +26,15 @@ static llvm::cl::opt<unsigned> V6CStartAddress(
     llvm::cl::desc("Start address for V6C binary (default: 0x0100)"),
     llvm::cl::init(0x0100));
 
+static llvm::cl::opt<bool> V6CStaticStack(
+    "mv6c-static-stack",
+    llvm::cl::desc("Use static memory for non-reentrant function stack frames"),
+    llvm::cl::init(false));
+
 namespace llvm {
 
 unsigned getV6CStartAddress() { return V6CStartAddress; }
+bool getV6CStaticStackEnabled() { return V6CStaticStack; }
 
 // Data layout: little-endian, 16-bit pointers (8-bit aligned),
 // all types 8-bit aligned, native integer widths 8 and 16, stack alignment 8.
@@ -121,6 +127,11 @@ public:
 #ifndef NDEBUG
     addPass(new V6CCallRegMaskVerifier());
 #endif
+  }
+
+  void addPostRegAlloc() override {
+    if (getV6CStaticStackEnabled())
+      addPass(createV6CStaticStackAllocPass());
   }
 
   void addPreEmitPass() override {
