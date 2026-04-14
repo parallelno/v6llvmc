@@ -41,6 +41,7 @@
 | O36 | Redundant LXI After Zero-Test Branch | [O36_redundant_lxi_after_zero_test.md](O36_redundant_lxi_after_zero_test.md) | V6C |
 | O37 | Deferred Zero-Load After Zero-Test | [O37_deferred_zero_load.md](O37_deferred_zero_load.md) | V6C |
 | O38 | XRA+CMP i8 Zero-Test Peephole | [O38_xra_cmp_zero_test.md](O38_xra_cmp_zero_test.md) | V6C |
+| O39 | Interprocedural Register Allocation (IPRA) Integration | [O39_ipra_integration.md](O39_ipra_integration.md) | V6C |
 
 ---
 
@@ -85,6 +86,7 @@
 | O36 | Branch-Implied Value Propagation | 12cc, 3B+ | Medium | Low | Low | O27+O35+O13 done | [x] |
 | O37 | Deferred Zero-Load After Zero-Test | 16cc, 4B | Medium | Low-Med | Low | O36 done | [x] |
 | O38 | XRA+CMP i8 Zero-Test | 4cc + cascade 4B+16cc | Med-high | Low | Very Low | O13 benefits | [x] |
+| O39 | IPRA Integration (eliminate call spills) | 13-18 instr/func | Very high | Medium | Medium | None | [ ] |
 
 ### Recommended order
 
@@ -114,9 +116,10 @@
 21. ~~**O38** — XRA+CMP i8 zero-test, 4cc + cascade MVI elimination, ~40 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
-19. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines
-20. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
-21. **O12** — cross-BB copy optimization, supersedes O1
+19. **O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines
+20. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines
+21. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
+22. **O12** — cross-BB copy optimization, supersedes O1
 22. **O24** — SUI/SBI immediate unsigned comparison, frees register pair
 23. **O15** — conditional call, 12cc+3B per instance, reduces branch count
 24. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings

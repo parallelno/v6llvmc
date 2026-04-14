@@ -20,11 +20,16 @@ The user provides a feature description — one of the files in
 6. Follow **Preparation steps** from `tests\features\README.md` — create the test folder,
    baseline C files, and reference assembly.
 7. Inform the user about what was done (plan file, test folder, baseline assembly).
-8. **Pause** — let the user review the plan, test cases, and baseline assembly before proceeding.
 
 ---
 
 ## Phase 2 — Implementation Cycles
+
+1. **Pause** — let the user review the plan, test cases, and baseline assembly before proceeding.
+
+---
+
+## Phase 3 — Implementation Cycles
 
 Repeat the following cycle for each step in the implementation plan.
 
@@ -45,7 +50,7 @@ Repeat the following cycle for each step in the implementation plan.
 
 ---
 
-## Phase 3 — Verification & Analysis
+## Phase 4 — Verification & Analysis
 
 Enter this phase after all implementation plan steps are complete.
 
@@ -65,7 +70,7 @@ Enter this phase after all implementation plan steps are complete.
 
 ---
 
-## Phase 4 — Completion
+## Phase 5 — Completion
 
 1. Mark all plan steps as complete in `design\plan_<feature_name>.md`.
 2. Mark the feature complete in `design\future_plans\README.md` (set `[x]`).
