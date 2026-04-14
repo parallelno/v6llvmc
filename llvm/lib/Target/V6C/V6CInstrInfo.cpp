@@ -892,6 +892,11 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     while (!MBB.empty() && MBB.back().isTerminator())
       MBB.pop_back();
 
+    // O29: When lo8 == hi8, skip the hi-byte MVI (A already holds the value
+    // from the lo-byte comparison — CMP and Jcc don't modify A).
+    bool SameLoHi = RhsOp.isImm() &&
+        (RhsOp.getImm() & 0xFF) == ((RhsOp.getImm() >> 8) & 0xFF);
+
     MachineFunction *MF = MBB.getParent();
     MachineBasicBlock *CompareHiMBB =
         MF->CreateMachineBasicBlock(MBB.getBasicBlock());
@@ -910,7 +915,7 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       MBB.addSuccessor(Target);
       MBB.addSuccessor(CompareHiMBB);
 
-      {
+      if (!SameLoHi) {
         auto MIB = BuildMI(CompareHiMBB, DL, get(V6C::MVIr), V6C::A);
         addImmHi(MIB);
       }
@@ -934,7 +939,7 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       MBB.addSuccessor(FallthroughMBB);
       MBB.addSuccessor(CompareHiMBB);
 
-      {
+      if (!SameLoHi) {
         auto MIB = BuildMI(CompareHiMBB, DL, get(V6C::MVIr), V6C::A);
         addImmHi(MIB);
       }

@@ -6,7 +6,7 @@
 // value is already available in another register (→ MOV r, r') or the
 // target register holds imm±1 (→ INR r / DCR r).
 //
-// Algorithm (per basic block, no inter-BB analysis):
+// Algorithm (per basic block, with cross-BB propagation for single-predecessor blocks):
 //   KnownVal[r] = nullopt for all r
 //   for each MI:
 //     if MI is MVI r, imm:
@@ -91,6 +91,12 @@ private:
   ///   Pattern B: ORA A / ANA A; RNZ/JNZ        → A=0
   ///   Pattern C: CPI imm; JNZ                  → A=imm
   bool seedPredecessorValues(MachineBasicBlock &MBB);
+
+  /// O29: For blocks with a single predecessor, forward-scan the
+  /// predecessor's instructions to compute register exit state and use
+  /// it as initial KnownVal[].  Falls back to invalidateAll() when the
+  /// block has multiple predecessors.
+  void initFromPredecessor(MachineBasicBlock &MBB);
 
   /// Invalidate register and its sub/super-registers relevant to tracking.
   void invalidateWithSubSuper(MCRegister Reg) {
@@ -248,11 +254,142 @@ bool V6CLoadImmCombine::seedPredecessorValues(MachineBasicBlock &MBB) {
   return false;
 }
 
+void V6CLoadImmCombine::initFromPredecessor(MachineBasicBlock &MBB) {
+  invalidateAll();
+
+  if (MBB.pred_size() != 1)
+    return;
+
+  MachineBasicBlock *Pred = *MBB.pred_begin();
+
+  // Forward-scan the predecessor to compute register exit state.
+  for (const MachineInstr &MI : *Pred) {
+    unsigned Opc = MI.getOpcode();
+
+    if (Opc == V6C::MVIr) {
+      MCRegister DstReg = MI.getOperand(0).getReg();
+      if (MI.getOperand(1).isImm()) {
+        int Idx = regIndex(DstReg);
+        if (Idx >= 0)
+          KnownVal[Idx] = MI.getOperand(1).getImm() & 0xFF;
+      } else {
+        invalidate(DstReg);
+      }
+      continue;
+    }
+    if (Opc == V6C::MOVrr) {
+      MCRegister DstReg = MI.getOperand(0).getReg();
+      MCRegister SrcReg = MI.getOperand(1).getReg();
+      int DstIdx = regIndex(DstReg);
+      int SrcIdx = regIndex(SrcReg);
+      if (DstIdx >= 0) {
+        KnownVal[DstIdx] = (SrcIdx >= 0 && KnownVal[SrcIdx])
+                               ? KnownVal[SrcIdx]
+                               : std::nullopt;
+      }
+      continue;
+    }
+    if (Opc == V6C::MOVrM) {
+      invalidate(MI.getOperand(0).getReg());
+      continue;
+    }
+    if (Opc == V6C::LXI) {
+      MCRegister PairReg = MI.getOperand(0).getReg();
+      if (MI.getOperand(1).isImm()) {
+        int64_t Imm16 = MI.getOperand(1).getImm() & 0xFFFF;
+        int HiIdx = -1, LoIdx = -1;
+        if (PairReg == V6C::BC) {
+          HiIdx = regIndex(V6C::B); LoIdx = regIndex(V6C::C);
+        } else if (PairReg == V6C::DE) {
+          HiIdx = regIndex(V6C::D); LoIdx = regIndex(V6C::E);
+        } else if (PairReg == V6C::HL) {
+          HiIdx = regIndex(V6C::H); LoIdx = regIndex(V6C::L);
+        }
+        if (HiIdx >= 0) KnownVal[HiIdx] = (Imm16 >> 8) & 0xFF;
+        if (LoIdx >= 0) KnownVal[LoIdx] = Imm16 & 0xFF;
+      } else {
+        invalidateWithSubSuper(PairReg);
+      }
+      continue;
+    }
+    if (Opc == V6C::INRr) {
+      int Idx = regIndex(MI.getOperand(0).getReg());
+      if (Idx >= 0) {
+        if (KnownVal[Idx])
+          KnownVal[Idx] = (*KnownVal[Idx] + 1) & 0xFF;
+        else
+          KnownVal[Idx] = std::nullopt;
+      }
+      continue;
+    }
+    if (Opc == V6C::DCRr) {
+      int Idx = regIndex(MI.getOperand(0).getReg());
+      if (Idx >= 0) {
+        if (KnownVal[Idx])
+          KnownVal[Idx] = (*KnownVal[Idx] - 1) & 0xFF;
+        else
+          KnownVal[Idx] = std::nullopt;
+      }
+      continue;
+    }
+    if (Opc == V6C::XRAr && MI.getOperand(2).getReg() == V6C::A) {
+      KnownVal[regIndex(V6C::A)] = 0;
+      continue;
+    }
+    switch (Opc) {
+    case V6C::ADDr: case V6C::ADCr: case V6C::SUBr: case V6C::SBBr:
+    case V6C::ANAr: case V6C::XRAr: case V6C::ORAr:
+    case V6C::ADDM: case V6C::ADCM: case V6C::SUBM: case V6C::SBBM:
+    case V6C::ANAM: case V6C::XRAM: case V6C::ORAM:
+    case V6C::ADI: case V6C::ACI: case V6C::SUI: case V6C::SBI:
+    case V6C::ANI: case V6C::XRI: case V6C::ORI:
+    case V6C::RLC: case V6C::RRC: case V6C::RAL: case V6C::RAR:
+    case V6C::CMA: case V6C::DAA:
+      invalidate(V6C::A);
+      continue;
+    default:
+      break;
+    }
+    if (Opc == V6C::LDA || Opc == V6C::LDAX) {
+      invalidate(V6C::A);
+      continue;
+    }
+    if (Opc == V6C::POP) {
+      MCRegister Reg = MI.getOperand(0).getReg();
+      invalidateWithSubSuper(Reg);
+      if (Reg == V6C::PSW) invalidate(V6C::A);
+      continue;
+    }
+    if (Opc == V6C::INX || Opc == V6C::DCX) {
+      invalidateWithSubSuper(MI.getOperand(0).getReg());
+      continue;
+    }
+    if (Opc == V6C::XCHG) {
+      int DIdx = regIndex(V6C::D), EIdx = regIndex(V6C::E);
+      int HIdx = regIndex(V6C::H), LIdx = regIndex(V6C::L);
+      std::swap(KnownVal[DIdx], KnownVal[HIdx]);
+      std::swap(KnownVal[EIdx], KnownVal[LIdx]);
+      continue;
+    }
+    if (MI.isCall()) {
+      invalidateAll();
+      continue;
+    }
+    for (const MachineOperand &MO : MI.operands()) {
+      if (MO.isReg() && MO.isDef() && MO.getReg().isPhysical())
+        invalidateWithSubSuper(MO.getReg());
+    }
+    if (const MCInstrDesc &Desc = MI.getDesc();
+        Desc.hasImplicitDefOfPhysReg(V6C::A))
+      invalidate(V6C::A);
+  }
+}
+
 bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
   bool Changed = false;
   const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
 
-  invalidateAll();
+  initFromPredecessor(MBB);
   seedPredecessorValues(MBB);
 
   for (MachineInstr &MI : llvm::make_early_inc_range(MBB)) {

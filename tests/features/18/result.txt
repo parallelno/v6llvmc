@@ -1,0 +1,157 @@
+## C Test Case
+
+```c
+extern void action_a(void);
+extern void action_b(void);
+
+// Case 1: NE with lo8 == hi8 (0x4242)
+unsigned int test_ne_same_bytes(unsigned int x) {
+    if (x != 0x4242) { action_a(); }
+    action_b();
+    return x;
+}
+
+// Case 2: EQ with lo8 == hi8
+unsigned int test_eq_same_bytes(unsigned int x) {
+    if (x == 0x4242) { action_a(); }
+    action_b();
+    return x;
+}
+
+// Case 3: NE with lo8 != hi8 (control)
+unsigned int test_ne_diff_bytes(unsigned int x) {
+    if (x != 0x1234) { action_a(); }
+    action_b();
+    return x;
+}
+
+// Case 4: NE with 0x0101
+unsigned int test_ne_0101(unsigned int x) {
+    if (x != 0x0101) { action_a(); }
+    action_b();
+    return x;
+}
+```
+
+## c8080 assembly (i8080 syntax)
+
+```asm
+test_ne_same_bytes:                     ; 8+10+17+17+10+16 = 78cc (x!=0x4242), 3B+3B+3B+3B = 12B body
+    SHLD __a_1_test_ne_same_bytes       ; 16cc, 3B  — save x
+    LXI  DE, 0x4242                     ; 10cc, 3B  — load constant
+    CALL __o_xor_16                     ; 17cc, 3B  — 16-bit XOR compare
+    CNZ  action_a                       ; 17cc/11cc, 3B  — conditional call
+    CALL action_b                       ; 17cc, 3B  — unconditional call
+    LHLD __a_1_test_ne_same_bytes       ; 16cc, 3B  — reload x
+    RET                                 ; 10cc, 1B
+
+test_eq_same_bytes:                     ; same structure
+    SHLD __a_1_test_eq_same_bytes       ; 16cc, 3B
+    LXI  DE, 0x4242                     ; 10cc, 3B
+    CALL __o_xor_16                     ; 17cc, 3B
+    CZ   action_a                       ; 17cc/11cc, 3B
+    CALL action_b                       ; 17cc, 3B
+    LHLD __a_1_test_eq_same_bytes       ; 16cc, 3B
+    RET                                 ; 10cc, 1B
+
+test_ne_diff_bytes:                     ; same structure, different constant
+    SHLD __a_1_test_ne_diff_bytes       ; 16cc, 3B
+    LXI  DE, 0x1234                     ; 10cc, 3B
+    CALL __o_xor_16                     ; 17cc, 3B
+    CNZ  action_a                       ; 17cc/11cc, 3B
+    CALL action_b                       ; 17cc, 3B
+    LHLD __a_1_test_ne_diff_bytes       ; 16cc, 3B
+    RET                                 ; 10cc, 1B
+
+test_ne_0101:                           ; same structure
+    SHLD __a_1_test_ne_0101             ; 16cc, 3B
+    LXI  DE, 0x0101                     ; 10cc, 3B
+    CALL __o_xor_16                     ; 17cc, 3B
+    CNZ  action_a                       ; 17cc/11cc, 3B
+    CALL action_b                       ; 17cc, 3B
+    LHLD __a_1_test_ne_0101            ; 16cc, 3B
+    RET                                 ; 10cc, 1B
+
+__o_xor_16:                             ; helper subroutine, 40cc, 8B
+    MOV  A, H                           ; 8cc, 1B
+    XRA  D                              ; 4cc, 1B
+    MOV  H, A                           ; 8cc, 1B
+    MOV  A, L                           ; 8cc, 1B
+    XRA  E                              ; 4cc, 1B
+    MOV  L, A                           ; 8cc, 1B
+    ORA  H                              ; 4cc, 1B
+    RET                                 ; 10cc, 1B
+```
+
+### c8080 stats
+
+| Function | Worst Cycles | Bytes |
+|----------|-------------|-------|
+| test_ne_same_bytes | 103cc (call path) + __o_xor_16 40cc = 143cc | 19B + 8B shared |
+| test_eq_same_bytes | 143cc | 19B + 8B shared |
+| test_ne_diff_bytes | 143cc | 19B + 8B shared |
+| test_ne_0101 | 143cc | 19B + 8B shared |
+
+Note: c8080 uses static stack allocation (SHLD/LHLD), shared XOR subroutine,
+and conditional CALL (CNZ/CZ). Each function body is 19B + shared __o_xor_16 8B.
+
+## v6llvmc assembly (after O29)
+
+```asm
+test_ne_same_bytes:
+  ; prologue + save x (spill to stack)
+  MOV  D, H              ; 8cc, 1B
+  MOV  E, L              ; 8cc, 1B
+  LXI  HL, 0xfffe        ; 10cc, 3B
+  DAD  SP                ; 10cc, 1B
+  SPHL                   ; 6cc, 1B
+  MOV  H, D              ; 8cc, 1B
+  MOV  L, E              ; 8cc, 1B
+  PUSH DE                ; 12cc, 1B
+  XCHG                   ; 4cc, 1B
+  LXI  HL, 2             ; 10cc, 3B
+  DAD  SP                ; 10cc, 1B
+  MOV  M, E              ; 8cc, 1B
+  INX  HL                ; 6cc, 1B
+  MOV  M, D              ; 8cc, 1B
+  XCHG                   ; 4cc, 1B
+  POP  DE                ; 10cc, 1B
+  ; comparison (O29 optimized — one MVI instead of two)
+  MVI  A, 0x42           ; 7cc, 2B   ← only one MVI
+  CMP  L                 ; 4cc, 1B
+  JNZ  .LBB0_1           ; 10cc, 3B
+  CMP  H                 ; 4cc, 1B   ← no second MVI (O29!)
+  JZ   .LBB0_2           ; 10cc, 3B
+.LBB0_1:
+  CALL action_a           ; 17cc, 3B
+.LBB0_2:
+  CALL action_b           ; 17cc, 3B
+  ; epilogue + reload x
+  ...
+  RET                     ; 10cc, 1B
+
+test_ne_diff_bytes:
+  ; ... same prologue ...
+  MVI  A, 0x34           ; 7cc, 2B
+  CMP  L                 ; 4cc, 1B
+  JNZ  .LBB2_1           ; 10cc, 3B
+  MVI  A, 0x12           ; 7cc, 2B   ← both MVI kept (lo8 != hi8)
+  CMP  H                 ; 4cc, 1B
+  JZ   .LBB2_2           ; 10cc, 3B
+  ...
+```
+
+### v6llvmc stats
+
+| Function | Before O29 | After O29 | Savings |
+|----------|-----------|-----------|---------|
+| test_ne_same_bytes | MVI+CMP+JNZ+MVI+CMP+JZ = 13B | MVI+CMP+JNZ+CMP+JZ = 11B | **2B, 7cc** |
+| test_eq_same_bytes | MVI+CMP+JNZ+MVI+CMP+JNZ = 13B | MVI+CMP+JNZ+CMP+JNZ = 11B | **2B, 7cc** |
+| test_ne_diff_bytes | MVI+CMP+JNZ+MVI+CMP+JZ = 13B | unchanged (lo8!=hi8) | 0 |
+| test_ne_0101 | MVI+CMP+JNZ+MVI+CMP+JZ = 13B | MVI+CMP+JNZ+CMP+JZ = 11B | **2B, 7cc** |
+
+## Summary
+
+O29 eliminates the redundant hi-byte MVI when lo8(imm) == hi8(imm) in
+16-bit immediate comparisons. Saves 2 bytes + 7 cycles per instance.
+Fires for 3 out of 4 test functions (the 4th has different lo/hi bytes).
