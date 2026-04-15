@@ -1122,33 +1122,48 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
 
   case V6C::V6C_LOAD16_P: {
     // Load 16-bit value from address in register pair.
-    // Expand: copy addr to HL; MOV lo, M; INX HL; MOV hi, M
+    // addr=HL: load directly (dst must be DE or BC).
+    // addr=DE: XCHG; load into dst; XCHG (preserves HL, 4cc overhead).
+    // addr=BC: PUSH HL; MOV H,B; MOV L,C; load; POP HL (preserves HL).
     Register DstReg = MI.getOperand(0).getReg();
     Register AddrReg = MI.getOperand(1).getReg();
 
     MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
     MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
 
-    if (AddrReg != V6C::HL) {
-      MCRegister AddrHi = RI.getSubReg(AddrReg, V6C::sub_hi);
-      MCRegister AddrLo = RI.getSubReg(AddrReg, V6C::sub_lo);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::H).addReg(AddrHi);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::L).addReg(AddrLo);
-    }
+    // Helper: emit the MOVrM; INX HL; MOVrM load sequence.
+    auto emitLoad = [&]() {
+      if (DstLo == V6C::L || DstLo == V6C::H) {
+        // Dst overlaps HL — use A as temp for the low byte.
+        BuildMI(MBB, MI, DL, get(V6C::MOVrM), V6C::A);
+        BuildMI(MBB, MI, DL, get(V6C::INX), V6C::HL).addReg(V6C::HL);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrM), DstHi);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+      } else {
+        BuildMI(MBB, MI, DL, get(V6C::MOVrM), DstLo);
+        BuildMI(MBB, MI, DL, get(V6C::INX), V6C::HL).addReg(V6C::HL);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrM), DstHi);
+      }
+    };
 
-    // If DstLo is L, loading would clobber HL before INX!
-    // Load lo first, but we need to handle the case.
-    // Safe approach: load lo to A via temp if DstLo == L or DstLo == H.
-    if (DstLo == V6C::L || DstLo == V6C::H) {
-      // Use A as temp. Load lo to A, INX, load hi, then fixup.
-      BuildMI(MBB, MI, DL, get(V6C::MOVrM), V6C::A);
-      BuildMI(MBB, MI, DL, get(V6C::INX), V6C::HL).addReg(V6C::HL);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrM), DstHi);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+    if (AddrReg == V6C::HL) {
+      // Addr already in HL — load directly.
+      emitLoad();
+    } else if (AddrReg == V6C::DE) {
+      // XCHG to get addr into HL (preserves both via swap).
+      BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      emitLoad();
+      BuildMI(MBB, MI, DL, get(V6C::XCHG));
     } else {
-      BuildMI(MBB, MI, DL, get(V6C::MOVrM), DstLo);
-      BuildMI(MBB, MI, DL, get(V6C::INX), V6C::HL).addReg(V6C::HL);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrM), DstHi);
+      // Addr=BC: preserve HL via PUSH/POP.
+      BuildMI(MBB, MI, DL, get(V6C::PUSH))
+          .addReg(V6C::HL, RegState::Kill)
+          .addReg(V6C::SP, RegState::ImplicitDefine);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::H).addReg(V6C::B);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::L).addReg(V6C::C);
+      emitLoad();
+      BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
+          .addReg(V6C::SP, RegState::ImplicitDefine);
     }
 
     MI.eraseFromParent();

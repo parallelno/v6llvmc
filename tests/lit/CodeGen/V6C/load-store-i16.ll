@@ -19,9 +19,10 @@ define void @store_global(i16 %val) {
 }
 
 ; CHECK-LABEL: load_ptr:
-; CHECK:       MOV {{[A-E]}}, M
+; CHECK:       MOV A, M
 ; CHECK:       INX HL
-; CHECK-NEXT:  MOV {{[A-E]}}, M
+; CHECK-NEXT:  MOV H, M
+; CHECK-NEXT:  MOV L, A
 define i16 @load_ptr(ptr %p) {
   %v = load i16, ptr %p
   ret i16 %v

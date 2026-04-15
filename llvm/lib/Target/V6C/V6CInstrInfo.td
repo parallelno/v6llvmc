@@ -738,8 +738,10 @@ let Defs = [A, FLAGS] in {
 }
 
 // 16-bit load from pointer (register pair).
-// Expands to: copy addr to HL, MOV lo, M; INX HL; MOV hi, M
-let mayLoad = 1, Defs = [HL] in
+// No Defs=[HL]: when addr=DE expansion uses XCHG (preserving HL),
+// when addr=BC it preserves HL via PUSH/POP.  This lets the RA freely
+// assign DE to the pointer (enabling cheap XCHG) or HL to the result.
+let mayLoad = 1 in
 def V6C_LOAD16_P : V6CPseudo<(outs GR16:$dst), (ins GR16:$addr),
     "# LOAD16P $dst, ($addr)",
     [(set i16:$dst, (load i16:$addr))]>;
