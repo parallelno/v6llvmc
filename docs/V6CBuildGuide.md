@@ -259,3 +259,37 @@ unsigned char read_a(void) {
 | `p` | Any 16-bit register pair (BC, DE, HL) |
 | `I` | 8-bit unsigned immediate (0–255) |
 | `J` | 16-bit unsigned immediate (0–65535) |
+
+## LLVM Tuning Options
+
+The V6C backend responds to several LLVM hidden options passed via `-mllvm`.
+These control register allocation and spill behaviour, which matters on the
+8080's tiny 3-register-pair file.
+
+### Recommended
+
+| Option | Effect |
+|--------|--------|
+| `-mllvm --enable-deferred-spilling` | Defers spill code insertion, giving the greedy RA a second chance to find a better coloring. Can eliminate spills entirely on register-starved loops. **Experimental** in upstream LLVM — test thoroughly. |
+
+### Situationally Useful
+
+| Option | Effect |
+|--------|--------|
+| `-mllvm -sink-insts-to-avoid-spills` | Pre-RA pass that sinks definitions closer to uses, freeing registers across the gap. Helps in straight-line code with high register pressure. |
+| `-mllvm --split-spill-mode=size` | Tells SplitKit to prefer smaller spill code over faster. Alternative: `=speed`. Default: `=default`. |
+| `-mllvm --enable-spill-copy-elim` | Eliminates redundant register-to-register copies introduced by spill code. Unlikely to help on V6C (spills use PUSH/POP and LHLD/SHLD, not copies). |
+
+### Not Recommended
+
+| Option | Why |
+|--------|-----|
+| `-mllvm --regalloc=basic` | Replaces greedy RA with basic linear-scan. Worse code quality on V6C; may not terminate on complex functions. |
+
+### Example: All Useful Options Combined
+
+```bash
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 -S input.c -o output.s \
+  -mllvm --enable-deferred-spilling \
+  -mllvm -sink-insts-to-avoid-spills
+```

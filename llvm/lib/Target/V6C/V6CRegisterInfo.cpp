@@ -236,13 +236,15 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
             .addGlobalAddress(GV, StaticOffset);
       } else if (SrcReg == V6C::DE) {
         // XCHG; SHLD addr; XCHG (24cc, 5B)
-        // O42: skip trailing XCHG when HL is dead (DE is killed or HL dead)
+        // O42: skip trailing XCHG only when BOTH HL is dead AND DE is killed.
+        // XCHG swaps both registers, so skipping it corrupts whichever is
+        // still live: DE (if not killed) or HL (if not dead).
         bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
         BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
         BuildMI(MBB, II, DL, TII.get(V6C::SHLD))
             .addReg(V6C::HL)
             .addGlobalAddress(GV, StaticOffset);
-        if (!IsKill && !HLDead)
+        if (!(IsKill && HLDead))
           BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
       } else {
         // BC: PUSH HL; LXI HL, addr; MOV M, C; INX HL; MOV M, B; POP HL

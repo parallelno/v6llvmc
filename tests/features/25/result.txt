@@ -34,7 +34,7 @@ main:
     DAD DE
     RET
 
-sumarray:
+sumarray: ; (92*4+52=420)*100+84=36884cc, 66 bytes
     LXI HL, 0
     SHLD sumarray_sum
     SHLD sumarray_i
@@ -98,7 +98,7 @@ singlesum:
     LHLD singlesum_total
     RET
 
-__o_sub_16:
+__o_sub_16: ; 52cc, 7 bytes
     MOV A, L
     SUB E
     MOV L, A
@@ -202,7 +202,7 @@ Total code: 225B
 
 === v6llvmc NEW ASSEMBLY (O42) ===
 
-sumarray:
+sumarray: ; (87/93*4=348/372)*100+72=
     LXI HL, arr2
     SHLD __v6c_ss.sumarray
     LXI HL, arr1
