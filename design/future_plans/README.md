@@ -43,6 +43,7 @@
 | O38 | XRA+CMP i8 Zero-Test Peephole | [O38_xra_cmp_zero_test.md](O38_xra_cmp_zero_test.md) | V6C |
 | O39 | Interprocedural Register Allocation (IPRA) Integration | [O39_ipra_integration.md](O39_ipra_integration.md) | V6C |
 | O40 | ADD16 DAD-Based Expansion (Post-RA) | [O40_add16_dad_expansion.md](O40_add16_dad_expansion.md) | V6C |
+| O41 | Pre-RA INX/DCX Pseudo (Small-Constant Pointer Add) | [O41_pre_ra_inx_dcx_pseudo.md](O41_pre_ra_inx_dcx_pseudo.md) | V6C |
 
 ---
 
@@ -89,6 +90,7 @@
 | O38 | XRA+CMP i8 Zero-Test | 4cc + cascade 4B+16cc | Med-high | Low | Very Low | O13 benefits | [x] |
 | O39 | IPRA Integration (eliminate call spills) | 13-18 instr/func | Very high | Medium | Medium | None | [x] |
 | O40 | ADD16 DAD-Based Expansion | V6C | 12cc, 3B | Med-High | Very Low | Very Low | None | [x] |
+| O41 | Pre-RA INX/DCX Pseudo (±1..±3) | V6C | 12cc, 3B + free reg pair | Very high | Low | Very Low | O20 done | [x] |
 
 ### Recommended order
 
@@ -117,10 +119,11 @@
 20. ~~**O37** — deferred zero-load after zero-test, 4B+16cc, sink LXI past branch, ~40 lines~~ ✅
 21. ~~**O38** — XRA+CMP i8 zero-test, 4cc + cascade MVI elimination, ~40 lines~~ ✅
 22. ~~**O40** — ADD16 DAD-based expansion, 12cc+3B per non-HL ADD16, ~30 lines~~ ✅
+23. ~~**O41** — pre-RA INX/DCX pseudo for ±1..±3 constants, frees register pair, ~40 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅
-20. **O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines
+20. ~~**O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines~~ ✅
 21. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
 22. **O12** — cross-BB copy optimization, supersedes O1
 22. **O24** — SUI/SBI immediate unsigned comparison, frees register pair

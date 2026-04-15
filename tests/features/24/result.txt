@@ -1,0 +1,257 @@
+# O41: Pre-RA INX/DCX Pseudo — Result
+
+## Status: PASS
+
+## C test case
+
+```c
+#include <stdint.h>
+#define LEN 100
+
+uint8_t array1[LEN];
+uint8_t array2[LEN];
+
+__attribute__((noinline))
+void fill_array(uint8_t start_val) {
+    for (uint8_t i = 0; i < LEN; ++i)
+        array1[i] = start_val + i;
+}
+
+__attribute__((noinline))
+void copy_loop(void) {
+    for (uint8_t i = 0; i < LEN; ++i)
+        array2[i] = array1[i];
+}
+
+__attribute__((noinline))
+uint16_t add_small(uint16_t x) {
+    return x + 2;
+}
+
+__attribute__((noinline))
+uint16_t sub_small(uint16_t x) {
+    return x - 1;
+}
+
+int main(void) {
+    fill_array(10);
+    copy_loop();
+    uint16_t a = add_small(100);
+    uint16_t b = sub_small(200);
+    return array2[0] + array2[99] + (uint8_t)a + (uint8_t)b;
+}
+```
+
+## c8080 assembly (Z80 → i8080 mnemonics, function bodies only)
+
+```asm
+fill_array:                             ; 34B
+    STA     __a_1_fill_array            ; 16cc, 3B  save arg
+    XRA     A                           ; 4cc, 1B
+    STA     fill_array_i                ; 16cc, 3B  i = 0
+l_0:
+    CPI     100                         ; 8cc, 2B
+    RNC                                 ; 8/16cc, 1B  exit if i >= 100
+    LXI     HL, __a_1_fill_array        ; 12cc, 3B
+    ADD     M                           ; 8cc, 1B   A = i + start_val
+    LXI     DE, array1                  ; 12cc, 3B
+    LHLD    fill_array_i                ; 20cc, 3B  HL = i (zero-extended)
+    MVI     H, 0                        ; 8cc, 2B
+    DAD     DE                          ; 12cc, 1B  HL = array1 + i
+    MOV     M, A                        ; 8cc, 1B   store
+    LDA     fill_array_i                ; 16cc, 3B
+    INR     A                           ; 8cc, 1B
+    STA     fill_array_i                ; 16cc, 3B  i++
+    JMP     l_0                         ; 12cc, 3B
+    ; Loop body: 148cc, 27B
+
+copy_loop:                              ; 37B
+    XRA     A                           ; 4cc, 1B
+    STA     copy_loop_i                 ; 16cc, 3B
+l_3:
+    CPI     100                         ; 8cc, 2B
+    RNC                                 ; 8/16cc, 1B
+    LXI     DE, array1                  ; 12cc, 3B
+    LHLD    copy_loop_i                 ; 20cc, 3B
+    MVI     H, 0                        ; 8cc, 2B
+    DAD     DE                          ; 12cc, 1B
+    MOV     A, M                        ; 8cc, 1B   load src
+    LXI     DE, array2                  ; 12cc, 3B
+    LHLD    copy_loop_i                 ; 20cc, 3B
+    MVI     H, 0                        ; 8cc, 2B
+    DAD     DE                          ; 12cc, 1B
+    MOV     M, A                        ; 8cc, 1B   store dst
+    LDA     copy_loop_i                 ; 16cc, 3B
+    INR     A                           ; 8cc, 1B
+    STA     copy_loop_i                 ; 16cc, 3B
+    JMP     l_3                         ; 12cc, 3B
+    ; Loop body: 188cc, 33B
+
+main:                                   ; 12B
+    MVI     A, 10                       ; 8cc, 2B
+    CALL    fill_array                  ; 24cc, 3B
+    CALL    copy_loop                   ; 24cc, 3B
+    LXI     HL, 0                       ; 12cc, 3B
+    RET                                 ; 12cc, 1B
+```
+
+## c8080 stats
+
+| Function      | Cycles (100 iter) | Bytes |
+|---------------|-------------------|-------|
+| fill_array    |            14,860 |    34 |
+| copy_loop     |            18,844 |    37 |
+| main (body)   |                80 |    12 |
+| **Total**     |        **33,784** |**83** |
+
+Note: c8080 recomputes array base + index from memory every iteration.
+Each loop uses static memory for the counter (LDA/STA per iteration).
+
+## v6llvmc assembly (OLD — before O41, dead LXI BC,1 in preheaders)
+
+```asm
+fill_array:                             ; 24B
+    MOV     L, A                        ; 8cc, 1B   save start_val
+    LXI     DE, array1                  ; 12cc, 3B  pointer in DE
+    LXI     BC, 1                       ; 12cc, 3B  *** DEAD — BC never used ***
+.LBB0_1:
+    MOV     A, L                        ; 8cc, 1B   load value
+    STAX    DE                          ; 8cc, 1B   store via STAX DE
+    INX     DE                          ; 8cc, 1B   pointer++
+    INR     L                           ; 8cc, 1B   value++
+    MVI     A, <(array1+100)            ; 8cc, 2B
+    CMP     E                           ; 4cc, 1B
+    JNZ     .LBB0_1                     ; 12cc, 3B
+    MVI     A, >(array1+100)            ; 8cc, 2B
+    CMP     D                           ; 4cc, 1B
+    JNZ     .LBB0_1                     ; 12cc, 3B
+    RET                                 ; 12cc, 1B
+    ; Loop body: 56cc, dead LXI BC wastes 3B + 12cc + BC register pair
+
+copy_loop:                              ; 26B
+    LXI     HL, array2                  ; 12cc, 3B  dst in HL
+    LXI     DE, array1                  ; 12cc, 3B  src in DE
+    LXI     BC, 1                       ; 12cc, 3B  *** DEAD — BC never used ***
+.LBB1_1:
+    LDAX    DE                          ; 8cc, 1B   load src
+    MOV     M, A                        ; 8cc, 1B   store dst via HL
+    INX     HL                          ; 8cc, 1B
+    INX     DE                          ; 8cc, 1B
+    MVI     A, <(array1+100)            ; 8cc, 2B
+    CMP     E                           ; 4cc, 1B
+    JNZ     .LBB1_1                     ; 12cc, 3B
+    MVI     A, >(array1+100)            ; 8cc, 2B
+    CMP     D                           ; 4cc, 1B
+    JNZ     .LBB1_1                     ; 12cc, 3B
+    RET                                 ; 12cc, 1B
+    ; Loop body: 56cc, dead LXI BC wastes 3B + 12cc + BC register pair
+
+add_small:                              ; 3B
+    INX     HL                          ; 8cc, 1B
+    INX     HL                          ; 8cc, 1B
+    RET                                 ; 12cc, 1B
+
+sub_small:                              ; 2B
+    DCX     HL                          ; 8cc, 1B
+    RET                                 ; 12cc, 1B
+```
+
+## v6llvmc assembly (NEW — after O41, dead LXI BC,1 eliminated)
+
+```asm
+fill_array:                             ; 21B
+    MOV     L, A                        ; 8cc, 1B   save start_val
+    LXI     DE, array1                  ; 12cc, 3B  pointer in DE
+.LBB0_1:                                ;           (no dead LXI BC!)
+    MOV     A, L                        ; 8cc, 1B   load value
+    STAX    DE                          ; 8cc, 1B   store via STAX DE
+    INR     L                           ; 8cc, 1B   value++
+    INX     DE                          ; 8cc, 1B   pointer++
+    MVI     A, <(array1+100)            ; 8cc, 2B
+    CMP     E                           ; 4cc, 1B
+    JNZ     .LBB0_1                     ; 12cc, 3B
+    MVI     A, >(array1+100)            ; 8cc, 2B
+    CMP     D                           ; 4cc, 1B
+    JNZ     .LBB0_1                     ; 12cc, 3B
+    RET                                 ; 12cc, 1B
+    ; Loop body: 56cc, BC register pair FREE for other uses
+
+copy_loop:                              ; 23B
+    LXI     HL, array2                  ; 12cc, 3B  dst in HL
+    LXI     DE, array1                  ; 12cc, 3B  src in DE
+.LBB1_1:                                ;           (no dead LXI BC!)
+    LDAX    DE                          ; 8cc, 1B   load src
+    MOV     M, A                        ; 8cc, 1B   store dst via HL
+    INX     HL                          ; 8cc, 1B
+    INX     DE                          ; 8cc, 1B
+    MVI     A, <(array1+100)            ; 8cc, 2B
+    CMP     E                           ; 4cc, 1B
+    JNZ     .LBB1_1                     ; 12cc, 3B
+    MVI     A, >(array1+100)            ; 8cc, 2B
+    CMP     D                           ; 4cc, 1B
+    JNZ     .LBB1_1                     ; 12cc, 3B
+    RET                                 ; 12cc, 1B
+    ; Loop body: 56cc, BC register pair FREE for other uses
+
+add_small:                              ; 3B (unchanged)
+    INX     HL                          ; 8cc, 1B
+    INX     HL                          ; 8cc, 1B
+    RET                                 ; 12cc, 1B
+
+sub_small:                              ; 2B (unchanged)
+    DCX     HL                          ; 8cc, 1B
+    RET                                 ; 12cc, 1B
+```
+
+## v6llvmc stats
+
+| Function    | OLD Cycles | OLD Bytes | NEW Cycles | NEW Bytes | Δ Cycles | Δ Bytes |
+|-------------|------------|-----------|------------|-----------|----------|---------|
+| fill_array  |      5,668 |        24 |      5,656 |        21 |      -12 |      -3 |
+| copy_loop   |      5,672 |        26 |      5,660 |        23 |      -12 |      -3 |
+| add_small   |         28 |         3 |         28 |         3 |        0 |       0 |
+| sub_small   |         20 |         2 |         20 |         2 |        0 |       0 |
+| main (body) |        340 |        47 |        340 |        47 |        0 |       0 |
+| **Total**   | **11,728** |   **102** | **11,704** |    **96** |   **-24** |  **-6** |
+
+Cycle calculation: setup + 99 fast iterations (56cc each) + 1 exit iteration.
+
+## Comparison: v6llvmc vs c8080
+
+| Metric               |    c8080 |  v6llvmc OLD |  v6llvmc NEW | Speedup (NEW vs c8080) |
+|----------------------|---------:|-------------:|-------------:|-----------------------:|
+| fill_array cycles    |   14,860 |        5,668 |        5,656 |                  2.63× |
+| copy_loop cycles     |   18,844 |        5,672 |        5,660 |                  3.33× |
+| Total cycles         |   33,784 |       11,728 |       11,704 |                  2.89× |
+| Total code bytes     |       83 |          102 |           96 |                     — |
+
+## Analysis
+
+**What O41 fixes:**
+Before O41, the LoopPointerInduction pass (O19) correctly recognized pointer
+increments and produced `add i16 %ptr, 1` → DAD → INX via the post-RA peephole
+(O29). However, the DAG combine unconditionally lowered `add i16 %ptr, 1` to
+`V6CISD::DAD(ptr, LXI 1)`, which forced the register allocator to assign BC to
+hold the constant `1`. The INX/DCX peephole then eliminated the DAD but left the
+dead `LXI BC, 1` in the preheader, wasting 3 bytes + 12 cycles + tying up BC.
+
+**How O41 works:**
+The DAG combine now intercepts `ISD::ADD` / `ISD::SUB` with small constants
+(±1..±3) **before** the DAD conversion. It emits `V6CISD::INX16` / `V6CISD::DCX16`
+pseudo-instructions that carry the repeat count as a `TargetConstant` operand.
+These pseudos expand post-RA to N copies of `INX rp` / `DCX rp`, with no register
+allocation needed for the constant. The `$dst = $src` constraint ensures tied
+register assignment. The pseudos declare no `Defs` (no A/FLAGS clobber).
+
+**Key improvements:**
+1. **Code size:** −6B total (two dead `LXI BC, 1` eliminated)
+2. **Register pressure:** BC freed in loops — available for other live ranges
+3. **Cycles:** −24cc (marginal, from skipping dead LXI setup)
+4. **Indirect benefit:** Freeing BC enables better RA choices in complex loops
+   (verified: spill-forwarding.ll test changed register assignment beneficially)
+
+**Implementation note:**
+The DAG combine must use `DAG.getTargetConstant()` (not `DAG.getConstant()`)
+for the count operand, because the TableGen patterns use `timm` which matches
+`ISD::TargetConstant` nodes. Using `getConstant()` produces "Cannot select"
+ISel failures.

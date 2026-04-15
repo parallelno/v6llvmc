@@ -498,6 +498,24 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   // M7: i16 arithmetic pseudo expansions
   //===------------------------------------------------------------------===//
 
+  // O41: Pre-RA INX/DCX pseudos — expand to N copies of INX/DCX rp.
+  case V6C::V6C_INX16: {
+    Register Rp = MI.getOperand(0).getReg();
+    unsigned Count = MI.getOperand(2).getImm();
+    for (unsigned I = 0; I < Count; ++I)
+      BuildMI(MBB, MI, DL, get(V6C::INX), Rp).addReg(Rp);
+    MI.eraseFromParent();
+    return true;
+  }
+  case V6C::V6C_DCX16: {
+    Register Rp = MI.getOperand(0).getReg();
+    unsigned Count = MI.getOperand(2).getImm();
+    for (unsigned I = 0; I < Count; ++I)
+      BuildMI(MBB, MI, DL, get(V6C::DCX), Rp).addReg(Rp);
+    MI.eraseFromParent();
+    return true;
+  }
+
   case V6C::V6C_DAD: {
     // V6C_DAD: HL = HL + rp via physical DAD instruction.
     // $dst and $lhs are tied and constrained to HL (GR16Ptr).

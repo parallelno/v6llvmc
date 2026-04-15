@@ -209,6 +209,8 @@ const char *V6CTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case V6CISD::SRL16:     return "V6CISD::SRL16";
   case V6CISD::SRA16:     return "V6CISD::SRA16";
   case V6CISD::DAD:       return "V6CISD::DAD";
+  case V6CISD::INX16:    return "V6CISD::INX16";
+  case V6CISD::DCX16:    return "V6CISD::DCX16";
   }
   return nullptr;
 }
@@ -226,10 +228,28 @@ SDValue V6CTargetLowering::PerformDAGCombine(SDNode *N,
     break;
 
   case ISD::ADD:
-    // Convert i16 add to V6CISD::DAD when the result is used as a pointer
-    // for a memory operation. DAD uses the HL register pair (12cc, does not
-    // clobber A), which is exactly what loads/stores need for addressing.
     if (N->getValueType(0) == MVT::i16) {
+      // O41: Check for small constant ±1..±3 → INX16/DCX16 pseudo.
+      // This runs BEFORE the DAD conversion so that pointer increments
+      // also benefit (INX needs no constant register pair).
+      for (unsigned OpIdx = 0; OpIdx < 2; ++OpIdx) {
+        if (auto *C = dyn_cast<ConstantSDNode>(N->getOperand(OpIdx))) {
+          int64_t Val = C->getSExtValue();
+          SDLoc DL(N);
+          if (Val >= 1 && Val <= 3)
+            return DAG.getNode(V6CISD::INX16, DL, MVT::i16,
+                               N->getOperand(1 - OpIdx),
+                               DAG.getTargetConstant(Val, DL, MVT::i8));
+          if (Val >= -3 && Val <= -1)
+            return DAG.getNode(V6CISD::DCX16, DL, MVT::i16,
+                               N->getOperand(1 - OpIdx),
+                               DAG.getTargetConstant(-Val, DL, MVT::i8));
+        }
+      }
+
+      // Convert i16 add to V6CISD::DAD when the result is used as a pointer
+      // for a memory operation. DAD uses the HL register pair (12cc, does not
+      // clobber A), which is exactly what loads/stores need for addressing.
       bool UsedAsPointer = false;
       for (SDNode::use_iterator UI = N->use_begin(), UE = N->use_end();
            UI != UE; ++UI) {
@@ -245,6 +265,24 @@ SDValue V6CTargetLowering::PerformDAGCombine(SDNode *N,
         SDLoc DL(N);
         return DAG.getNode(V6CISD::DAD, DL, MVT::i16, N->getOperand(0),
                            N->getOperand(1));
+      }
+    }
+    break;
+
+  case ISD::SUB:
+    // O41: sub i16 x, ±1..±3 → DCX16/INX16.
+    if (N->getValueType(0) == MVT::i16) {
+      if (auto *C = dyn_cast<ConstantSDNode>(N->getOperand(1))) {
+        int64_t Val = C->getSExtValue();
+        SDLoc DL(N);
+        if (Val >= 1 && Val <= 3)
+          return DAG.getNode(V6CISD::DCX16, DL, MVT::i16,
+                             N->getOperand(0),
+                             DAG.getTargetConstant(Val, DL, MVT::i8));
+        if (Val >= -3 && Val <= -1)
+          return DAG.getNode(V6CISD::INX16, DL, MVT::i16,
+                             N->getOperand(0),
+                             DAG.getTargetConstant(-Val, DL, MVT::i8));
       }
     }
     break;

@@ -29,6 +29,8 @@ enum NodeType : unsigned {
   SRL16,      // Logical right shift i16 by constant amount.
   SRA16,      // Arithmetic right shift i16 by constant amount.
   DAD,        // 16-bit add constrained to HL (maps to DAD rp).
+  INX16,      // 16-bit increment by immediate count (1..3), no flag set.
+  DCX16,      // 16-bit decrement by immediate count (1..3), no flag set.
 };
 } // namespace V6CISD
 

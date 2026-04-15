@@ -17,10 +17,10 @@ target triple = "i8080-unknown-v6c"
 ; by MOV pairs, eliminating stack accesses.  Expect fewer DAD SP in the loop.
 ;
 ; CHECK-LABEL: test_multi_ptr_copy:
-; The loop body performs indirect load from src (LDAX BC), store to dst
+; The loop body performs indirect load from src (LDAX DE), store to dst
 ; (MOV M, A), and increments both pointers.
 ; CHECK:       .LBB0_2:
-; CHECK:       LDAX    BC
+; CHECK:       LDAX    DE
 ; CHECK:       MOV     M, A
 ; CHECK:       JNZ .LBB0_2
 ;

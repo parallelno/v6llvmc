@@ -84,6 +84,13 @@ def V6Csra16 : SDNode<"V6CISD::SRA16", SDT_V6CShift16>;
 // DAD: 16-bit add constrained to HL pair (maps to physical DAD rp).
 def V6Cdad : SDNode<"V6CISD::DAD", SDTIntBinOp, [SDNPCommutative]>;
 
+// INX16/DCX16: increment/decrement i16 by immediate i8 count (1..3).
+def SDT_V6CInxDcx16 : SDTypeProfile<1, 2, [SDTCisVT<0, i16>,
+                                             SDTCisVT<1, i16>,
+                                             SDTCisVT<2, i8>]>;
+def V6Cinx16 : SDNode<"V6CISD::INX16", SDT_V6CInxDcx16>;
+def V6Cdcx16 : SDNode<"V6CISD::DCX16", SDT_V6CInxDcx16>;
+
 //===----------------------------------------------------------------------===//
 // V6C condition codes (used in BRCOND and SELECT_CC)
 //===----------------------------------------------------------------------===//
@@ -681,6 +688,22 @@ def V6C_DAD : V6CPseudo<(outs GR16Ptr:$dst), (ins GR16Ptr:$lhs, GR16All:$rp),
     "# DAD $dst, $lhs, $rp",
     [(set i16:$dst, (V6Cdad i16:$lhs, i16:$rp))]> {
   let Constraints = "$dst = $lhs";
+}
+
+// V6C_INX16: rp += count (1..3) via N copies of INX rp.
+// No register pair needed for the constant — count is an immediate.
+// Does NOT clobber A or FLAGS (INX sets no flags).
+def V6C_INX16 : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i8imm:$count),
+    "# INX16 $dst, $src, $count",
+    [(set i16:$dst, (V6Cinx16 i16:$src, (i8 timm:$count)))]> {
+  let Constraints = "$dst = $src";
+}
+
+// V6C_DCX16: rp -= count (1..3) via N copies of DCX rp.
+def V6C_DCX16 : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i8imm:$count),
+    "# DCX16 $dst, $src, $count",
+    [(set i16:$dst, (V6Cdcx16 i16:$src, (i8 timm:$count)))]> {
+  let Constraints = "$dst = $src";
 }
 
 let Defs = [A, FLAGS] in {
