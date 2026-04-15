@@ -54,6 +54,7 @@ private:
   bool eliminateTailCall(MachineBasicBlock &MBB);
   bool foldCounterBranch(MachineBasicBlock &MBB);
   bool foldXraCmpZeroTest(MachineBasicBlock &MBB);
+  bool foldXchgDad(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -412,6 +413,41 @@ bool V6CPeephole::foldXraCmpZeroTest(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// Fold XCHG; DAD DE → DAD DE.
+///
+/// XCHG swaps HL↔DE, then DAD DE computes (old-DE) + (old-HL) → HL.
+/// Without XCHG, DAD DE computes (old-HL) + (old-DE) → HL — same result
+/// because addition is commutative.  However DE differs: with XCHG it
+/// holds old-HL; without, old-DE.  Safe only when DE is dead after DAD.
+bool V6CPeephole::foldXchgDad(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+
+  for (auto I = MBB.begin(), E = MBB.end(); I != E; ++I) {
+    if (I->getOpcode() != V6C::XCHG)
+      continue;
+
+    auto Next = std::next(I);
+    if (Next == E || Next->getOpcode() != V6C::DAD)
+      continue;
+
+    // DAD operand must be DE.
+    if (Next->getOperand(0).getReg() != V6C::DE)
+      continue;
+
+    // DE must be dead after DAD (DE value differs with/without XCHG).
+    if (!isRegDeadAfter(MBB, Next, V6C::DE, TRI))
+      continue;
+
+    // Safe to remove the XCHG.
+    I = MBB.erase(I);
+    // I now points at DAD — continue loop from there.
+    Changed = true;
+  }
+  return Changed;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -422,6 +458,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
     Changed |= eliminateRedundantMov(MBB);
     Changed |= foldCounterBranch(MBB);
     Changed |= foldXraCmpZeroTest(MBB);
+    Changed |= foldXchgDad(MBB);
     Changed |= eliminateTailCall(MBB);
   }
   return Changed;

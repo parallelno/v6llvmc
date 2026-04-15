@@ -29,12 +29,17 @@ static llvm::cl::opt<unsigned> V6CStartAddress(
 static llvm::cl::opt<bool> V6CStaticStack(
     "mv6c-static-stack",
     llvm::cl::desc("Use static memory for non-reentrant function stack frames"),
+    llvm::cl::init(true));
+
+static llvm::cl::opt<bool> V6CNoStaticStack(
+    "mv6c-no-static-stack",
+    llvm::cl::desc("Disable static stack allocation"),
     llvm::cl::init(false));
 
 namespace llvm {
 
 unsigned getV6CStartAddress() { return V6CStartAddress; }
-bool getV6CStaticStackEnabled() { return V6CStaticStack; }
+bool getV6CStaticStackEnabled() { return V6CStaticStack && !V6CNoStaticStack; }
 
 // Data layout: little-endian, 16-bit pointers (8-bit aligned),
 // all types 8-bit aligned, native integer widths 8 and 16, stack alignment 8.

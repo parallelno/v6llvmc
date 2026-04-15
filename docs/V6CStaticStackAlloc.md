@@ -23,18 +23,18 @@ for reentrant and interrupt-driven code.
 
 ## Usage
 
-Static stack is **opt-in** (disabled by default):
+Static stack is **enabled by default**. To disable:
 
 ```sh
 # via Clang
-clang --target=i8080-unknown-v6c -O2 -mllvm -mv6c-static-stack -S file.c
+clang --target=i8080-unknown-v6c -O2 -mllvm -mv6c-no-static-stack -S file.c
 
 # via llc
-llc -march=v6c -O2 -mv6c-static-stack < file.ll
+llc -march=v6c -O2 -mv6c-no-static-stack < file.ll
 ```
 
-The flag gates the entire pass. When disabled, no analysis runs and all
-functions use the normal SP-relative frame.
+When disabled, no analysis runs and all functions use the normal SP-relative
+frame.
 
 ## Eligibility Criteria
 
@@ -143,7 +143,7 @@ void main_loop(void) {
 
 ```c
 // A leaf function only called from main — never from any ISR.
-// Will get static stack if it has spills and -mv6c-static-stack is on.
+// Will get static stack if it has spills (enabled by default).
 __attribute__((noinline))
 int compute(int a, int b, int c) {
     int x = a + 1;

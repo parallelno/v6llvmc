@@ -252,6 +252,6 @@ After (static, pair in HL):
   Total: 20cc, 3B
 ```
 
-**Toggle:** `-mv6c-static-stack` (opt-in, disabled by default)
+**Toggle:** Enabled by default. Disable with `-mv6c-no-static-stack`.
 
 **Impact:** For spill-heavy functions, saves 32-56 cycles and 4-6 bytes per spill/reload operation. Eliminates prologue (PUSH + LXI + DAD SP + SPHL) and epilogue (LXI + DAD SP + SPHL + restore) entirely. In the feature test, `heavy_spill` improved by 404cc (53%) and 53B (52%).
