@@ -1215,33 +1215,36 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
 
   case V6C::V6C_LOAD16_G: {
     // Load 16-bit from global address.
-    // Use LHLD if dst is HL, otherwise PUSH HL; LHLD; copy to dst; POP HL.
-    // HL is preserved in the non-HL case so we don't need Defs=[HL] on the
-    // pseudo, which lets the register allocator freely assign HL (optimal
-    // single-load path) or DE/BC (under register pressure).
+    // dst=HL: LHLD addr (3B, 16cc) — optimal.
+    // dst=DE: XCHG; LHLD addr; XCHG (5B, 24cc) — preserves HL via swap.
+    // dst=BC: PUSH HL; LHLD addr; MOV B,H; MOV C,L; POP HL (7B, 46cc).
     Register DstReg = MI.getOperand(0).getReg();
     MachineOperand &AddrOp = MI.getOperand(1);
 
-    if (DstReg == V6C::HL) {
-      // Best case: LHLD addr (3 bytes, 16 cycles)
-      auto MIB = BuildMI(MBB, MI, DL, get(V6C::LHLD), V6C::HL);
+    auto emitLHLD = [&](MachineBasicBlock::iterator InsertPt) {
+      auto MIB = BuildMI(MBB, InsertPt, DL, get(V6C::LHLD), V6C::HL);
       if (AddrOp.isGlobal())
         MIB.addGlobalAddress(AddrOp.getGlobal(), AddrOp.getOffset());
       else
         MIB.addImm(AddrOp.getImm());
+    };
+
+    if (DstReg == V6C::HL) {
+      emitLHLD(MI);
+    } else if (DstReg == V6C::DE) {
+      // XCHG; LHLD addr; XCHG — saves 2B + 22cc vs PUSH/POP path.
+      BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      emitLHLD(MI);
+      BuildMI(MBB, MI, DL, get(V6C::XCHG));
     } else {
-      // Preserve HL: PUSH HL; LHLD addr; MOV DstHi,H; MOV DstLo,L; POP HL
+      // BC case: PUSH HL; LHLD; MOV B,H; MOV C,L; POP HL
       MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
       MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
 
       BuildMI(MBB, MI, DL, get(V6C::PUSH))
           .addReg(V6C::HL, RegState::Kill)
           .addReg(V6C::SP, RegState::ImplicitDefine);
-      auto MIB = BuildMI(MBB, MI, DL, get(V6C::LHLD), V6C::HL);
-      if (AddrOp.isGlobal())
-        MIB.addGlobalAddress(AddrOp.getGlobal(), AddrOp.getOffset());
-      else
-        MIB.addImm(AddrOp.getImm());
+      emitLHLD(MI);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::H);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::L);
       BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
