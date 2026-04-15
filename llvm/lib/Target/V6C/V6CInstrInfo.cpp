@@ -1215,29 +1215,37 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
 
   case V6C::V6C_LOAD16_G: {
     // Load 16-bit from global address.
-    // Use LHLD if dst is HL, otherwise use LXI + MOV + INX + MOV.
+    // Use LHLD if dst is HL, otherwise PUSH HL; LHLD; copy to dst; POP HL.
+    // HL is preserved in the non-HL case so we don't need Defs=[HL] on the
+    // pseudo, which lets the register allocator freely assign HL (optimal
+    // single-load path) or DE/BC (under register pressure).
     Register DstReg = MI.getOperand(0).getReg();
     MachineOperand &AddrOp = MI.getOperand(1);
 
     if (DstReg == V6C::HL) {
-      // Best case: LHLD addr
+      // Best case: LHLD addr (3 bytes, 16 cycles)
       auto MIB = BuildMI(MBB, MI, DL, get(V6C::LHLD), V6C::HL);
       if (AddrOp.isGlobal())
         MIB.addGlobalAddress(AddrOp.getGlobal(), AddrOp.getOffset());
       else
         MIB.addImm(AddrOp.getImm());
     } else {
+      // Preserve HL: PUSH HL; LHLD addr; MOV DstHi,H; MOV DstLo,L; POP HL
       MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
       MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
 
-      auto MIB = BuildMI(MBB, MI, DL, get(V6C::LXI), V6C::HL);
+      BuildMI(MBB, MI, DL, get(V6C::PUSH))
+          .addReg(V6C::HL, RegState::Kill)
+          .addReg(V6C::SP, RegState::ImplicitDefine);
+      auto MIB = BuildMI(MBB, MI, DL, get(V6C::LHLD), V6C::HL);
       if (AddrOp.isGlobal())
         MIB.addGlobalAddress(AddrOp.getGlobal(), AddrOp.getOffset());
       else
         MIB.addImm(AddrOp.getImm());
-      BuildMI(MBB, MI, DL, get(V6C::MOVrM), DstLo);
-      BuildMI(MBB, MI, DL, get(V6C::INX), V6C::HL).addReg(V6C::HL);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrM), DstHi);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::H);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::L);
+      BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
+          .addReg(V6C::SP, RegState::ImplicitDefine);
     }
 
     MI.eraseFromParent();

@@ -753,9 +753,10 @@ def V6C_STORE16_P : V6CPseudo<(outs), (ins GR16:$val, GR16:$addr),
     [(store i16:$val, i16:$addr)]>;
 
 // 16-bit load from global address.
-// For known addresses, try LHLD (result always in HL).
-// Pseudo: LXI HL, addr; MOV lo, M; INX HL; MOV hi, M
-let mayLoad = 1, Defs = [HL] in
+// No Defs=[HL] — when $dst != HL the expansion preserves HL via PUSH/POP,
+// so the register allocator is free to assign the result to HL (LHLD,
+// optimal) or DE/BC (LHLD + copy + HL preservation) under register pressure.
+let mayLoad = 1 in
 def V6C_LOAD16_G : V6CPseudo<(outs GR16:$dst), (ins imm16:$addr),
     "# LOAD16G $dst, $addr", []>;
 
@@ -765,9 +766,13 @@ let mayStore = 1, Defs = [HL] in
 def V6C_STORE16_G : V6CPseudo<(outs), (ins GR16:$val, imm16:$addr),
     "# STORE16G $val, $addr", []>;
 
-// Load i16 from global via LHLD (result always in HL).
+// Load i16 from global address.
+// Use V6C_LOAD16_G (GR16 output) instead of LHLD (GR16Ptr = HL-only) so
+// the register allocator can pick DE or BC when multiple global loads are
+// live simultaneously.  Post-RA expansion emits LHLD when dst happens to
+// be HL, or LXI+MOV when dst is DE/BC.
 def : Pat<(i16 (load (V6Cwrapper tglobaladdr:$addr))),
-          (LHLD tglobaladdr:$addr)>;
+          (V6C_LOAD16_G tglobaladdr:$addr)>;
 
 // Store i16 to global via SHLD (source must be in HL).
 def : Pat<(store i16:$val, (V6Cwrapper tglobaladdr:$addr)),
