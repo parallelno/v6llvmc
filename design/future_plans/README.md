@@ -92,7 +92,7 @@
 | O39 | IPRA Integration (eliminate call spills) | 13-18 instr/func | Very high | Medium | Medium | None | [x] |
 | O40 | ADD16 DAD-Based Expansion | V6C | 12cc, 3B | Med-High | Very Low | Very Low | None | [x] |
 | O41 | Pre-RA INX/DCX Pseudo (±1..±3) | V6C | 12cc, 3B + free reg pair | Very high | Low | Very Low | O20 done | [x] |
-| O42 | Liveness-Aware Pseudo Expansion | V6C | 21-24cc, 2-3B per PUSH/POP | Very high | Low-Med | Low | O10+O20 done | [ ] |
+| O42 | Liveness-Aware Pseudo Expansion | V6C | 21-24cc, 2-3B per PUSH/POP | Very high | Low-Med | Low | O10+O20 done | [x] |
 
 ### Recommended order
 
@@ -122,7 +122,7 @@
 21. ~~**O38** — XRA+CMP i8 zero-test, 4cc + cascade MVI elimination, ~40 lines~~ ✅
 22. ~~**O40** — ADD16 DAD-based expansion, 12cc+3B per non-HL ADD16, ~30 lines~~ ✅
 23. ~~**O41** — pre-RA INX/DCX pseudo for ±1..±3 constants, frees register pair, ~40 lines~~ ✅
-24. **O42** — liveness-aware pseudo expansion, skip PUSH/POP when dead, 21-24cc per instance, ~80 lines
+24. ~~**O42** — liveness-aware pseudo expansion, skip PUSH/POP when dead, 21-24cc per instance, ~80 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅

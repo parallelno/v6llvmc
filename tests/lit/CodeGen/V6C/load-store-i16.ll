@@ -29,13 +29,11 @@ define i16 @load_ptr(ptr %p) {
 }
 
 ; CHECK-LABEL: store_ptr:
-; CHECK:       PUSH DE
-; CHECK-NEXT:  MOV A, L
+; CHECK:       MOV A, L
 ; CHECK-NEXT:  STAX DE
 ; CHECK-NEXT:  INX DE
 ; CHECK-NEXT:  MOV A, H
 ; CHECK-NEXT:  STAX DE
-; CHECK-NEXT:  POP DE
 ; CHECK-NEXT:  RET
 define void @store_ptr(i16 %val, ptr %p) {
   store i16 %val, ptr %p

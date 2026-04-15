@@ -32,6 +32,7 @@ The user provides a feature description — one of the files in
 ## Phase 3 — Implementation Cycles
 
 Repeat the following cycle for each step in the implementation plan.
+Keep in mind `llvm` is a mirror folder. Changes must go to `llvm-project`. Details  - docs\V6CBuildGuide.md.
 
 ### Build Cycle
 1. Implement the next plan step (modify source files as described).

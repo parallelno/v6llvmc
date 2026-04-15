@@ -1156,14 +1156,18 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       BuildMI(MBB, MI, DL, get(V6C::XCHG));
     } else {
       // Addr=BC: preserve HL via PUSH/POP.
-      BuildMI(MBB, MI, DL, get(V6C::PUSH))
-          .addReg(V6C::HL, RegState::Kill)
-          .addReg(V6C::SP, RegState::ImplicitDefine);
+      // O42: skip PUSH/POP HL when HL is dead after this instruction.
+      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+      if (!HLDead)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH))
+            .addReg(V6C::HL, RegState::Kill)
+            .addReg(V6C::SP, RegState::ImplicitDefine);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::H).addReg(V6C::B);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::L).addReg(V6C::C);
       emitLoad();
-      BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
-          .addReg(V6C::SP, RegState::ImplicitDefine);
+      if (!HLDead)
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
+            .addReg(V6C::SP, RegState::ImplicitDefine);
     }
 
     MI.eraseFromParent();
@@ -1189,8 +1193,10 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
         BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(V6C::A);
       } else if (AddrReg == V6C::DE) {
         // Use STAX DE + PUSH/POP to preserve DE.
-        // This avoids XCHG which would clobber DE (the RA expects it alive).
-        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::DE);
+        // O42: skip PUSH/POP DE when DE is dead after this instruction.
+        bool DEDead = isRegDeadAtMI(V6C::DE, MI, MBB, &RI);
+        if (!DEDead)
+          BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::DE);
         BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::L);
         BuildMI(MBB, MI, DL, get(V6C::STAX))
             .addReg(V6C::A).addReg(V6C::DE);
@@ -1198,10 +1204,14 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
         BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::H);
         BuildMI(MBB, MI, DL, get(V6C::STAX))
             .addReg(V6C::A).addReg(V6C::DE);
-        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::DE);
+        if (!DEDead)
+          BuildMI(MBB, MI, DL, get(V6C::POP), V6C::DE);
       } else {
         // Addr=BC: use STAX BC + PUSH/POP to preserve BC.
-        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::BC);
+        // O42: skip PUSH/POP BC when BC is dead after this instruction.
+        bool BCDead = isRegDeadAtMI(V6C::BC, MI, MBB, &RI);
+        if (!BCDead)
+          BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::BC);
         BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::L);
         BuildMI(MBB, MI, DL, get(V6C::STAX))
             .addReg(V6C::A).addReg(V6C::BC);
@@ -1209,7 +1219,8 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
         BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::H);
         BuildMI(MBB, MI, DL, get(V6C::STAX))
             .addReg(V6C::A).addReg(V6C::BC);
-        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::BC);
+        if (!BCDead)
+          BuildMI(MBB, MI, DL, get(V6C::POP), V6C::BC);
       }
     } else {
       // Value is NOT in HL — safe to copy addr to HL.
@@ -1256,14 +1267,18 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
       MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
 
-      BuildMI(MBB, MI, DL, get(V6C::PUSH))
-          .addReg(V6C::HL, RegState::Kill)
-          .addReg(V6C::SP, RegState::ImplicitDefine);
+      // O42: skip PUSH/POP HL when HL is dead after this instruction.
+      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+      if (!HLDead)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH))
+            .addReg(V6C::HL, RegState::Kill)
+            .addReg(V6C::SP, RegState::ImplicitDefine);
       emitLHLD(MI);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::H);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::L);
-      BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
-          .addReg(V6C::SP, RegState::ImplicitDefine);
+      if (!HLDead)
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
+            .addReg(V6C::SP, RegState::ImplicitDefine);
     }
 
     MI.eraseFromParent();
@@ -1509,7 +1524,10 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
           .addReg(DstReg, RegState::Define).addReg(V6C::A);
     } else {
       // Priority 4: fallback — save/restore HL (43cc)
-      BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
+      // O42: skip PUSH/POP HL when HL is dead after this instruction.
+      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+      if (!HLDead)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
       MCRegister Hi = RI.getSubReg(AddrReg, V6C::sub_hi);
       MCRegister Lo = RI.getSubReg(AddrReg, V6C::sub_lo);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr))
@@ -1518,8 +1536,9 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
           .addReg(V6C::L, RegState::Define).addReg(Lo);
       BuildMI(MBB, MI, DL, get(V6C::MOVrM))
           .addReg(DstReg, RegState::Define);
-      BuildMI(MBB, MI, DL, get(V6C::POP))
-          .addDef(V6C::HL);
+      if (!HLDead)
+        BuildMI(MBB, MI, DL, get(V6C::POP))
+            .addDef(V6C::HL);
     }
     MI.eraseFromParent();
     return true;
@@ -1547,7 +1566,10 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
           .addReg(V6C::A).addReg(AddrReg);
     } else {
       // Priority 4: fallback — save/restore HL (43cc)
-      BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
+      // O42: skip PUSH/POP HL when HL is dead after this instruction.
+      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+      if (!HLDead)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
       MCRegister Hi = RI.getSubReg(AddrReg, V6C::sub_hi);
       MCRegister Lo = RI.getSubReg(AddrReg, V6C::sub_lo);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr))
@@ -1555,8 +1577,9 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       BuildMI(MBB, MI, DL, get(V6C::MOVrr))
           .addReg(V6C::L, RegState::Define).addReg(Lo);
       BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(SrcReg);
-      BuildMI(MBB, MI, DL, get(V6C::POP))
-          .addDef(V6C::HL);
+      if (!HLDead)
+        BuildMI(MBB, MI, DL, get(V6C::POP))
+            .addDef(V6C::HL);
     }
     MI.eraseFromParent();
     return true;

@@ -66,6 +66,37 @@ V6CRegisterInfo::getLargestLegalSuperClass(
   return TargetRegisterInfo::getLargestLegalSuperClass(RC, MF);
 }
 
+/// Check if a physical register is dead after a given instruction (O42).
+/// Scans forward from MI (exclusive) to end of MBB.
+/// Returns true if no read before redef, and Reg not in any successor livein.
+static bool isRegDeadAfterMI(unsigned Reg, const MachineInstr &MI,
+                             MachineBasicBlock &MBB,
+                             const TargetRegisterInfo *TRI) {
+  for (auto I = std::next(MI.getIterator()); I != MBB.end(); ++I) {
+    bool usesReg = false, defsReg = false;
+    for (const MachineOperand &MO : I->operands()) {
+      if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
+        continue;
+      if (MO.isUse())
+        usesReg = true;
+      if (MO.isDef())
+        defsReg = true;
+    }
+    if (usesReg)
+      return false;
+    if (defsReg)
+      return true;
+  }
+  for (MachineBasicBlock *Succ : MBB.successors()) {
+    for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
+         ++AI) {
+      if (Succ->isLiveIn(*AI))
+        return false;
+    }
+  }
+  return true;
+}
+
 bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
                                            int SPAdj,
                                            unsigned FIOperandNum,
@@ -114,7 +145,10 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
         Register ValReg = SpillingH ? V6C::D : V6C::E;
         Register OtherReg = SpillingH ? V6C::E : V6C::D;
         Register OtherHL = SpillingH ? V6C::L : V6C::H;
-        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
+        // O42: skip PUSH/POP DE when DE is dead after this instruction.
+        bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
+        if (!DEDead)
+          BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
         BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
             .addReg(ValReg, RegState::Define).addReg(SrcReg);
         BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
@@ -128,16 +162,21 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
             .addReg(V6C::H, RegState::Define).addReg(V6C::D);
         BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
             .addReg(V6C::L, RegState::Define).addReg(V6C::E);
-        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+        if (!DEDead)
+          BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
       } else {
         // B,C,D,E: PUSH HL; LXI HL, addr; MOV M, r; POP HL (42cc, 6B)
-        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+        // O42: skip PUSH/POP HL when HL is dead after this instruction.
+        bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
+        if (!HLDead)
+          BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
         BuildMI(MBB, II, DL, TII.get(V6C::LXI))
             .addReg(V6C::HL, RegState::Define)
             .addGlobalAddress(GV, StaticOffset);
         BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
             .addReg(SrcReg, getKillRegState(MI.getOperand(0).isKill()));
-        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+        if (!HLDead)
+          BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
       }
       MI.eraseFromParent();
       return true;
@@ -154,7 +193,10 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
         bool LoadingH = (DstReg == V6C::H);
         Register SaveOther = V6C::D;
         Register OtherHL = LoadingH ? V6C::L : V6C::H;
-        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
+        // O42: skip PUSH/POP DE when DE is dead after this instruction.
+        bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
+        if (!DEDead)
+          BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
         BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
             .addReg(SaveOther, RegState::Define).addReg(OtherHL);
         BuildMI(MBB, II, DL, TII.get(V6C::LXI))
@@ -164,16 +206,21 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
             .addReg(DstReg, RegState::Define);
         BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
             .addReg(OtherHL, RegState::Define).addReg(SaveOther);
-        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+        if (!DEDead)
+          BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
       } else {
         // B,C,D,E: PUSH HL; LXI HL, addr; MOV r, M; POP HL (42cc, 6B)
-        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+        // O42: skip PUSH/POP HL when HL is dead after this instruction.
+        bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
+        if (!HLDead)
+          BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
         BuildMI(MBB, II, DL, TII.get(V6C::LXI))
             .addReg(V6C::HL, RegState::Define)
             .addGlobalAddress(GV, StaticOffset);
         BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
             .addReg(DstReg, RegState::Define);
-        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+        if (!HLDead)
+          BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
       }
       MI.eraseFromParent();
       return true;
@@ -189,26 +236,42 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
             .addGlobalAddress(GV, StaticOffset);
       } else if (SrcReg == V6C::DE) {
         // XCHG; SHLD addr; XCHG (24cc, 5B)
+        // O42: skip trailing XCHG when HL is dead (DE is killed or HL dead)
+        bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
         BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
         BuildMI(MBB, II, DL, TII.get(V6C::SHLD))
             .addReg(V6C::HL)
             .addGlobalAddress(GV, StaticOffset);
-        if (!IsKill)
+        if (!IsKill && !HLDead)
           BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
       } else {
         // BC: PUSH HL; LXI HL, addr; MOV M, C; INX HL; MOV M, B; POP HL
         MCRegister SrcLo = getSubReg(SrcReg, V6C::sub_lo);
         MCRegister SrcHi = getSubReg(SrcReg, V6C::sub_hi);
-        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
-        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-            .addReg(V6C::HL, RegState::Define)
-            .addGlobalAddress(GV, StaticOffset);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
-            .addReg(SrcLo, getKillRegState(IsKill));
-        BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
-            .addReg(SrcHi, getKillRegState(IsKill));
-        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+        // O42: when HL is dead, use MOV L,C; MOV H,B; SHLD addr (5B, 32cc)
+        bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
+        if (HLDead) {
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+              .addReg(V6C::L, RegState::Define)
+              .addReg(SrcLo, getKillRegState(IsKill));
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+              .addReg(V6C::H, RegState::Define)
+              .addReg(SrcHi, getKillRegState(IsKill));
+          BuildMI(MBB, II, DL, TII.get(V6C::SHLD))
+              .addReg(V6C::HL)
+              .addGlobalAddress(GV, StaticOffset);
+        } else {
+          BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+          BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+              .addReg(V6C::HL, RegState::Define)
+              .addGlobalAddress(GV, StaticOffset);
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
+              .addReg(SrcLo, getKillRegState(IsKill));
+          BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
+              .addReg(SrcHi, getKillRegState(IsKill));
+          BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+        }
       }
       MI.eraseFromParent();
       return true;
@@ -221,25 +284,45 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
         BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
             .addGlobalAddress(GV, StaticOffset);
       } else if (DstReg == V6C::DE) {
-        // XCHG; LHLD addr; XCHG (24cc, 5B)
-        BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
-        BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
-            .addGlobalAddress(GV, StaticOffset);
-        BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+        // O42: when HL is dead, use LHLD addr; XCHG (4B, 20cc)
+        // instead of XCHG; LHLD addr; XCHG (5B, 24cc)
+        bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
+        if (HLDead) {
+          BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
+              .addGlobalAddress(GV, StaticOffset);
+          BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+        } else {
+          // XCHG; LHLD addr; XCHG (24cc, 5B)
+          BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+          BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
+              .addGlobalAddress(GV, StaticOffset);
+          BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+        }
       } else {
         // BC: PUSH HL; LXI HL, addr; MOV C, M; INX HL; MOV B, M; POP HL
         MCRegister DstLo = getSubReg(DstReg, V6C::sub_lo);
         MCRegister DstHi = getSubReg(DstReg, V6C::sub_hi);
-        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
-        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-            .addReg(V6C::HL, RegState::Define)
-            .addGlobalAddress(GV, StaticOffset);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
-            .addReg(DstLo, RegState::Define);
-        BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
-            .addReg(DstHi, RegState::Define);
-        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+        // O42: when HL is dead, use LHLD addr; MOV C,L; MOV B,H (5B, 30cc)
+        bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
+        if (HLDead) {
+          BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
+              .addGlobalAddress(GV, StaticOffset);
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+              .addReg(DstLo, RegState::Define).addReg(V6C::L);
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+              .addReg(DstHi, RegState::Define).addReg(V6C::H);
+        } else {
+          BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+          BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+              .addReg(V6C::HL, RegState::Define)
+              .addGlobalAddress(GV, StaticOffset);
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+              .addReg(DstLo, RegState::Define);
+          BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+              .addReg(DstHi, RegState::Define);
+          BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+        }
       }
       MI.eraseFromParent();
       return true;
@@ -279,13 +362,17 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
       Register ValReg = SpillingH ? V6C::D : V6C::E;
       Register OtherReg = SpillingH ? V6C::E : V6C::D;
       Register OtherHL = SpillingH ? V6C::L : V6C::H;
-      BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
+      // O42: skip PUSH/POP DE when DE is dead; adjust offset accordingly.
+      bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
+      int AdjOffset = DEDead ? Offset : Offset + 2;
+      if (!DEDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
           .addReg(ValReg, RegState::Define).addReg(SrcReg);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
           .addReg(OtherReg, RegState::Define).addReg(OtherHL);
       BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-          .addReg(V6C::HL, RegState::Define).addImm(Offset + 2);
+          .addReg(V6C::HL, RegState::Define).addImm(AdjOffset);
       BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVMr)).addReg(ValReg);
       // Restore HL from D/E.
@@ -293,15 +380,21 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
           .addReg(V6C::H, RegState::Define).addReg(V6C::D);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
           .addReg(V6C::L, RegState::Define).addReg(V6C::E);
-      BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+      if (!DEDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
     } else {
-      BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+      // O42: skip PUSH/POP HL when HL is dead; adjust offset accordingly.
+      bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
+      int AdjOffset = HLDead ? Offset : Offset + 2;
+      if (!HLDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
       BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-          .addReg(V6C::HL, RegState::Define).addImm(Offset + 2);
+          .addReg(V6C::HL, RegState::Define).addImm(AdjOffset);
       BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
           .addReg(SrcReg, getKillRegState(MI.getOperand(0).isKill()));
-      BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+      if (!HLDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
     }
     MI.eraseFromParent();
     return true;
@@ -314,16 +407,18 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     bool DstIsHorL = (DstReg == V6C::H || DstReg == V6C::L);
     if (DstIsHorL) {
       // Reloading into H or L: use DE as temp to avoid clobbering A.
-      // Save DE, save the non-target half of HL in D, load via LXI+DAD,
-      // use MOV H/L,M (8080 latches address before write), restore.
       bool LoadingH = (DstReg == V6C::H);
       Register SaveOther = V6C::D; // temp for non-target half
       Register OtherHL = LoadingH ? V6C::L : V6C::H;
-      BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
+      // O42: skip PUSH/POP DE when DE is dead; adjust offset accordingly.
+      bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
+      int AdjOffset = DEDead ? Offset : Offset + 2;
+      if (!DEDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
           .addReg(SaveOther, RegState::Define).addReg(OtherHL);
       BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-          .addReg(V6C::HL, RegState::Define).addImm(Offset + 2);
+          .addReg(V6C::HL, RegState::Define).addImm(AdjOffset);
       BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
       // MOV H,M / MOV L,M: 8080 latches [HL] address before writing dst.
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
@@ -331,15 +426,21 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
       // Restore the non-target half.
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
           .addReg(OtherHL, RegState::Define).addReg(SaveOther);
-      BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+      if (!DEDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
     } else {
-      BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+      // O42: skip PUSH/POP HL when HL is dead; adjust offset accordingly.
+      bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
+      int AdjOffset = HLDead ? Offset : Offset + 2;
+      if (!HLDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
       BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-          .addReg(V6C::HL, RegState::Define).addImm(Offset + 2);
+          .addReg(V6C::HL, RegState::Define).addImm(AdjOffset);
       BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
           .addReg(DstReg, RegState::Define);
-      BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+      if (!HLDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
     }
     MI.eraseFromParent();
     return true;
@@ -353,13 +454,17 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
     if (SrcReg == V6C::HL) {
       // Spilling HL: save DE, copy HL→DE, use HL for addressing, restore.
-      BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
+      // O42: skip PUSH/POP DE when DE is dead; adjust offset accordingly.
+      bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
+      int AdjOffset = DEDead ? Offset : Offset + 2;
+      if (!DEDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
           .addReg(V6C::D, RegState::Define).addReg(V6C::H);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
           .addReg(V6C::E, RegState::Define).addReg(V6C::L);
       BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-          .addReg(V6C::HL, RegState::Define).addImm(Offset + 2);
+          .addReg(V6C::HL, RegState::Define).addImm(AdjOffset);
       BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVMr)).addReg(V6C::E);
       BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
@@ -371,21 +476,27 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
         BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
             .addReg(V6C::L, RegState::Define).addReg(V6C::E);
       }
-      BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+      if (!DEDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
     } else {
       // Spilling DE or BC: save HL, use HL for addressing, restore.
       MCRegister SrcLo = getSubReg(SrcReg, V6C::sub_lo);
       MCRegister SrcHi = getSubReg(SrcReg, V6C::sub_hi);
-      BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+      // O42: skip PUSH/POP HL when HL is dead; adjust offset accordingly.
+      bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
+      int AdjOffset = HLDead ? Offset : Offset + 2;
+      if (!HLDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
       BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-          .addReg(V6C::HL, RegState::Define).addImm(Offset + 2);
+          .addReg(V6C::HL, RegState::Define).addImm(AdjOffset);
       BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
           .addReg(SrcLo, getKillRegState(IsKill));
       BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
           .addReg(SrcHi, getKillRegState(IsKill));
-      BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+      if (!HLDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
     }
     MI.eraseFromParent();
     return true;
@@ -398,9 +509,13 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
     if (DstReg == V6C::HL) {
       // Reloading into HL: save DE, load via HL into DE, copy to HL, restore.
-      BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
+      // O42: skip PUSH/POP DE when DE is dead; adjust offset accordingly.
+      bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
+      int AdjOffset = DEDead ? Offset : Offset + 2;
+      if (!DEDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
       BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-          .addReg(V6C::HL, RegState::Define).addImm(Offset + 2);
+          .addReg(V6C::HL, RegState::Define).addImm(AdjOffset);
       BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
           .addReg(V6C::E, RegState::Define);
@@ -411,21 +526,27 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
           .addReg(V6C::H, RegState::Define).addReg(V6C::D);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
           .addReg(V6C::L, RegState::Define).addReg(V6C::E);
-      BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+      if (!DEDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
     } else {
       // Reloading into DE or BC: save HL, load, restore HL.
       MCRegister LoadLo = getSubReg(DstReg, V6C::sub_lo);
       MCRegister LoadHi = getSubReg(DstReg, V6C::sub_hi);
-      BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+      // O42: skip PUSH/POP HL when HL is dead; adjust offset accordingly.
+      bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
+      int AdjOffset = HLDead ? Offset : Offset + 2;
+      if (!HLDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
       BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-          .addReg(V6C::HL, RegState::Define).addImm(Offset + 2);
+          .addReg(V6C::HL, RegState::Define).addImm(AdjOffset);
       BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
           .addReg(LoadLo, RegState::Define);
       BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
           .addReg(LoadHi, RegState::Define);
-      BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+      if (!HLDead)
+        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
     }
     MI.eraseFromParent();
     return true;
