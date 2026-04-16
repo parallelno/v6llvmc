@@ -11,6 +11,10 @@ if (-not $root) { $root = Split-Path (Get-Location) -Parent }
 # V6C backend target directory
 robocopy "$root\llvm-project\llvm\lib\Target\V6C" "$root\llvm\lib\Target\V6C" /MIR /NFL /NDL /NJH /NJS
 
+# V6C lit tests (CodeGen — source of truth is llvm-project)
+# Use /S (recurse) not /MIR to preserve mirror-only files (Inputs/, Output/, .gitkeep)
+robocopy "$root\llvm-project\llvm\test\CodeGen\V6C" "$root\tests\lit\CodeGen\V6C" *.ll /S /NFL /NDL /NJH /NJS
+
 # Modified upstream LLVM files
 # M1: i8080 architecture registration in Triple
 xcopy /Y /I "$root\llvm-project\llvm\include\llvm\TargetParser\Triple.h" "$root\llvm\include\llvm\TargetParser\" > $null

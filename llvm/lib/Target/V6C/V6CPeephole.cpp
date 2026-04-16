@@ -56,6 +56,7 @@ private:
   bool foldXraCmpZeroTest(MachineBasicBlock &MBB);
   bool cancelAdjacentXchg(MachineBasicBlock &MBB);
   bool foldXchgDad(MachineBasicBlock &MBB);
+  bool foldShldLhldToPushPop(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -505,6 +506,101 @@ bool V6CPeephole::foldXchgDad(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// Return true if two MachineOperands represent the same address
+/// (both GlobalAddress with same GV and offset, or both identical immediates).
+static bool isSameAddress(const MachineOperand &A, const MachineOperand &B) {
+  if (A.getType() != B.getType())
+    return false;
+  if (A.isGlobal())
+    return A.getGlobal() == B.getGlobal() && A.getOffset() == B.getOffset();
+  if (A.isImm())
+    return A.getImm() == B.getImm();
+  return false;
+}
+
+/// Replace SHLD addr / LHLD addr pairs with PUSH HL / POP HL (O43).
+///
+/// When a static-stack spill (SHLD) and its matching reload (LHLD) are in
+/// the same basic block with SP delta == 0 at the LHLD, PUSH HL + POP HL
+/// is cheaper: 28cc/2B vs 40cc/6B.
+///
+/// SP delta tracking: PUSH decrements by 2, POP increments by 2.
+/// CALL/Ccc/RST are net-zero (callee restores SP via RET).
+/// Any other SP modifier (SPHL, LXI SP, INX SP, DCX SP) causes abort.
+bool V6CPeephole::foldShldLhldToPushPop(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+  const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+
+  for (auto I = MBB.begin(), E = MBB.end(); I != E; ++I) {
+    if (I->getOpcode() != V6C::SHLD)
+      continue;
+
+    const MachineOperand &ShldAddr = I->getOperand(1);
+    int SPDelta = 0;
+    bool Abort = false;
+    MachineBasicBlock::iterator MatchIt;
+    bool Found = false;
+
+    for (auto J = std::next(I); J != E; ++J) {
+      if (J->isDebugInstr())
+        continue;
+
+      // Check for matching LHLD.
+      if (J->getOpcode() == V6C::LHLD &&
+          isSameAddress(ShldAddr, J->getOperand(1))) {
+        if (SPDelta == 0) {
+          MatchIt = J;
+          Found = true;
+        } else {
+          Abort = true;
+        }
+        break;
+      }
+
+      // Abort on re-spill to same address.
+      if (J->getOpcode() == V6C::SHLD &&
+          isSameAddress(ShldAddr, J->getOperand(1))) {
+        Abort = true;
+        break;
+      }
+
+      // SP delta tracking.
+      if (J->modifiesRegister(V6C::SP, TRI)) {
+        unsigned Opc = J->getOpcode();
+        if (Opc == V6C::PUSH) {
+          SPDelta -= 2;
+        } else if (Opc == V6C::POP) {
+          SPDelta += 2;
+          if (SPDelta > 0) { Abort = true; break; }
+        } else if (J->isCall()) {
+          // CALL/Ccc/RST: net-zero SP effect, skip.
+        } else {
+          // Unknown SP modifier (SPHL, LXI SP, INX SP, DCX SP, etc.)
+          Abort = true;
+          break;
+        }
+      }
+    }
+
+    if (Abort || !Found)
+      continue;
+
+    // Replace SHLD with PUSH HL.
+    BuildMI(MBB, *I, I->getDebugLoc(), TII.get(V6C::PUSH))
+        .addReg(V6C::HL);
+    // Replace LHLD with POP HL.
+    BuildMI(MBB, *MatchIt, MatchIt->getDebugLoc(), TII.get(V6C::POP), V6C::HL);
+
+    MatchIt->eraseFromParent();
+    I = MBB.erase(I);
+    Changed = true;
+    --I; // compensate for ++I in loop header
+  }
+  return Changed;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -512,6 +608,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   bool Changed = false;
   for (MachineBasicBlock &MBB : MF) {
     Changed |= cancelAdjacentXchg(MBB);
+    Changed |= foldShldLhldToPushPop(MBB);
     Changed |= eliminateSelfMov(MBB);
     Changed |= eliminateRedundantMov(MBB);
     Changed |= foldCounterBranch(MBB);

@@ -1,0 +1,192 @@
+=== O43 SHLD/LHLD to PUSH/POP Peephole — Feature Test 27 ===
+
+--- C Test Case ---
+
+volatile int arr1[200];
+volatile int arr2[200];
+
+int sumarray(void) {
+    int sum = 0;
+    for (int i = 0; i < 200; ++i)
+        sum += arr1[i] + arr2[i];
+    return sum;
+}
+
+int main(void) {
+    return sumarray();
+}
+
+--- c8080 ASM (sumarray, converted to i8080 mnemonics) ---
+
+sumarray:
+    LXI  HL, 0
+    SHLD sumarray_sum          ; sum = 0
+    SHLD sumarray_i            ; i = 0
+l_0:
+    LXI  DE, 200               ; compare limit
+    CALL __o_sub_16            ; HL = i - 200
+    JP   l_2                   ; if i >= 200, exit
+
+    LXI  DE, arr1              ; &arr1[0]
+    LHLD sumarray_i            ; HL = i
+    DAD  HL                    ; HL = i*2
+    DAD  DE                    ; HL = &arr1[i]
+    MOV  E, M                  ; load arr1[i] lo
+    INX  HL
+    MOV  D, M                  ; load arr1[i] hi
+    PUSH DE                    ; save arr1[i]
+    LXI  DE, arr2              ; &arr2[0]
+    LHLD sumarray_i            ; HL = i
+    DAD  HL                    ; HL = i*2
+    DAD  DE                    ; HL = &arr2[i]
+    MOV  E, M                  ; load arr2[i] lo
+    INX  HL
+    MOV  D, M                  ; load arr2[i] hi
+    XCHG                       ; HL = arr2[i]
+    POP  DE                    ; DE = arr1[i]
+    DAD  DE                    ; HL = arr1[i] + arr2[i]
+    XCHG                       ; DE = element sum
+    LHLD sumarray_sum          ; HL = sum
+    DAD  DE                    ; HL += element sum
+    SHLD sumarray_sum          ; store sum
+    LHLD sumarray_i            ; HL = i
+    INX  HL                    ; i++
+    SHLD sumarray_i            ; store i
+    JMP  l_0                   ; loop
+l_2:
+    LHLD sumarray_sum          ; return sum
+    RET
+
+__o_sub_16:
+    MOV  A, L
+    SUB  E
+    MOV  L, A
+    MOV  A, H
+    SBB  D
+    MOV  H, A
+    RET
+
+--- c8080 stats (Vector 06c timings) ---
+
+sumarray loop body (per iteration, worst case):
+  LXI  DE, 200        12cc 3B
+  CALL __o_sub_16     24cc 3B
+    MOV  A, L          8cc 1B
+    SUB  E             4cc 1B
+    MOV  L, A          8cc 1B
+    MOV  A, H          8cc 1B
+    SBB  D             4cc 1B
+    MOV  H, A          8cc 1B
+    RET               12cc 1B
+  JP   l_2            12cc 3B  (not taken)
+  LXI  DE, arr1       12cc 3B
+  LHLD sumarray_i     20cc 3B
+  DAD  HL             12cc 1B
+  DAD  DE             12cc 1B
+  MOV  E, M            8cc 1B
+  INX  HL              8cc 1B
+  MOV  D, M            8cc 1B
+  PUSH DE             16cc 1B
+  LXI  DE, arr2       12cc 3B
+  LHLD sumarray_i     20cc 3B
+  DAD  HL             12cc 1B
+  DAD  DE             12cc 1B
+  MOV  E, M            8cc 1B
+  INX  HL              8cc 1B
+  MOV  D, M            8cc 1B
+  XCHG                 4cc 1B
+  POP  DE             12cc 1B
+  DAD  DE             12cc 1B
+  XCHG                 4cc 1B
+  LHLD sumarray_sum   20cc 3B
+  DAD  DE             12cc 1B
+  SHLD sumarray_sum   20cc 3B
+  LHLD sumarray_i     20cc 3B
+  INX  HL              8cc 1B
+  SHLD sumarray_i     20cc 3B
+  JMP  l_0            12cc 3B
+
+Total per iteration: 420cc, 53B loop + 7B __o_sub_16
+sumarray function: 9B prologue + 53B loop + 4B epilogue = 66B (+7B sub)
+sumarray cycles: 52 + 200×420 + 100 + 32 = 84,184cc
+
+--- v6llvmc ASM (sumarray with O43) ---
+
+sumarray:
+    LXI  HL, arr2             ; 12cc 3B
+    SHLD __v6c_ss.sumarray    ; 20cc 3B  store arr2_ptr
+    LXI  HL, arr1             ; 12cc 3B
+    LXI  DE, 0                ; 12cc 3B  sum = 0
+.LBB0_1:
+    PUSH HL                   ; 16cc 1B  ← O43: was SHLD +4
+    MOV  B, D                 ;  8cc 1B  BC = sum
+    MOV  C, E                 ;  8cc 1B
+    MOV  E, M                 ;  8cc 1B  load arr1[i] lo
+    INX  HL                   ;  8cc 1B
+    MOV  D, M                 ;  8cc 1B  load arr1[i] hi
+    XCHG                      ;  4cc 1B
+    DAD  BC                   ; 12cc 1B  HL = arr1[i] + sum
+    PUSH HL                   ; 16cc 1B  ← O43: was SHLD +2
+    LHLD __v6c_ss.sumarray    ; 20cc 3B  load arr2_ptr
+    MOV  C, L                 ;  8cc 1B
+    MOV  B, H                 ;  8cc 1B
+    MOV  H, B                 ;  8cc 1B
+    MOV  L, C                 ;  8cc 1B
+    MOV  E, M                 ;  8cc 1B  load arr2[i] lo
+    INX  HL                   ;  8cc 1B
+    MOV  D, M                 ;  8cc 1B  load arr2[i] hi
+    POP  HL                   ; 12cc 1B  ← O43: was LHLD +2
+    DAD  DE                   ; 12cc 1B  HL = partial_sum + arr2[i]
+    XCHG                      ;  4cc 1B  DE = new sum
+    POP  HL                   ; 12cc 1B  ← O43: was LHLD +4
+    INX  BC                   ;  8cc 1B  arr2_ptr += 2
+    INX  BC                   ;  8cc 1B
+    PUSH HL                   ; 16cc 1B  save arr1_ptr
+    LXI  HL, __v6c_ss.sumarray; 12cc 3B
+    MOV  M, C                 ;  8cc 1B  store arr2_ptr
+    INX  HL                   ;  8cc 1B
+    MOV  M, B                 ;  8cc 1B
+    POP  HL                   ; 12cc 1B  restore arr1_ptr
+    INX  HL                   ;  8cc 1B  arr1_ptr += 2
+    INX  HL                   ;  8cc 1B
+    MVI  A, <(arr1+800)       ;  8cc 2B  compare lo
+    CMP  L                    ;  4cc 1B
+    JNZ  .LBB0_1              ; 12cc 3B
+    MVI  A, >(arr1+800)       ;  8cc 2B  compare hi
+    CMP  H                    ;  4cc 1B
+    JNZ  .LBB0_1              ; 12cc 3B
+    XCHG                      ;  4cc 1B
+    RET                       ; 12cc 1B
+
+--- v6llvmc stats (Vector 06c timings) ---
+
+sumarray loop body per iteration (typical, first JNZ taken):  324cc, 41B
+sumarray function: 12B prologue + 41B loop + 6B 2nd compare + 2B epilogue = 61B
+                   (+6B static stack __v6c_ss.sumarray)
+sumarray cycles: 56 + 200×324 + ~24 + 16 ≈ 64,896cc
+
+--- O43 improvement (vs same regalloc without peephole) ---
+
+Without O43, the loop has SHLD/LHLD instead of PUSH/POP:
+  SHLD __v6c_ss.sumarray+4  20cc 3B  →  PUSH HL  16cc 1B  (saves 4cc 2B)
+  SHLD __v6c_ss.sumarray+2  20cc 3B  →  PUSH HL  16cc 1B  (saves 4cc 2B)
+  LHLD __v6c_ss.sumarray+2  20cc 3B  →  POP  HL  12cc 1B  (saves 8cc 2B)
+  LHLD __v6c_ss.sumarray+4  20cc 3B  →  POP  HL  12cc 1B  (saves 8cc 2B)
+
+  Savings per iteration:  24cc, 8B
+  Savings (200 iter):     4,800cc total
+  Before O43:             69,696cc, 49B loop (69B function)
+  After  O43:             64,896cc, 41B loop (61B function)
+  Improvement:            6.9% faster, 8B smaller loop body
+
+  LHLD __v6c_ss.sumarray (arr2_ptr) correctly NOT converted:
+    intervening PUSH/POP between SHLD and LHLD makes SPDelta != 0 → abort.
+
+--- v6llvmc vs c8080 (overall) ---
+
+  c8080  sumarray:  84,184cc  66B (+7B sub)
+  v6llvmc sumarray: 64,896cc  61B (+6B static stack)
+  Difference:       19,288cc faster (22.9%), 5B smaller
+
+  Per iteration: 420cc (c8080) vs 324cc (v6llvmc) — 22.9% faster
+  Key advantages: pointer-based loop (no reloads per access), O43 PUSH/POP spills
