@@ -40,7 +40,7 @@ llvm-build/bin/llc --version
 ## Syncing the Mirror
 
 `llvm-project/` is a large cloned repo (pinned to `llvmorg-18.1.0`) and is **gitignored**.
-All V6C source code is git-tracked under `llvm/`, which serves as a mirror.
+All V6C source code and tests are git-tracked under `llvm/`, `clang/`, and `tests/lit/`, which serve as mirrors.
 
 After every successful build (or any edit to files inside `llvm-project/`), run:
 
@@ -48,25 +48,39 @@ After every successful build (or any edit to files inside `llvm-project/`), run:
 powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1
 ```
 
-The script handles two categories:
+The script handles three categories:
 
 1. **V6C target directory** (`llvm-project/llvm/lib/Target/V6C/` → `llvm/lib/Target/V6C/`) — full directory mirror via `robocopy /MIR`.
-2. **Modified upstream LLVM files** (e.g. `Triple.h`, `Triple.cpp`) — individual file copies via `xcopy`.
+2. **Lit tests** (`llvm-project/{llvm,clang}/test/.../V6C/` → `tests/lit/`) — full directory mirror excluding `Output/`.
+3. **Modified upstream LLVM files** (e.g. `Triple.h`, `Triple.cpp`) — individual file copies via `xcopy`.
 
 When a new milestone modifies additional upstream files, add `xcopy` lines to `scripts\sync_llvm_mirror.ps1`.
 
-> **Important**: If `llvm-project/` is re-cloned from scratch, the mirror under `llvm/` is the
-> authoritative source. Copy files back from `llvm/` into `llvm-project/` before building.
+## Populating llvm-project/ (New Contributors)
+
+After cloning the repo and the LLVM monorepo, run the populate script to copy all V6C code and tests into `llvm-project/`:
+
+```powershell
+git clone --depth 1 --branch llvmorg-18.1.0 https://github.com/llvm/llvm-project.git llvm-project
+powershell -ExecutionPolicy Bypass -File scripts\populate_llvm_project.ps1
+```
+
+This is the reverse of `sync_llvm_mirror.ps1` — it copies from git-tracked mirrors into `llvm-project/` so it's ready to build.
 
 ## Running Tests
 
 ```bash
+# Full suite (golden + lit)
+python tests/run_all.py
+
 # Golden test suite (emulator trust baseline)
 python tests/run_golden_tests.py
 
 # With verbose output
 python tests/run_golden_tests.py -v
 ```
+
+Lit tests are authored in `llvm-project/` (source of truth) and mirrored to `tests/lit/` by `sync_llvm_mirror.ps1`.
 
 ## Using llc for Assembly Output
 

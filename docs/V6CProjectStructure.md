@@ -9,13 +9,14 @@ v6llvmc/
 │   └── lib/TargetParser/         # Modified upstream: Triple.cpp
 ├── llvm-build/                   # Build output directory (gitignored)
 ├── scripts/
-│   └── sync_llvm_mirror.ps1      # Mirror sync script (run after builds)
+│   ├── sync_llvm_mirror.ps1      # llvm-project/ → mirrors (run after builds)
+│   └── populate_llvm_project.ps1  # mirrors → llvm-project/ (new contributor setup)
 ├── clang/lib/Basic/Targets/      # Clang frontend integration
 ├── compiler-rt/lib/builtins/v6c/ # Runtime library
 ├── lld/V6C/                      # Linker
 ├── tests/
 │   ├── golden/                   # Emulator trust baseline (15 programs)
-│   ├── lit/                      # LLVM FileCheck tests
+│   ├── lit/                      # LLVM FileCheck tests (mirror of llvm-project/ sources)
 │   ├── unit/                     # Standalone C unit tests
 │   ├── integration/              # End-to-end C→binary→emulator tests
 │   ├── runtime/                  # Runtime library standalone tests

@@ -1,0 +1,86 @@
+# populate_llvm_project.ps1
+# Populates llvm-project/ (gitignored build source) from the git-tracked mirrors.
+# Run this ONCE after cloning the repo and setting up llvm-project/:
+#
+#   git clone --depth 1 --branch llvmorg-18.1.0 https://github.com/llvm/llvm-project.git llvm-project
+#   powershell -ExecutionPolicy Bypass -File scripts\populate_llvm_project.ps1
+#
+# This is the reverse of sync_llvm_mirror.ps1, which copies FROM llvm-project/ TO mirrors.
+
+$root = Split-Path $PSScriptRoot -Parent
+if (-not $root) { $root = Split-Path (Get-Location) -Parent }
+
+# Verify llvm-project/ exists
+if (-not (Test-Path "$root\llvm-project\llvm")) {
+    Write-Error "llvm-project/ not found. Clone it first:`n  git clone --depth 1 --branch llvmorg-18.1.0 https://github.com/llvm/llvm-project.git llvm-project"
+    exit 1
+}
+
+Write-Host "Populating llvm-project/ from git-tracked mirrors..."
+
+# ── V6C backend target directory ──
+# Full directory mirror (all files are V6C-specific)
+robocopy "$root\llvm\lib\Target\V6C" "$root\llvm-project\llvm\lib\Target\V6C" /MIR /NFL /NDL /NJH /NJS
+Write-Host "  [OK] llvm/lib/Target/V6C/"
+
+# ── Lit tests ──
+# CodeGen tests (source of truth for lit tests)
+robocopy "$root\tests\lit\CodeGen\V6C" "$root\llvm-project\llvm\test\CodeGen\V6C" /MIR /XD Output /NFL /NDL /NJH /NJS
+Write-Host "  [OK] llvm/test/CodeGen/V6C/"
+
+# MC encoding tests
+robocopy "$root\tests\lit\MC\V6C" "$root\llvm-project\llvm\test\MC\V6C" /MIR /XD Output /NFL /NDL /NJH /NJS
+Write-Host "  [OK] llvm/test/MC/V6C/"
+
+# Clang integration tests
+robocopy "$root\tests\lit\Clang\V6C" "$root\llvm-project\clang\test\CodeGen\V6C" /MIR /XD Output /NFL /NDL /NJH /NJS
+Write-Host "  [OK] clang/test/CodeGen/V6C/"
+
+# ── Modified upstream LLVM files ──
+# M1: i8080 architecture registration in Triple
+xcopy /Y /I "$root\llvm\include\llvm\TargetParser\Triple.h" "$root\llvm-project\llvm\include\llvm\TargetParser\" > $null
+xcopy /Y /I "$root\llvm\lib\TargetParser\Triple.cpp" "$root\llvm-project\llvm\lib\TargetParser\" > $null
+Write-Host "  [OK] Triple.h, Triple.cpp"
+
+# M9: Clang frontend integration
+# TargetInfo (Basic/Targets)
+xcopy /Y /I "$root\clang\lib\Basic\Targets\I8080.h" "$root\llvm-project\clang\lib\Basic\Targets\" > $null
+xcopy /Y /I "$root\clang\lib\Basic\Targets\I8080.cpp" "$root\llvm-project\clang\lib\Basic\Targets\" > $null
+xcopy /Y /I "$root\clang\lib\Basic\Targets.cpp" "$root\llvm-project\clang\lib\Basic\" > $null
+xcopy /Y /I "$root\clang\lib\Basic\CMakeLists.txt" "$root\llvm-project\clang\lib\Basic\" > $null
+# TargetCodeGenInfo (CodeGen/Targets)
+if (-not (Test-Path "$root\llvm-project\clang\lib\CodeGen\Targets")) { New-Item -ItemType Directory -Path "$root\llvm-project\clang\lib\CodeGen\Targets" -Force > $null }
+xcopy /Y /I "$root\clang\lib\CodeGen\Targets\V6C.cpp" "$root\llvm-project\clang\lib\CodeGen\Targets\" > $null
+xcopy /Y /I "$root\clang\lib\CodeGen\TargetInfo.h" "$root\llvm-project\clang\lib\CodeGen\" > $null
+xcopy /Y /I "$root\clang\lib\CodeGen\CodeGenModule.cpp" "$root\llvm-project\clang\lib\CodeGen\" > $null
+xcopy /Y /I "$root\clang\lib\CodeGen\CMakeLists.txt" "$root\llvm-project\clang\lib\CodeGen\" > $null
+# Driver ToolChain
+if (-not (Test-Path "$root\llvm-project\clang\lib\Driver\ToolChains")) { New-Item -ItemType Directory -Path "$root\llvm-project\clang\lib\Driver\ToolChains" -Force > $null }
+xcopy /Y /I "$root\clang\lib\Driver\ToolChains\V6C.h" "$root\llvm-project\clang\lib\Driver\ToolChains\" > $null
+xcopy /Y /I "$root\clang\lib\Driver\ToolChains\V6C.cpp" "$root\llvm-project\clang\lib\Driver\ToolChains\" > $null
+xcopy /Y /I "$root\clang\lib\Driver\Driver.cpp" "$root\llvm-project\clang\lib\Driver\" > $null
+xcopy /Y /I "$root\clang\lib\Driver\CMakeLists.txt" "$root\llvm-project\clang\lib\Driver\" > $null
+# Clang.cpp (unsigned char default)
+xcopy /Y /I "$root\clang\lib\Driver\ToolChains\Clang.cpp" "$root\llvm-project\clang\lib\Driver\ToolChains\" > $null
+# CommonArgs.cpp (frame pointer default)
+xcopy /Y /I "$root\clang\lib\Driver\ToolChains\CommonArgs.cpp" "$root\llvm-project\clang\lib\Driver\ToolChains\" > $null
+Write-Host "  [OK] Clang frontend (Targets, CodeGen, Driver)"
+
+# M9 step 5: Diagnostics
+xcopy /Y /I "$root\clang\include\clang\Basic\DiagnosticSemaKinds.td" "$root\llvm-project\clang\include\clang\Basic\" > $null
+xcopy /Y /I "$root\clang\lib\Sema\Sema.cpp" "$root\llvm-project\clang\lib\Sema\" > $null
+Write-Host "  [OK] Diagnostics"
+
+# M9 step 6: Builtin intrinsics
+xcopy /Y /I "$root\clang\include\clang\Basic\BuiltinsV6C.def" "$root\llvm-project\clang\include\clang\Basic\" > $null
+xcopy /Y /I "$root\clang\include\clang\Basic\TargetBuiltins.h" "$root\llvm-project\clang\include\clang\Basic\" > $null
+xcopy /Y /I "$root\llvm\include\llvm\IR\IntrinsicsV6C.td" "$root\llvm-project\llvm\include\llvm\IR\" > $null
+xcopy /Y /I "$root\llvm\include\llvm\IR\Intrinsics.td" "$root\llvm-project\llvm\include\llvm\IR\" > $null
+xcopy /Y /I "$root\llvm\include\llvm\IR\CMakeLists.txt" "$root\llvm-project\llvm\include\llvm\IR\" > $null
+# Function.cpp (IntrinsicsV6C.h include)
+xcopy /Y /I "$root\llvm\lib\IR\Function.cpp" "$root\llvm-project\llvm\lib\IR\" > $null
+Write-Host "  [OK] Intrinsics (IntrinsicsV6C.td, BuiltinsV6C.def, Function.cpp)"
+
+Write-Host ""
+Write-Host "Populate complete. llvm-project/ is ready to build."
+Write-Host "Next: cmake + ninja (see docs/V6CBuildGuide.md)"

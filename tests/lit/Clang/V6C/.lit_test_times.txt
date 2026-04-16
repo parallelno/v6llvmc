@@ -1,0 +1,15 @@
+2.058051e-01 basic-codegen.c
+1.177683e-01 builtin-macros.c
+2.310603e-01 builtins.c
+1.721749e-01 call-conv.c
+1.076829e-01 data-layout.c
+2.019489e-01 driver-target.c
+2.119331e-01 expensive-types-suppressed.c
+2.296839e-01 expensive-types.c
+2.043192e-01 frame-pointer-default.c
+2.265377e-01 frame-pointer-explicit.c
+2.104135e-01 inline-asm.c
+2.032938e-01 return-types.c
+1.536114e-01 return42.c
+1.636360e-01 type-sizes.c
+2.139673e-01 unsigned-char.c

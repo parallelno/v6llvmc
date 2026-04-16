@@ -42,7 +42,6 @@ tools/v6emul/v6emul.exe --rom hello.bin --load-addr 0x0100 --halt-exit --dump-cp
 ```bash
 python tests/run_all.py          # Full suite (golden + lit)
 python tests/run_golden_tests.py # Emulator trust baseline (15 tests)
-lit tests/lit -v                 # FileCheck lit tests (65 tests)
 ```
 
 ## Supported C Subset
@@ -73,7 +72,7 @@ lit tests/lit -v                 # FileCheck lit tests (65 tests)
 | `scripts/` | Mirror sync, linker, ELF→binary converter |
 | `tools/v6asm/` | Reference 8080 assembler |
 | `tools/v6emul/` | Vector 06c emulator |
-| `tests/` | Golden, lit, integration, runtime, and benchmark tests |
+| `tests/` | Golden, lit (mirror), integration, runtime, and benchmark tests |
 | `docs/` | [Documentation index](docs/README.md) |
 | `design/` | [Architecture design](design/design.md) and [implementation plan](design/plan.md) |
 

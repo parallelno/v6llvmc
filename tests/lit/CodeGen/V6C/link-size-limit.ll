@@ -1,5 +1,5 @@
 ; RUN: llc -mtriple=i8080-unknown-v6c -filetype=obj -o %t.o %s
-; RUN: not python %S/../../../../scripts/v6c_link.py %t.o -o %t.bin --base 0xFFFE 2>&1 | FileCheck %s
+; RUN: not python %scripts/v6c_link.py %t.o -o %t.bin --base 0xFFFE 2>&1 | FileCheck %s
 
 ; Test: Size validation — program at base 0xFFFE with code exceeding 64KB.
 ; The linker must reject this with an error.

@@ -55,12 +55,17 @@ def main():
     results["golden"] = ok
 
     if not args.golden_only:
-        # Lit tests (available once LLVM is built)
-        lit_dir = root / "tests" / "lit"
-        if lit_dir.exists() and any(lit_dir.rglob("*.ll")):
+        # Lit tests — source of truth in llvm-project/, mirrors to tests/lit/
+        lit_dirs = [
+            root / "llvm-project" / "llvm" / "test" / "CodeGen" / "V6C",
+            root / "llvm-project" / "llvm" / "test" / "MC" / "V6C",
+            root / "llvm-project" / "clang" / "test" / "CodeGen" / "V6C",
+        ]
+        lit_paths = [str(d) for d in lit_dirs if d.exists() and (any(d.rglob("*.ll")) or any(d.rglob("*.c")))]
+        if lit_paths:
             ok = run_suite(
                 "Lit Tests (FileCheck)",
-                ["lit", str(lit_dir), "-v"],
+                ["lit"] + lit_paths + ["-v"],
                 root
             )
             results["lit"] = ok
