@@ -54,6 +54,7 @@ private:
   bool eliminateTailCall(MachineBasicBlock &MBB);
   bool foldCounterBranch(MachineBasicBlock &MBB);
   bool foldXraCmpZeroTest(MachineBasicBlock &MBB);
+  bool cancelAdjacentXchg(MachineBasicBlock &MBB);
   bool foldXchgDad(MachineBasicBlock &MBB);
 };
 
@@ -413,6 +414,62 @@ bool V6CPeephole::foldXraCmpZeroTest(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// Return true if MI reads or writes DE, HL, or any sub-register (D,E,H,L).
+static bool touchesDEorHL(const MachineInstr &MI,
+                          const TargetRegisterInfo *TRI) {
+  for (const MachineOperand &MO : MI.operands()) {
+    if (!MO.isReg())
+      continue;
+    Register Reg = MO.getReg();
+    if (TRI->regsOverlap(Reg, V6C::DE) || TRI->regsOverlap(Reg, V6C::HL))
+      return true;
+  }
+  return false;
+}
+
+/// Cancel XCHG pairs: XCHG; ...; XCHG → ... (remove both XCHGs).
+/// Two XCHG instructions swap HL↔DE twice, which is a no-op.
+/// Safe when all intervening instructions are DE/HL-agnostic (don't
+/// read or write D, E, H, L, DE, or HL). Also handles the simple
+/// adjacent case (no intervening instructions). Skips debug instrs.
+bool V6CPeephole::cancelAdjacentXchg(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+
+  for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
+    if (I->getOpcode() != V6C::XCHG) {
+      ++I;
+      continue;
+    }
+    // Scan forward looking for a matching XCHG.
+    auto J = std::next(I);
+    bool CanCancel = true;
+    while (J != E) {
+      if (J->isDebugInstr()) {
+        ++J;
+        continue;
+      }
+      if (J->getOpcode() == V6C::XCHG)
+        break; // Found matching XCHG.
+      if (touchesDEorHL(*J, TRI)) {
+        CanCancel = false;
+        break; // Intervening instr uses DE/HL — can't cancel.
+      }
+      ++J;
+    }
+    if (CanCancel && J != E && J->getOpcode() == V6C::XCHG) {
+      // XCHG pair found — delete both.
+      MBB.erase(J);        // erase second XCHG
+      I = MBB.erase(I);    // erase first XCHG, I now points to next
+      Changed = true;
+      continue;             // re-check from new I (may be another XCHG)
+    }
+    ++I;
+  }
+  return Changed;
+}
+
 /// Fold XCHG; DAD DE → DAD DE.
 ///
 /// XCHG swaps HL↔DE, then DAD DE computes (old-DE) + (old-HL) → HL.
@@ -454,6 +511,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
 
   bool Changed = false;
   for (MachineBasicBlock &MBB : MF) {
+    Changed |= cancelAdjacentXchg(MBB);
     Changed |= eliminateSelfMov(MBB);
     Changed |= eliminateRedundantMov(MBB);
     Changed |= foldCounterBranch(MBB);

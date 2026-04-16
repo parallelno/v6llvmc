@@ -198,6 +198,25 @@ bool V6CXchgOpt::runOnMachineFunction(MachineFunction &MF) {
         ++I;
       }
     }
+
+    // Cancel adjacent XCHG pairs that tryXchg may have created by placing
+    // a new XCHG next to an existing one.  XCHG; XCHG = no-op (O44).
+    for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
+      if (I->getOpcode() != V6C::XCHG) {
+        ++I;
+        continue;
+      }
+      auto J = std::next(I);
+      while (J != E && J->isDebugInstr())
+        ++J;
+      if (J != E && J->getOpcode() == V6C::XCHG) {
+        MBB.erase(J);
+        I = MBB.erase(I);
+        Changed = true;
+        continue;
+      }
+      ++I;
+    }
   }
 
   return Changed;

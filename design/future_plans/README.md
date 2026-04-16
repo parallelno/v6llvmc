@@ -45,6 +45,8 @@
 | O40 | ADD16 DAD-Based Expansion (Post-RA) | [O40_add16_dad_expansion.md](O40_add16_dad_expansion.md) | V6C |
 | O41 | Pre-RA INX/DCX Pseudo (Small-Constant Pointer Add) | [O41_pre_ra_inx_dcx_pseudo.md](O41_pre_ra_inx_dcx_pseudo.md) | V6C |
 | O42 | Liveness-Aware Pseudo Expansion (Skip PUSH/POP When Dead) | [O42_liveness_aware_expansion.md](O42_liveness_aware_expansion.md) | V6C |
+| O43 | SHLD/LHLD to PUSH/POP Peephole (Static Stack Spill Shortening) | [O43_shld_lhld_to_push_pop.md](O43_shld_lhld_to_push_pop.md) | V6C |
+| O44 | Adjacent XCHG Cancellation Peephole ✅ | [O44_xchg_cancellation.md](O44_xchg_cancellation.md) | V6C |
 
 ---
 
@@ -93,6 +95,8 @@
 | O40 | ADD16 DAD-Based Expansion | V6C | 12cc, 3B | Med-High | Very Low | Very Low | None | [x] |
 | O41 | Pre-RA INX/DCX Pseudo (±1..±3) | V6C | 12cc, 3B + free reg pair | Very high | Low | Very Low | O20 done | [x] |
 | O42 | Liveness-Aware Pseudo Expansion | V6C | 21-24cc, 2-3B per PUSH/POP | Very high | Low-Med | Low | O10+O20 done | [x] |
+| O43 | SHLD/LHLD→PUSH/POP Peephole | V6C | 12cc, 4B per pair | Med-High | Low | Very Low | O10 done | [ ] |
+| O44 | Adjacent XCHG Cancellation | V6C | 8cc, 2B per pair | Medium | Very Low | Very Low | None | [x] |
 
 ### Recommended order
 
@@ -123,6 +127,8 @@
 22. ~~**O40** — ADD16 DAD-based expansion, 12cc+3B per non-HL ADD16, ~30 lines~~ ✅
 23. ~~**O41** — pre-RA INX/DCX pseudo for ±1..±3 constants, frees register pair, ~40 lines~~ ✅
 24. ~~**O42** — liveness-aware pseudo expansion, skip PUSH/POP when dead, 21-24cc per instance, ~80 lines~~ ✅
+25. **O43** — SHLD/LHLD→PUSH/POP peephole, 12cc+4B per short-lived HL spill, ~40 lines
+26. ~~**O44** — adjacent XCHG cancellation, 8cc+2B per pair, ~15 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅

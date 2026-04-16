@@ -1,0 +1,160 @@
+=== O44 Adjacent XCHG Cancellation — Feature Test 26 ===
+
+--- C Test Case ---
+
+volatile int arr1[100];
+volatile int arr2[100];
+
+int sumarray(void) {
+    int sum = 0;
+    for (int i = 0; i < 100; ++i)
+        sum += arr1[i] + arr2[i];
+    return sum;
+}
+
+int main(void) {
+    return sumarray();
+}
+
+--- c8080 ASM (sumarray loop body, converted to i8080 mnemonics) ---
+
+sumarray:
+    LXI  HL, 0
+    SHLD sumarray_sum          ; sum = 0
+    SHLD sumarray_i            ; i = 0
+l_0:
+    LHLD sumarray_i            ; load i
+    XCHG                       ; DE = i
+    LXI  HL, 100               ; HL = 100
+    ; __o_sub_16 inlined:
+    MOV  A, L
+    SUB  E
+    MOV  L, A
+    MOV  A, H
+    SBB  D
+    MOV  H, A
+    JP   l_2                   ; if i >= 100, exit
+
+    LXI  DE, arr1              ; DE = &arr1[0]
+    LHLD sumarray_i            ; HL = i
+    DAD  HL                    ; HL = i*2
+    DAD  DE                    ; HL = &arr1[i]
+    MOV  E, M                  ; load arr1[i] lo
+    INX  HL
+    MOV  D, M                  ; load arr1[i] hi
+    PUSH DE                    ; save arr1[i]
+    LXI  DE, arr2              ; DE = &arr2[0]
+    LHLD sumarray_i            ; HL = i
+    DAD  HL                    ; HL = i*2
+    DAD  DE                    ; HL = &arr2[i]
+    MOV  E, M                  ; load arr2[i] lo
+    INX  HL
+    MOV  D, M                  ; load arr2[i] hi
+    XCHG                       ; HL = arr2[i]
+    POP  DE                    ; DE = arr1[i]
+    DAD  DE                    ; HL = arr1[i] + arr2[i]
+    XCHG                       ; DE = sum of elements
+    LHLD sumarray_sum          ; HL = sum
+    DAD  DE                    ; HL = sum + arr1[i] + arr2[i]
+    SHLD sumarray_sum          ; store sum
+    LHLD sumarray_i            ; HL = i
+    INX  HL                    ; i++
+    SHLD sumarray_i            ; store i
+    JMP  l_0                   ; loop
+l_2:
+    LHLD sumarray_sum          ; return sum
+    RET
+
+--- c8080 stats ---
+
+sumarray loop body (per iteration, worst case):
+  LHLD sumarray_i        20cc 3B
+  XCHG                    4cc 1B
+  LXI HL, 100            12cc 3B
+  MOV A, L                8cc 1B
+  SUB E                   4cc 1B
+  MOV L, A                8cc 1B
+  MOV A, H                8cc 1B
+  SBB D                   4cc 1B
+  MOV H, A                8cc 1B
+  JP l_2                  12cc 3B  (not taken)
+  LXI DE, arr1            12cc 3B
+  LHLD sumarray_i         20cc 3B
+  DAD HL                  12cc 1B
+  DAD DE                  12cc 1B
+  MOV E, M                 8cc 1B
+  INX HL                   8cc 1B
+  MOV D, M                 8cc 1B
+  PUSH DE                 16cc 1B
+  LXI DE, arr2            12cc 3B
+  LHLD sumarray_i         20cc 3B
+  DAD HL                  12cc 1B
+  DAD DE                  12cc 1B
+  MOV E, M                 8cc 1B
+  INX HL                   8cc 1B
+  MOV D, M                 8cc 1B
+  XCHG                     4cc 1B
+  POP DE                  12cc 1B
+  DAD DE                  12cc 1B
+  XCHG                     4cc 1B
+  LHLD sumarray_sum       20cc 3B
+  DAD DE                  12cc 1B
+  SHLD sumarray_sum       20cc 3B
+  LHLD sumarray_i         20cc 3B
+  INX HL                   8cc 1B
+  SHLD sumarray_i         20cc 3B
+  JMP l_0                 12cc 3B
+
+Total per iteration: 416cc, 60B loop body
+sumarray function total: 416*100 + setup/teardown ≈ 41,700cc
+
+--- v6llvmc ASM (with --enable-deferred-spilling) ---
+
+sumarray:
+    LXI  BC, arr2              ; 12cc 3B
+    LXI  DE, arr1              ; 12cc 3B
+    LXI  HL, 0                 ; 12cc 3B
+.LBB0_1:
+    SHLD __v6c_ss.sumarray     ; 20cc 3B  spill sum
+    XCHG                       ;  4cc 1B  swap for SHLD
+    SHLD __v6c_ss.sumarray+2   ; 20cc 3B  spill arr1_ptr
+    MOV  E, M                  ;  8cc 1B  load arr1[i] lo  ← XCHG pair cancelled!
+    INX  HL                    ;  8cc 1B
+    MOV  D, M                  ;  8cc 1B  load arr1[i] hi
+    XCHG                       ;  4cc 1B  DE=arr1[i], HL=ptr
+    LHLD __v6c_ss.sumarray     ; 20cc 3B  reload sum
+    DAD  DE                    ; 12cc 1B  sum += arr1[i]
+    SHLD __v6c_ss.sumarray     ; 20cc 3B  spill sum
+    MOV  H, B                  ;  8cc 1B  HL = BC (arr2 ptr)
+    MOV  L, C                  ;  8cc 1B
+    MOV  E, M                  ;  8cc 1B  load arr2[i] lo
+    INX  HL                    ;  8cc 1B
+    MOV  D, M                  ;  8cc 1B  load arr2[i] hi
+    LHLD __v6c_ss.sumarray     ; 20cc 3B  reload sum
+    DAD  DE                    ; 12cc 1B  sum += arr2[i]
+    XCHG                       ;  4cc 1B
+    LHLD __v6c_ss.sumarray+2   ; 20cc 3B  reload arr1_ptr
+    XCHG                       ;  4cc 1B
+    INX  BC                    ;  8cc 1B  arr2_ptr += 2
+    INX  BC                    ;  8cc 1B
+    INX  DE                    ;  8cc 1B  arr1_ptr += 2
+    INX  DE                    ;  8cc 1B
+    MVI  A, <(arr1+400)        ;  8cc 2B  compare lo
+    CMP  E                     ;  4cc 1B
+    JNZ  .LBB0_1               ; 12cc 3B
+    MVI  A, >(arr1+400)        ;  8cc 2B  compare hi
+    CMP  D                     ;  4cc 1B
+    JNZ  .LBB0_1               ; 12cc 3B
+    RET                        ; 12cc 1B
+
+--- v6llvmc stats ---
+
+sumarray loop body (per iteration, worst case both JNZ not taken):
+  Total per iteration: 328cc, 44B loop body
+
+  Savings vs c8080: 88cc/iter (21% faster), 16B smaller loop
+  Savings from O44: 8cc/iter, 2B (removed 2 XCHG = 8cc, 2B per iteration)
+
+sumarray function total: 328*100 + 36 (setup) ≈ 32,836cc
+c8080 function total: 416*100 + ~80 (setup) ≈ 41,680cc
+Overall: v6llvmc is ~21% faster than c8080 on this loop
