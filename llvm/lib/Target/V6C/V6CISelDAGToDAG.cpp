@@ -120,24 +120,87 @@ void V6CDAGToDAGISel::Select(SDNode *N) {
     SDValue CC    = N->getOperand(3);
     SDValue Dest  = N->getOperand(4);
 
-    // Check if RHS is a constant or wrapped global address.
+    // Check if RHS (or LHS) is a constant or wrapped global address.
     // If so, use V6C_BR_CC16_IMM to avoid allocating a register pair.
-    // Only for EQ/NE — other conditions use SUB/SBB and need registers.
     unsigned Opc = V6C::V6C_BR_CC16;
     SDValue RhsOp = RHS;
 
     auto CCVal = cast<ConstantSDNode>(CC)->getZExtValue();
+
+    // EQ/NE: constant on RHS → use IMM variant directly.
     if (CCVal == V6CCC::COND_Z || CCVal == V6CCC::COND_NZ) {
       if (RHS.getOpcode() == V6CISD::Wrapper &&
           (isa<GlobalAddressSDNode>(RHS.getOperand(0)) ||
            isa<ExternalSymbolSDNode>(RHS.getOperand(0)))) {
-        // RHS is V6CWrapper(tglobaladdr) → unwrap and use IMM variant.
         Opc = V6C::V6C_BR_CC16_IMM;
         RhsOp = RHS.getOperand(0);
       } else if (auto *C = dyn_cast<ConstantSDNode>(RHS)) {
-        // RHS is a plain i16 constant.
         Opc = V6C::V6C_BR_CC16_IMM;
         RhsOp = CurDAG->getTargetConstant(C->getSExtValue(), DL, MVT::i16);
+      }
+    }
+
+    // O24: Ordering conditions (C/NC/M/P) with immediate operand.
+    // MVI+SUB/SBB doesn't need a register pair for the constant.
+    if (CCVal == V6CCC::COND_C || CCVal == V6CCC::COND_NC ||
+        CCVal == V6CCC::COND_M || CCVal == V6CCC::COND_P) {
+      // Case A: Constant on LHS (from GT/LE swap in LowerBR_CC).
+      // MVI+SUB computes const-reg, which matches the register path's
+      // direction after the swap. Keep CC unchanged.
+      if (auto *CL = dyn_cast<ConstantSDNode>(LHS)) {
+        Opc = V6C::V6C_BR_CC16_IMM;
+        RhsOp = CurDAG->getTargetConstant(CL->getSExtValue(), DL, MVT::i16);
+        LHS = RHS; // register becomes $lhs
+      } else if (LHS.getOpcode() == V6CISD::Wrapper &&
+                 (isa<GlobalAddressSDNode>(LHS.getOperand(0)) ||
+                  isa<ExternalSymbolSDNode>(LHS.getOperand(0)))) {
+        Opc = V6C::V6C_BR_CC16_IMM;
+        RhsOp = LHS.getOperand(0);
+        LHS = RHS;
+      }
+      // Case B: Constant on RHS (natural ULT/UGE/SLT/SGE).
+      // MVI+SUB computes const-reg but register path computes reg-const.
+      // Adjust: K → K-1, invert CC (C↔NC, M↔P).
+      else if (auto *CR = dyn_cast<ConstantSDNode>(RHS)) {
+        int64_t K = CR->getSExtValue();
+        bool IsUnsigned = (CCVal == V6CCC::COND_C || CCVal == V6CCC::COND_NC);
+        // Guard: K=0 (unsigned) or K=0x8000 (signed) would underflow.
+        bool CanAdjust = IsUnsigned ? ((K & 0xFFFF) != 0)
+                                    : ((K & 0xFFFF) != 0x8000);
+        if (CanAdjust) {
+          Opc = V6C::V6C_BR_CC16_IMM;
+          int64_t Km1 = (K - 1) & 0xFFFF;
+          RhsOp = CurDAG->getTargetConstant(Km1, DL, MVT::i16);
+          // Invert CC: C↔NC, M↔P
+          unsigned NewCC;
+          switch (CCVal) {
+          case V6CCC::COND_C:  NewCC = V6CCC::COND_NC; break;
+          case V6CCC::COND_NC: NewCC = V6CCC::COND_C;  break;
+          case V6CCC::COND_M:  NewCC = V6CCC::COND_P;  break;
+          case V6CCC::COND_P:  NewCC = V6CCC::COND_M;  break;
+          default: llvm_unreachable("unexpected CC");
+          }
+          CC = CurDAG->getTargetConstant(NewCC, DL, MVT::i8);
+        }
+      } else if (RHS.getOpcode() == V6CISD::Wrapper &&
+                 isa<GlobalAddressSDNode>(RHS.getOperand(0))) {
+        // Global address on RHS: adjust offset by -1.
+        auto *GA = cast<GlobalAddressSDNode>(RHS.getOperand(0));
+        int64_t Offset = GA->getOffset();
+        if (Offset != 0 || true) { // Always valid for globals (address > 0)
+          Opc = V6C::V6C_BR_CC16_IMM;
+          RhsOp = CurDAG->getTargetGlobalAddress(
+              GA->getGlobal(), DL, MVT::i16, Offset - 1);
+          unsigned NewCC;
+          switch (CCVal) {
+          case V6CCC::COND_C:  NewCC = V6CCC::COND_NC; break;
+          case V6CCC::COND_NC: NewCC = V6CCC::COND_C;  break;
+          case V6CCC::COND_M:  NewCC = V6CCC::COND_P;  break;
+          case V6CCC::COND_P:  NewCC = V6CCC::COND_M;  break;
+          default: llvm_unreachable("unexpected CC");
+          }
+          CC = CurDAG->getTargetConstant(NewCC, DL, MVT::i8);
+        }
       }
     }
 
@@ -162,6 +225,35 @@ void V6CDAGToDAGISel::Select(SDNode *N) {
                                            MVT::i16, Lo, Hi);
     ReplaceNode(N, Pair);
     return;
+  }
+
+  case V6CISD::CMP: {
+    // O24: For i16 comparisons with constant/global RHS, use V6C_CMP16_IMM
+    // to avoid allocating a register pair. The K→K-1 + CC inversion was
+    // already done in LowerSELECT_CC.
+    SDValue LHS = N->getOperand(0);
+    SDValue RHS = N->getOperand(1);
+
+    if (LHS.getValueType() == MVT::i16) {
+      if (auto *C = dyn_cast<ConstantSDNode>(RHS)) {
+        SDValue ImmOp = CurDAG->getTargetConstant(C->getSExtValue(), DL,
+                                                    MVT::i16);
+        SDNode *CmpImm = CurDAG->getMachineNode(V6C::V6C_CMP16_IMM, DL,
+                                                  MVT::Glue, LHS, ImmOp);
+        ReplaceNode(N, CmpImm);
+        return;
+      }
+      if (RHS.getOpcode() == V6CISD::Wrapper &&
+          (isa<GlobalAddressSDNode>(RHS.getOperand(0)) ||
+           isa<ExternalSymbolSDNode>(RHS.getOperand(0)))) {
+        SDValue Unwrapped = RHS.getOperand(0);
+        SDNode *CmpImm = CurDAG->getMachineNode(V6C::V6C_CMP16_IMM, DL,
+                                                  MVT::Glue, LHS, Unwrapped);
+        ReplaceNode(N, CmpImm);
+        return;
+      }
+    }
+    break;
   }
   }
 

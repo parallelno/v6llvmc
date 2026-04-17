@@ -842,6 +842,14 @@ def V6C_CMP16 : V6CPseudo<(outs), (ins GR16:$lhs, GR16:$rhs),
     "# CMP16 $lhs, $rhs",
     [(V6Ccmp i16:$lhs, i16:$rhs)]>;
 
+// O24: 16-bit comparison with immediate RHS (for SELECT_CC ordering).
+// Produces FLAGS via MVI+SUB, MVI+SBB — no register pair needed.
+// Selected manually in ISel (K→K-1 + CC inversion done in LowerSELECT_CC).
+let Defs = [A, FLAGS] in
+def V6C_CMP16_IMM : V6CPseudo<(outs), (ins GR16:$lhs, imm16:$rhs),
+    "# CMP16_IMM $lhs, $rhs",
+    []>;
+
 //===----------------------------------------------------------------------===//
 // Intrinsic patterns — map LLVM intrinsics to machine instructions
 //===----------------------------------------------------------------------===//

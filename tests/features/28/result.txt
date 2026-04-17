@@ -1,0 +1,234 @@
+== C test case ==
+
+volatile unsigned int result;
+
+void test_ult(unsigned int x) {
+    if (x < 1000) result = 1;
+}
+
+void test_uge(unsigned int x) {
+    if (x >= 1000) result = 2;
+}
+
+void test_ugt(unsigned int x) {
+    if (x > 1000) result = 3;
+}
+
+void test_ule(unsigned int x) {
+    if (x <= 1000) result = 4;
+}
+
+void test_slt(int x) {
+    if (x < 500) result = 5;
+}
+
+void test_sge(int x) {
+    if (x >= 500) result = 6;
+}
+
+
+== c8080 asm (i8080, body only) ==
+
+test_ult:                          ; if (x < 1000) result = 1
+    SHLD    __a_1_test_ult         ;  20cc, 3B  (spill arg)
+    LXI     DE, 64536              ;  12cc, 3B  (65536-1000)
+    DAD     DE                     ;  12cc, 1B  (HL += DE → carry if x < 1000)
+    RC                             ;   8cc, 1B  (return if carry)
+    LXI     HL, 1                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+test_uge:                          ; if (x >= 1000) result = 2
+    SHLD    __a_1_test_uge         ;  20cc, 3B
+    LXI     DE, 64536              ;  12cc, 3B
+    DAD     DE                     ;  12cc, 1B
+    RNC                            ;   8cc, 1B
+    LXI     HL, 2                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+test_ugt:                          ; if (x > 1000) result = 3
+    SHLD    __a_1_test_ugt         ;  20cc, 3B
+    LXI     DE, 64535              ;  12cc, 3B
+    DAD     DE                     ;  12cc, 1B
+    RNC                            ;   8cc, 1B
+    LXI     HL, 3                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+test_ule:                          ; if (x <= 1000) result = 4
+    SHLD    __a_1_test_ule         ;  20cc, 3B
+    LXI     DE, 64535              ;  12cc, 3B
+    DAD     DE                     ;  12cc, 1B
+    RC                             ;   8cc, 1B
+    LXI     HL, 4                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+test_slt:                          ; if (x < 500) result = 5
+    SHLD    __a_1_test_slt         ;  20cc, 3B
+    LXI     DE, 500                ;  12cc, 3B
+    CALL    __o_sub_16             ;  20cc, 3B  (library call for signed SUB)
+    RP                             ;   8cc, 1B
+    LXI     HL, 5                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+test_sge:                          ; if (x >= 500) result = 6
+    SHLD    __a_1_test_sge         ;  20cc, 3B
+    LXI     DE, 500                ;  12cc, 3B
+    CALL    __o_sub_16             ;  20cc, 3B
+    RM                             ;   8cc, 1B
+    LXI     HL, 6                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+__o_sub_16:                        ; library: HL = HL - DE
+    MOV     A, L                   ;   8cc, 1B
+    SUB     E                      ;   4cc, 1B
+    MOV     L, A                   ;   8cc, 1B
+    MOV     A, H                   ;   8cc, 1B
+    SBB     D                      ;   4cc, 1B
+    MOV     H, A                   ;   8cc, 1B
+    RET                            ;  12cc, 1B
+
+
+== c8080 stats ==
+
+                     worst cc    bytes
+test_ult (skip)         64cc      12B    (20+12+12+8+12=64, spill+LXI+DAD+RC+RET)
+test_ult (take)         88cc      15B    (20+12+12+12+20+12=88)
+test_uge (skip)         64cc      12B
+test_uge (take)         88cc      15B
+test_ugt (skip)         64cc      12B
+test_ugt (take)         88cc      15B
+test_ule (skip)         64cc      12B
+test_ule (take)         88cc      15B
+test_slt (skip)        112cc      17B    (20+12+20+52+8+12=124... actually CALL overhead)
+test_slt (take)        136cc      20B
+test_sge (skip)        112cc      17B
+test_sge (take)        136cc      20B
+
+Note: c8080 unsigned uses DAD trick (ADD HL, 65536-K) instead of SUB/SBB.
+c8080 signed uses __o_sub_16 library call (52cc+7B shared overhead).
+
+
+== v6llvmc asm (old — before O24) ==
+
+test_ult:                          ; if (x < 1000) result = 1
+    LXI     DE, 0x3e7              ;  12cc, 3B  (K-1=999 via LowerBR_CC swap)
+    MOV     A, E                   ;   8cc, 1B
+    SUB     L                      ;   4cc, 1B
+    MOV     A, D                   ;   8cc, 1B
+    SBB     H                      ;   4cc, 1B
+    RC                             ;   8cc, 1B  (cond return)
+    LXI     HL, 1                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+(all 6 functions: same LXI+MOV+SUB+MOV+SBB pattern)
+
+
+== v6llvmc stats (old) ==
+
+                     worst cc    bytes
+test_ult (skip)         44cc       8B    (12+8+4+8+4+8=44)
+test_ult (take)         68cc      15B
+test_uge                same
+test_ugt                same
+test_ule                same
+test_slt                same
+test_sge                same
+
+
+== v6llvmc asm (new — after O24) ==
+
+test_ult:                          ; if (x < 1000) result = 1
+    MVI     A, 0xe7                ;   8cc, 2B  (lo8(999))
+    SUB     L                      ;   4cc, 1B
+    MVI     A, 3                   ;   8cc, 2B  (hi8(999))
+    SBB     H                      ;   4cc, 1B
+    RC                             ;   8cc, 1B
+    LXI     HL, 1                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+test_uge:                          ; if (x >= 1000) result = 2
+    MVI     A, 0xe7                ;   8cc, 2B  (lo8(999))
+    SUB     L                      ;   4cc, 1B
+    MVI     A, 3                   ;   8cc, 2B  (hi8(999))
+    SBB     H                      ;   4cc, 1B
+    RNC                            ;   8cc, 1B
+    LXI     HL, 2                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+test_ugt:                          ; if (x > 1000) result = 3
+    MVI     A, 0xe8                ;   8cc, 2B  (lo8(1000))
+    SUB     L                      ;   4cc, 1B
+    MVI     A, 3                   ;   8cc, 2B  (hi8(1000))
+    SBB     H                      ;   4cc, 1B
+    RNC                            ;   8cc, 1B
+    LXI     HL, 3                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+test_ule:                          ; if (x <= 1000) result = 4
+    MVI     A, 0xe8                ;   8cc, 2B  (lo8(1000))
+    SUB     L                      ;   4cc, 1B
+    MVI     A, 3                   ;   8cc, 2B  (hi8(1000))
+    SBB     H                      ;   4cc, 1B
+    RC                             ;   8cc, 1B
+    LXI     HL, 4                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+test_slt:                          ; if (x < 500) result = 5
+    MVI     A, 0xf3                ;   8cc, 2B  (lo8(499))
+    SUB     L                      ;   4cc, 1B
+    MVI     A, 1                   ;   8cc, 2B  (hi8(499))
+    SBB     H                      ;   4cc, 1B
+    RM                             ;   8cc, 1B
+    LXI     HL, 5                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+test_sge:                          ; if (x >= 500) result = 6
+    MVI     A, 0xf3                ;   8cc, 2B  (lo8(499))
+    SUB     L                      ;   4cc, 1B
+    MVI     A, 1                   ;   8cc, 2B  (hi8(499))
+    SBB     H                      ;   4cc, 1B
+    RP                             ;   8cc, 1B
+    LXI     HL, 6                  ;  12cc, 3B
+    SHLD    result                 ;  20cc, 3B
+    RET                            ;  12cc, 1B
+
+
+== v6llvmc stats (new) ==
+
+                     worst cc    bytes
+test_ult (skip)         32cc       7B    (8+4+8+4+8=32)
+test_ult (take)         56cc      14B
+test_uge                same
+test_ugt                same
+test_ule                same
+test_slt                same
+test_sge                same
+
+
+== Summary ==
+
+O24: MVI+SUB/SBB Immediate Ordering Comparison
+
+Per ordering comparison instance:
+  Old (LXI+MOV+SUB+MOV+SBB):  36cc, 7B, uses DE register pair
+  New (MVI+SUB+MVI+SBB):       24cc, 6B, no register pair used
+  Savings:                      12cc, 1B, +1 register pair freed
+
+Applied to: BR_CC (branch) and SELECT_CC (ternary) with i16 ordering
+conditions (ULT, UGE, UGT, ULE, SLT, SGE) and constant operand.
+
+Comparison vs c8080:
+  c8080 unsigned: 32cc, 7B (DAD trick, cheaper but limited to unsigned)
+  c8080 signed: 72cc, 10B (library CALL + SUB/SBB, much more expensive)
+  v6llvmc new: 24cc, 6B (both unsigned and signed, fastest)

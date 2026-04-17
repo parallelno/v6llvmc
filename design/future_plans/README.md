@@ -27,7 +27,7 @@
 | O21 | LHLD/SHLD 16-bit Absolute Address Patterns | [O21_lhld_shld_absolute_addr.md](O21_lhld_shld_absolute_addr.md) | V6C |
 | O22 | TTI Cost Hooks Expansion | [O22_tti_cost_hooks.md](O22_tti_cost_hooks.md) | V6C |
 | O23 | Conditional Tail Call Optimization | [O23_conditional_tail_call.md](O23_conditional_tail_call.md) | V6C |
-| O24 | SUI/SBI Immediate Unsigned Comparison | [O24_sui_sbi_immediate_cmp.md](O24_sui_sbi_immediate_cmp.md) | V6C |
+| O24 | I16 Immediate Unsigned Comparison | [O24_sui_sbi_immediate_cmp.md](O24_i16_immediate_cmp.md) | V6C |
 | O26 | Cost Model Infrastructure (getInstrCost + copyCost) | [O26_cost_model_infra.md](O26_cost_model_infra.md) | V6C |
 | O27 | i16 Zero-Test Optimization (MOV+ORA) | [O27_i16_zero_test.md](O27_i16_zero_test.md) | V6C |
 | O28 | Branch Threading Through JMP-Only Blocks | [O28_branch_threading_jmp_only.md](O28_branch_threading_jmp_only.md) | V6C |
@@ -77,7 +77,7 @@
 | O21 | LHLD/SHLD 16-bit absolute addr | V6C | 14-22cc, 3-4B | Medium | Low | Very Low | O6 done | [x] |
 | O22 | TTI Cost Hooks Expansion | V6C | indirect (better decisions) | High | Low-Med | Low | O7 done | [ ] |
 | O23 | Conditional Tail Call | V6C | 14cc, 1B | Medium | Low-Med | Low | O14 done | [x] |
-| O24 | SUI/SBI Immediate Unsigned CMP | V6C | 2cc, 1B + free reg pair | Med-high | Medium | Low | None | [ ] |
+| O24 | I16 Immediate Unsigned CMP | V6C | 2cc, 1B + free reg pair | Med-high | Medium | Low | None | [ ] |
 | O26 | Cost Model Infra (getInstrCost) | V6C | N/A (infra) | N/A | Low | Very Low | O11 done | [ ] |
 | O27 | i16 Zero-Test (MOV+ORA) | V6C | 24cc, 10B | Very high | Low-Med | Low | None | [x] |
 | O28 | Branch Threading (JMP-only blocks) | V6C | 10cc, 3B | Medium | Low | Very Low | O27 enables | [x] |
@@ -135,7 +135,7 @@
 20. ~~**O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines~~ ✅
 21. **O16** — store-to-load forwarding, 44-52cc per eliminated reload
 22. **O12** — cross-BB copy optimization, supersedes O1
-22. **O24** — SUI/SBI immediate unsigned comparison, frees register pair
+22. **O24** — I16 immediate unsigned comparison, frees register pair
 23. **O15** — conditional call, 12cc+3B per instance, reduces branch count
 24. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
 25. **O2** — sequential LXI→INX folding

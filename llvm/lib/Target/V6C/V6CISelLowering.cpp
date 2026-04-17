@@ -541,6 +541,40 @@ SDValue V6CTargetLowering::LowerSELECT_CC(SDValue Op,
                        TrueVal, FalseVal, CCVal, Glue);
   }
 
+  // O24: For i16 ordering conditions with constant operand, adjust so
+  // MVI+SUB/SBB (const-reg direction) gives correct flags.
+  // This is the only place where both CMP operands and CC are accessible.
+  if (LHS.getValueType() == MVT::i16 &&
+      (V6CC == V6CCC::COND_C || V6CC == V6CCC::COND_NC ||
+       V6CC == V6CCC::COND_M || V6CC == V6CCC::COND_P)) {
+    // Case A: Constant on LHS (from GT/LE swap above).
+    // MVI+SUB computes const-reg, matching the swap direction. Keep CC.
+    if (isa<ConstantSDNode>(LHS) && !isa<ConstantSDNode>(RHS)) {
+      std::swap(LHS, RHS);
+      // CC unchanged — MVI+SUB direction matches.
+    }
+    // Case B: Constant on RHS (natural ULT/UGE/SLT/SGE).
+    // Adjust K → K-1 and invert CC (C↔NC, M↔P).
+    else if (auto *CR = dyn_cast<ConstantSDNode>(RHS)) {
+      int64_t K = CR->getSExtValue();
+      bool IsUnsigned = (V6CC == V6CCC::COND_C || V6CC == V6CCC::COND_NC);
+      bool CanAdjust = IsUnsigned ? ((K & 0xFFFF) != 0)
+                                  : ((K & 0xFFFF) != 0x8000);
+      if (CanAdjust) {
+        int64_t Km1 = (K - 1) & 0xFFFF;
+        RHS = DAG.getConstant(Km1, DL, MVT::i16);
+        switch (V6CC) {
+        case V6CCC::COND_C:  V6CC = V6CCC::COND_NC; break;
+        case V6CCC::COND_NC: V6CC = V6CCC::COND_C;  break;
+        case V6CCC::COND_M:  V6CC = V6CCC::COND_P;  break;
+        case V6CCC::COND_P:  V6CC = V6CCC::COND_M;  break;
+        default: break;
+        }
+        CCVal = DAG.getConstant(V6CC, DL, MVT::i8);
+      }
+    }
+  }
+
   // For i16 comparison operands, emit CMP16 then SELECT_CC (uses FLAGS).
   // For i8, emit CMP then SELECT_CC.
   SDValue Glue = DAG.getNode(V6CISD::CMP, DL, MVT::Glue, LHS, RHS);

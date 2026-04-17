@@ -1,6 +1,6 @@
-5.147059e-01 encoding-alu.ll
-3.138304e-01 encoding-branch.ll
-4.066465e-01 encoding-const.ll
-3.936441e-01 encoding-imm.ll
-3.724823e-01 encoding-ret.ll
-3.629887e-01 encoding-sub.ll
+2.395997e-01 encoding-alu.ll
+4.248419e-01 encoding-branch.ll
+3.727357e-01 encoding-const.ll
+4.038298e-01 encoding-imm.ll
+3.869746e-01 encoding-ret.ll
+4.448419e-01 encoding-sub.ll

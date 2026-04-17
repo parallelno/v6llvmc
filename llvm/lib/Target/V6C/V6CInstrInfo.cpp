@@ -839,6 +839,58 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     return true;
   }
 
+  case V6C::V6C_CMP16_IMM: {
+    // O24: Compare lhs vs immediate (16-bit) via MVI+SUB/SBB.
+    // Same as BR_CC16_IMM ordering expansion, minus the Jcc.
+    // The K→K-1 + CC inversion was already done in LowerSELECT_CC.
+    Register LhsReg = MI.getOperand(0).getReg();
+    MachineOperand &RhsOp = MI.getOperand(1);
+
+    MCRegister LhsLo = RI.getSubReg(LhsReg, V6C::sub_lo);
+    MCRegister LhsHi = RI.getSubReg(LhsReg, V6C::sub_hi);
+
+    auto addImmLo = [&](MachineInstrBuilder &MIB) {
+      if (RhsOp.isImm()) {
+        MIB.addImm(RhsOp.getImm() & 0xFF);
+      } else if (RhsOp.isGlobal()) {
+        MIB.addGlobalAddress(RhsOp.getGlobal(), RhsOp.getOffset(),
+                             V6CII::MO_LO8);
+      } else if (RhsOp.isSymbol()) {
+        MIB.addExternalSymbol(RhsOp.getSymbolName(), V6CII::MO_LO8);
+      } else {
+        llvm_unreachable("Unexpected operand type in V6C_CMP16_IMM");
+      }
+    };
+    auto addImmHi = [&](MachineInstrBuilder &MIB) {
+      if (RhsOp.isImm()) {
+        MIB.addImm((RhsOp.getImm() >> 8) & 0xFF);
+      } else if (RhsOp.isGlobal()) {
+        MIB.addGlobalAddress(RhsOp.getGlobal(), RhsOp.getOffset(),
+                             V6CII::MO_HI8);
+      } else if (RhsOp.isSymbol()) {
+        MIB.addExternalSymbol(RhsOp.getSymbolName(), V6CII::MO_HI8);
+      } else {
+        llvm_unreachable("Unexpected operand type in V6C_CMP16_IMM");
+      }
+    };
+
+    {
+      auto MIB = BuildMI(MBB, MI, DL, get(V6C::MVIr), V6C::A);
+      addImmLo(MIB);
+    }
+    BuildMI(MBB, MI, DL, get(V6C::SUBr), V6C::A)
+        .addReg(V6C::A).addReg(LhsLo);
+    {
+      auto MIB = BuildMI(MBB, MI, DL, get(V6C::MVIr), V6C::A);
+      addImmHi(MIB);
+    }
+    BuildMI(MBB, MI, DL, get(V6C::SBBr), V6C::A)
+        .addReg(V6C::A).addReg(LhsHi);
+
+    MI.eraseFromParent();
+    return true;
+  }
+
   case V6C::V6C_BR_CC16: {
     // Fused 16-bit compare + conditional branch.
     // Different sequences depending on condition code.
@@ -984,8 +1036,10 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     int64_t CC = MI.getOperand(2).getImm();
     MachineBasicBlock *Target = MI.getOperand(3).getMBB();
 
-    assert((CC == V6CCC::COND_Z || CC == V6CCC::COND_NZ) &&
-           "V6C_BR_CC16_IMM only supports EQ/NE");
+    assert((CC == V6CCC::COND_Z || CC == V6CCC::COND_NZ ||
+            CC == V6CCC::COND_C || CC == V6CCC::COND_NC ||
+            CC == V6CCC::COND_M || CC == V6CCC::COND_P) &&
+           "V6C_BR_CC16_IMM: unsupported condition code");
 
     MCRegister LhsLo = RI.getSubReg(LhsReg, V6C::sub_lo);
     MCRegister LhsHi = RI.getSubReg(LhsReg, V6C::sub_hi);
@@ -1032,7 +1086,39 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       }
     };
 
-    // Same MBB-splitting pattern as V6C_BR_CC16 EQ/NE path.
+    // O24: Ordering conditions (C/NC/M/P) — MVI+SUB/SBB then Jcc.
+    // Unlike EQ/NE, ordering processes both bytes via the borrow chain
+    // before a single conditional branch. No MBB splitting needed.
+    if (CC == V6CCC::COND_C || CC == V6CCC::COND_NC ||
+        CC == V6CCC::COND_M || CC == V6CCC::COND_P) {
+      unsigned JccOpc;
+      switch (CC) {
+      default: llvm_unreachable("Unknown ordering CC");
+      case V6CCC::COND_C:  JccOpc = V6C::JC;  break;
+      case V6CCC::COND_NC: JccOpc = V6C::JNC; break;
+      case V6CCC::COND_M:  JccOpc = V6C::JM;  break;
+      case V6CCC::COND_P:  JccOpc = V6C::JP;  break;
+      }
+
+      {
+        auto MIB = BuildMI(MBB, MI, DL, get(V6C::MVIr), V6C::A);
+        addImmLo(MIB);
+      }
+      BuildMI(MBB, MI, DL, get(V6C::SUBr), V6C::A)
+          .addReg(V6C::A).addReg(LhsLo);
+      {
+        auto MIB = BuildMI(MBB, MI, DL, get(V6C::MVIr), V6C::A);
+        addImmHi(MIB);
+      }
+      BuildMI(MBB, MI, DL, get(V6C::SBBr), V6C::A)
+          .addReg(V6C::A).addReg(LhsHi);
+      BuildMI(MBB, MI, DL, get(JccOpc)).addMBB(Target);
+
+      MI.eraseFromParent();
+      return true;
+    }
+
+    // EQ/NE: Same MBB-splitting pattern as V6C_BR_CC16 EQ/NE path.
     SmallVector<MachineBasicBlock *, 2> OrigSuccessors(
         MBB.successors().begin(), MBB.successors().end());
 
