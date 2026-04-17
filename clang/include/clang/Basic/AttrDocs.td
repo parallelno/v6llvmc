@@ -1382,35 +1382,6 @@ Sample usage:
   }];
 }
 
-def NoRecurseDocs : Documentation {
-  let Category = DocCatFunction;
-  let Content = [{
-The ``norecurse`` attribute can be placed on a function declaration to indicate
-that the function does not recurse, directly or indirectly. This is translated
-into the LLVM ``norecurse`` attribute, which enables optimizations that assume
-at most one invocation of the function is active at any time.
-
-On targets with limited resources (e.g., 8-bit CPUs), this attribute allows
-the compiler to replace the stack frame with a statically allocated memory
-region, significantly reducing the cost of spill/reload sequences.
-
-When placed on an external function declaration, it informs the compiler that
-the function does not call back into the current translation unit, enabling
-``norecurse`` inference on callers.
-
-Sample usage:
-
-.. code-block:: c
-
-  __attribute__((norecurse))
-  extern void peripheral_write(unsigned char port, unsigned char val);
-
-  __attribute__((norecurse))
-  void process(unsigned char *buf, unsigned int len);
-
-  }];
-}
-
 def NoSplitStackDocs : Documentation {
   let Category = DocCatFunction;
   let Content = [{

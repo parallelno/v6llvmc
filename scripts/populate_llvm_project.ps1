@@ -55,9 +55,6 @@ xcopy /Y /I "$root\clang\lib\CodeGen\TargetInfo.h" "$root\llvm-project\clang\lib
 xcopy /Y /I "$root\clang\lib\CodeGen\CodeGenModule.cpp" "$root\llvm-project\clang\lib\CodeGen\" > $null
 xcopy /Y /I "$root\clang\lib\CodeGen\CGCall.cpp" "$root\llvm-project\clang\lib\CodeGen\" > $null
 xcopy /Y /I "$root\clang\lib\CodeGen\CMakeLists.txt" "$root\llvm-project\clang\lib\CodeGen\" > $null
-# norecurse attribute
-xcopy /Y /I "$root\clang\include\clang\Basic\Attr.td" "$root\llvm-project\clang\include\clang\Basic\" > $null
-xcopy /Y /I "$root\clang\include\clang\Basic\AttrDocs.td" "$root\llvm-project\clang\include\clang\Basic\" > $null
 # Driver ToolChain
 if (-not (Test-Path "$root\llvm-project\clang\lib\Driver\ToolChains")) { New-Item -ItemType Directory -Path "$root\llvm-project\clang\lib\Driver\ToolChains" -Force > $null }
 xcopy /Y /I "$root\clang\lib\Driver\ToolChains\V6C.h" "$root\llvm-project\clang\lib\Driver\ToolChains\" > $null

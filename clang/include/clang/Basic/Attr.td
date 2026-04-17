@@ -1939,13 +1939,6 @@ def Convergent : InheritableAttr {
   let SimpleHandler = 1;
 }
 
-def NoRecurse : InheritableAttr {
-  let Spellings = [Clang<"norecurse">];
-  let Subjects = SubjectList<[Function]>;
-  let Documentation = [NoRecurseDocs];
-  let SimpleHandler = 1;
-}
-
 def NoInline : DeclOrStmtAttr {
   let Spellings = [CustomKeyword<"__noinline__">, GCC<"noinline">,
                    CXX11<"clang", "noinline">, C23<"clang", "noinline">,
