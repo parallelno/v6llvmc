@@ -40,30 +40,23 @@ frame.
 
 A function qualifies for static allocation only when all five conditions hold:
 
-### 1. `norecurse` attribute
+### 1. `leaf` attribute on external declarations
 
-The function must be marked `norecurse`, meaning it never calls itself
-(directly or transitively). At `-O2`, LLVM's `PostOrderFunctionAttrs` pass
-infers this automatically when all callees have visible bodies.
-
-When callee bodies are **not** visible (e.g., external library functions),
-LLVM cannot infer `norecurse` on callers. Use `__attribute__((norecurse))`
-on external declarations to provide this information explicitly:
+When a function calls an external function whose body is not visible, LLVM
+assume the extern could theoretically call back into the translation unit causing
+staticly allocated function fail.
+Marking the external function declaration `__attribute__((leaf))` tells the
+compiler it does not call back, allowing LLVM to infer `norecurse` on the caller
+and enable static stack allocation.
 
 ```c
-// Without this attribute, any caller of uart_write would be
-// excluded from static stack allocation.
-__attribute__((norecurse))
+// Without leaf, callers of uart_write use dynamic stack frames.
+__attribute__((leaf))
 extern void uart_write(unsigned char c);
 ```
 
-This is safe for any function that does not call back (directly or
-transitively) into the current translation unit. Most hardware I/O
-functions, runtime library functions, and leaf extern functions qualify.
-
-**Important:** `norecurse` alone is NOT sufficient — it only means "doesn't
-call itself." A `norecurse` function can still be **re-entered** by an
-interrupt handler while it is executing. See the interrupt criteria below.
+Functions whose callees all have visible bodies (defined in the same `.c`
+file) do not need this — LLVM infers `norecurse` automatically.
 
 ### 2. Not an interrupt handler
 
@@ -225,14 +218,13 @@ for all their callers. Workarounds:
 __attribute__((noinline))
 void helper(int x) { /* body visible */ }
 
-// Option 2: Manually annotate if you know it's safe
+// Option 2: Mark extern declarations as leaf (preferred)
 __attribute__((leaf))
 extern void external_helper(int x);
 
 // Option 3: Use LTO
 // clang -flto --target=i8080-unknown-v6c -O2 file1.c file2.c -o out
 ```
-
 ## Pass Architecture
 
 ### Pipeline position

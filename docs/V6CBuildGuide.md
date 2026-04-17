@@ -221,14 +221,14 @@ Suppress with `-Wno-v6c-expensive-type` if intentional.
 
 | Attribute | Effect |
 |-----------|--------|
-| `__attribute__((norecurse))` | Declares that the function does not recurse, directly or indirectly. Enables the static stack allocation optimization (O10) for the function and its callers. Particularly useful on external declarations whose bodies are not visible to the compiler. |
+| `__attribute__((leaf))` | Declares that the function does not call back into the current translation unit. Allows LLVM to infer `norecurse` on callers, enabling static stack allocation (O10). Use on external declarations. |
 | `__attribute__((interrupt))` | Marks a function as an interrupt service routine. Excludes it and all its transitive callees from static stack allocation and SP-trick optimization. |
 
 Example:
 ```c
 // External function that never calls back into user code.
 // Without this attribute, callers cannot get static stack allocation.
-__attribute__((norecurse))
+__attribute__((leaf))
 extern void uart_write(unsigned char c);
 
 // The compiler can now prove this caller is non-reentrant
