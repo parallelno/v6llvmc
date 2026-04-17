@@ -46,6 +46,21 @@ void V6CInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
   }
 }
 
+void V6CInstPrinter::printImm8Operand(const MCInst *MI, unsigned OpNo,
+                                       raw_ostream &O) {
+  const MCOperand &Op = MI->getOperand(OpNo);
+
+  if (Op.isImm()) {
+    uint64_t UVal = static_cast<uint64_t>(Op.getImm()) & 0xFF;
+    if (UVal <= 9)
+      O << UVal;
+    else
+      O << formatHex(UVal);
+  } else if (Op.isExpr()) {
+    Op.getExpr()->print(O, &MAI);
+  }
+}
+
 void V6CInstPrinter::printBrTarget(const MCInst *MI, unsigned OpNo,
                                     raw_ostream &O) {
   const MCOperand &Op = MI->getOperand(OpNo);

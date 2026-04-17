@@ -16,9 +16,13 @@ include "V6CInstrFormats.td"
 // Operand types
 //===----------------------------------------------------------------------===//
 
-def imm8  : Operand<i8>;
+def imm8  : Operand<i8> {
+  let PrintMethod = "printImm8Operand";
+}
 def imm16 : Operand<i16>;
-def i8port : Operand<i8>;
+def i8port : Operand<i8> {
+  let PrintMethod = "printImm8Operand";
+}
 
 // Branch target (16-bit absolute address)
 def brtarget : Operand<OtherVT> {

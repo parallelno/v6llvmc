@@ -394,6 +394,54 @@ SDValue V6CTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
     return DAG.getNode(V6CISD::BR_CC16, DL, MVT::Other, Ops);
   }
 
+  // For i8: ensure the immediate is on the RHS so CPI can match.
+  // After GT/LE canonicalization (and LLVM's InstCombine converting
+  // UGE/ULE/SGE/SLE to strict comparisons with adjusted constants),
+  // the constant may end up on the LHS.  Undo this by transforming:
+  //   OP(const, x) → INV_OP(x, const + 1)
+  // For EQ/NE (commutative): simply swap without adjusting.
+  if (LHS.getValueType() == MVT::i8) {
+    if (auto *CLHS = dyn_cast<ConstantSDNode>(LHS)) {
+      if (!isa<ConstantSDNode>(RHS)) {
+        int64_t Imm = CLHS->getSExtValue();
+        switch (V6CC) {
+        case V6CCC::COND_Z:  // EQ: commutative, just swap
+        case V6CCC::COND_NZ: // NE: commutative, just swap
+          std::swap(LHS, RHS);
+          break;
+        case V6CCC::COND_C:  // ULT(C,x) → UGE(x, C+1)
+          if ((Imm & 0xFF) != 0xFF) {
+            LHS = RHS;
+            RHS = DAG.getConstant((Imm + 1) & 0xFF, DL, MVT::i8);
+            V6CC = V6CCC::COND_NC;
+          }
+          break;
+        case V6CCC::COND_NC: // UGE(C,x) → ULT(x, C+1)
+          if ((Imm & 0xFF) != 0xFF) {
+            LHS = RHS;
+            RHS = DAG.getConstant((Imm + 1) & 0xFF, DL, MVT::i8);
+            V6CC = V6CCC::COND_C;
+          }
+          break;
+        case V6CCC::COND_M:  // SLT(C,x) → SGE(x, C+1)
+          if (Imm != 127) {
+            LHS = RHS;
+            RHS = DAG.getConstant((Imm + 1) & 0xFF, DL, MVT::i8);
+            V6CC = V6CCC::COND_P;
+          }
+          break;
+        case V6CCC::COND_P:  // SGE(C,x) → SLT(x, C+1)
+          if (Imm != 127) {
+            LHS = RHS;
+            RHS = DAG.getConstant((Imm + 1) & 0xFF, DL, MVT::i8);
+            V6CC = V6CCC::COND_M;
+          }
+          break;
+        }
+      }
+    }
+  }
+
   // For i8: emit CMP (produces glue with FLAGS) then BRCOND.
   SDValue Glue = DAG.getNode(V6CISD::CMP, DL, MVT::Glue, LHS, RHS);
   SDValue CCVal = DAG.getConstant(V6CC, DL, MVT::i8);
@@ -437,6 +485,50 @@ SDValue V6CTargetLowering::LowerSELECT_CC(SDValue Op,
   }
 
   V6CCC::CondCode V6CC = getV6CCC(CC);
+
+  // For i8: ensure the immediate is on the RHS so CPI can match.
+  if (LHS.getValueType() == MVT::i8) {
+    if (auto *CLHS = dyn_cast<ConstantSDNode>(LHS)) {
+      if (!isa<ConstantSDNode>(RHS)) {
+        int64_t Imm = CLHS->getSExtValue();
+        switch (V6CC) {
+        case V6CCC::COND_Z:
+        case V6CCC::COND_NZ:
+          std::swap(LHS, RHS);
+          break;
+        case V6CCC::COND_C:
+          if ((Imm & 0xFF) != 0xFF) {
+            LHS = RHS;
+            RHS = DAG.getConstant((Imm + 1) & 0xFF, DL, MVT::i8);
+            V6CC = V6CCC::COND_NC;
+          }
+          break;
+        case V6CCC::COND_NC:
+          if ((Imm & 0xFF) != 0xFF) {
+            LHS = RHS;
+            RHS = DAG.getConstant((Imm + 1) & 0xFF, DL, MVT::i8);
+            V6CC = V6CCC::COND_C;
+          }
+          break;
+        case V6CCC::COND_M:
+          if (Imm != 127) {
+            LHS = RHS;
+            RHS = DAG.getConstant((Imm + 1) & 0xFF, DL, MVT::i8);
+            V6CC = V6CCC::COND_P;
+          }
+          break;
+        case V6CCC::COND_P:
+          if (Imm != 127) {
+            LHS = RHS;
+            RHS = DAG.getConstant((Imm + 1) & 0xFF, DL, MVT::i8);
+            V6CC = V6CCC::COND_M;
+          }
+          break;
+        }
+      }
+    }
+  }
+
   SDValue CCVal = DAG.getConstant(V6CC, DL, MVT::i8);
 
   // O34: For i16 EQ/NE against zero, use zero-test (MOV A, Hi; ORA Lo)

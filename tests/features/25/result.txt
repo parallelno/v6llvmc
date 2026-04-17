@@ -34,7 +34,7 @@ main:
     DAD DE
     RET
 
-sumarray: ; (92*4+52=420)*100+84=36884cc, 66 bytes
+sumarray: ; (105*4=420)*100+84=36884cc, 66 bytes
     LXI HL, 0
     SHLD sumarray_sum
     SHLD sumarray_i
@@ -72,7 +72,7 @@ sumarray: ; (92*4+52=420)*100+84=36884cc, 66 bytes
     LHLD sumarray_sum
     RET
 
-singlesum:
+singlesum: ; (73*4)*100
     LXI HL, 0
     SHLD singlesum_total
     SHLD singlesum_i
