@@ -46,6 +46,21 @@ The function must be marked `norecurse`, meaning it never calls itself
 (directly or transitively). At `-O2`, LLVM's `PostOrderFunctionAttrs` pass
 infers this automatically when all callees have visible bodies.
 
+When callee bodies are **not** visible (e.g., external library functions),
+LLVM cannot infer `norecurse` on callers. Use `__attribute__((norecurse))`
+on external declarations to provide this information explicitly:
+
+```c
+// Without this attribute, any caller of uart_write would be
+// excluded from static stack allocation.
+__attribute__((norecurse))
+extern void uart_write(unsigned char c);
+```
+
+This is safe for any function that does not call back (directly or
+transitively) into the current translation unit. Most hardware I/O
+functions, runtime library functions, and leaf extern functions qualify.
+
 **Important:** `norecurse` alone is NOT sufficient — it only means "doesn't
 call itself." A `norecurse` function can still be **re-entered** by an
 interrupt handler while it is executing. See the interrupt criteria below.

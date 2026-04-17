@@ -217,6 +217,28 @@ The V6C target emits warnings (controlled by `-Wv6c-expensive-type`) when using 
 
 Suppress with `-Wno-v6c-expensive-type` if intentional.
 
+### Function Attributes
+
+| Attribute | Effect |
+|-----------|--------|
+| `__attribute__((norecurse))` | Declares that the function does not recurse, directly or indirectly. Enables the static stack allocation optimization (O10) for the function and its callers. Particularly useful on external declarations whose bodies are not visible to the compiler. |
+| `__attribute__((interrupt))` | Marks a function as an interrupt service routine. Excludes it and all its transitive callees from static stack allocation and SP-trick optimization. |
+
+Example:
+```c
+// External function that never calls back into user code.
+// Without this attribute, callers cannot get static stack allocation.
+__attribute__((norecurse))
+extern void uart_write(unsigned char c);
+
+// The compiler can now prove this caller is non-reentrant
+// and allocate its spill slots statically.
+void send_message(const unsigned char *buf, unsigned int len) {
+    for (unsigned int i = 0; i < len; i++)
+        uart_write(buf[i]);
+}
+```
+
 ### Built-in Functions (Intrinsics)
 
 Hardware-specific operations available as built-in functions:

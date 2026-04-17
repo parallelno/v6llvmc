@@ -33,7 +33,12 @@ if (-not (Test-Path "$root\clang\lib\CodeGen\Targets")) { New-Item -ItemType Dir
 xcopy /Y /I "$root\llvm-project\clang\lib\CodeGen\Targets\V6C.cpp" "$root\clang\lib\CodeGen\Targets\" > $null
 xcopy /Y /I "$root\llvm-project\clang\lib\CodeGen\TargetInfo.h" "$root\clang\lib\CodeGen\" > $null
 xcopy /Y /I "$root\llvm-project\clang\lib\CodeGen\CodeGenModule.cpp" "$root\clang\lib\CodeGen\" > $null
+xcopy /Y /I "$root\llvm-project\clang\lib\CodeGen\CGCall.cpp" "$root\clang\lib\CodeGen\" > $null
 xcopy /Y /I "$root\llvm-project\clang\lib\CodeGen\CMakeLists.txt" "$root\clang\lib\CodeGen\" > $null
+# norecurse attribute
+if (-not (Test-Path "$root\clang\include\clang\Basic")) { New-Item -ItemType Directory -Path "$root\clang\include\clang\Basic" -Force > $null }
+xcopy /Y /I "$root\llvm-project\clang\include\clang\Basic\Attr.td" "$root\clang\include\clang\Basic\" > $null
+xcopy /Y /I "$root\llvm-project\clang\include\clang\Basic\AttrDocs.td" "$root\clang\include\clang\Basic\" > $null
 # Driver ToolChain
 if (-not (Test-Path "$root\clang\lib\Driver\ToolChains")) { New-Item -ItemType Directory -Path "$root\clang\lib\Driver\ToolChains" -Force > $null }
 xcopy /Y /I "$root\llvm-project\clang\lib\Driver\ToolChains\V6C.h" "$root\clang\lib\Driver\ToolChains\" > $null
