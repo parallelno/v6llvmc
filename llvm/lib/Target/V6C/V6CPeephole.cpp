@@ -35,6 +35,11 @@ static cl::opt<bool> DisablePeephole(
     cl::desc("Disable V6C peephole optimizations"),
     cl::init(false), cl::Hidden);
 
+static cl::opt<bool> DisableShldLhldFold(
+    "v6c-disable-shld-lhld-fold",
+    cl::desc("Disable SHLD/LHLD to PUSH/POP folding (O43)"),
+    cl::init(false), cl::Hidden);
+
 namespace {
 
 class V6CPeephole : public MachineFunctionPass {
@@ -528,6 +533,8 @@ static bool isSameAddress(const MachineOperand &A, const MachineOperand &B) {
 /// CALL/Ccc/RST are net-zero (callee restores SP via RET).
 /// Any other SP modifier (SPHL, LXI SP, INX SP, DCX SP) causes abort.
 bool V6CPeephole::foldShldLhldToPushPop(MachineBasicBlock &MBB) {
+  if (DisableShldLhldFold)
+    return false;
   bool Changed = false;
   const TargetRegisterInfo *TRI =
       MBB.getParent()->getSubtarget().getRegisterInfo();
