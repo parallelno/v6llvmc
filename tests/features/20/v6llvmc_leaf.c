@@ -1,13 +1,13 @@
-// Test case for O16: Post-RA Store-to-Load Forwarding
-// Exercises spill/reload patterns where registers hold their spilled value
-// at the reload point, enabling forwarding.
+// Test case for O16: Post-RA Store-to-Load Forwarding (static stack variant)
+// Same test as v6llvmc.c but with __attribute__((leaf)) on extern functions,
+// enabling static stack allocation. Shows O16 effect with STA/LDA/SHLD/LHLD.
 
-extern void use8(unsigned char x);
-extern unsigned char get8(void);
+__attribute__((leaf)) extern void use8(unsigned char x);
+__attribute__((leaf)) extern unsigned char get8(void);
 
 // Case 1: Interleaved pointer loop — 4 ptrs + counter = high register pressure.
 // The loop body has NO calls, so Avail is not cleared between spill and reload.
-// The call to use8 at the end makes the function non-leaf, preventing static stack.
+// With leaf attr, static stack allocation is used (STA/LDA/SHLD/LHLD).
 void interleaved_add(unsigned char *dst, const unsigned char *src1,
                      const unsigned char *src2, unsigned char n) {
     unsigned char i;
@@ -18,7 +18,6 @@ void interleaved_add(unsigned char *dst, const unsigned char *src1,
 }
 
 // Case 2: Multiple live values across a call — registers spilled, then reloaded
-// (Calls clear Avail, so no forwarding expected here — serves as negative test)
 unsigned char multi_live(unsigned char a, unsigned char b, unsigned char c) {
     unsigned char x = a + 1;
     unsigned char y = b + 2;

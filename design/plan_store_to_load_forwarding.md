@@ -280,7 +280,7 @@ v6llvmc asm, and cycle/byte statistics.
 > **Implementation Notes**: Created with full before/after comparison.
 > Per-iteration savings: 12 instructions, 16 bytes, 116 cycles (18.8%).
 
-### Step 3.11 — Sync mirror [ ]
+### Step 3.11 — Sync mirror [x]
 
 ```
 powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1

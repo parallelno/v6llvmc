@@ -1,13 +1,13 @@
 	.text
-	.globl	multi_ptr_copy                  ; -- Begin function multi_ptr_copy
-multi_ptr_copy:                         ; @multi_ptr_copy
+	.globl	interleaved_add                 ; -- Begin function interleaved_add
+interleaved_add:                        ; @interleaved_add
 ; %bb.0:
 	PUSH	HL
 	PUSH	DE
-	LXI	HL, 0xfffa
+	LXI	HL, 0xfff7
 	DAD	SP
 	SPHL
-	LXI	HL, 6
+	LXI	HL, 9
 	DAD	SP
 	MOV	E, M
 	INX	HL
@@ -17,117 +17,138 @@ multi_ptr_copy:                         ; @multi_ptr_copy
 	INX	HL
 	MOV	H, M
 	MOV	L, A
-	MOV	A, C
-	MOV	B, D
-	MOV	C, E
-	PUSH	DE
-	XCHG
-	LXI	HL, 6
-	DAD	SP
-	MOV	M, E
-	INX	HL
-	MOV	M, D
-	XCHG
-	POP	DE
-	ORA	A
-	JZ	.LBB0_3
-; %bb.1:
 	PUSH	HL
-	LXI	HL, 8
+	LXI	HL, 0xb
 	DAD	SP
 	MOV	M, C
 	INX	HL
 	MOV	M, B
 	POP	HL
-	MVI	L, 0
-	MOV	D, L
-	MOV	E, A
-	PUSH	DE
-	LXI	HL, 8
-	DAD	SP
-	MOV	E, M
-	INX	HL
-	MOV	D, M
-	XCHG
-	POP	DE
-.LBB0_2:                                ; =>This Inner Loop Header: Depth=1
 	PUSH	HL
-	LXI	HL, 0xa
+	LXI	HL, 0xd
 	DAD	SP
 	MOV	M, E
 	INX	HL
 	MOV	M, D
 	POP	HL
-	PUSH	DE
 	XCHG
-	LXI	HL, 8
+	LXI	HL, 4
 	DAD	SP
 	MOV	M, E
 	INX	HL
 	MOV	M, D
-	POP	DE
-	PUSH	DE
-	LXI	HL, 8
+	XCHG
+	LXI	HL, 0xd
+	DAD	SP
+	MOV	A, M
+	ORA	A
+	JZ	.LBB0_3
+; %bb.1:
+	MVI	L, 0
+	MOV	B, L
+	MOV	C, A
+	LXI	HL, 4
 	DAD	SP
 	MOV	E, M
 	INX	HL
 	MOV	D, M
+.LBB0_2:                                ; =>This Inner Loop Header: Depth=1
+	LXI	HL, 7
+	DAD	SP
+	MOV	M, C
+	INX	HL
+	MOV	M, B
+	PUSH	DE
+	LXI	HL, 0xd
+	DAD	SP
+	MOV	E, M
+	INX	HL
+	MOV	D, M
+	XCHG
+	POP	DE
+	PUSH	DE
+	XCHG
+	LXI	HL, 0xd
+	DAD	SP
+	MOV	M, E
+	INX	HL
+	MOV	M, D
 	XCHG
 	POP	DE
 	MOV	A, M
-	INR	A
 	PUSH	HL
-	LXI	HL, 6
-	DAD	SP
-	MOV	E, M
-	INX	HL
-	MOV	D, M
-	POP	HL
-	STAX	DE
-	PUSH	DE
 	LXI	HL, 8
 	DAD	SP
-	MOV	E, M
-	INX	HL
-	MOV	D, M
-	XCHG
-	POP	DE
-	INX	HL
-	INX	DE
-	PUSH	HL
-	LXI	HL, 6
-	DAD	SP
-	MOV	M, E
-	INX	HL
-	MOV	M, D
+	MOV	M, A
 	POP	HL
 	PUSH	HL
-	LXI	HL, 0xa
+	LXI	HL, 0xb
 	DAD	SP
 	MOV	C, M
 	INX	HL
 	MOV	B, M
 	POP	HL
-	DCX	BC
-	PUSH	HL
-	LXI	HL, 0xa
+	LDAX	BC
+	PUSH	DE
+	MOV	D, H
+	LXI	HL, 8
 	DAD	SP
-	MOV	M, C
-	INX	HL
-	MOV	M, B
-	POP	HL
-	PUSH	HL
-	LXI	HL, 0xa
+	MOV	L, M
+	MOV	H, D
+	POP	DE
+	ADD	L
+	STAX	DE
+	PUSH	DE
+	LXI	HL, 0xd
 	DAD	SP
 	MOV	E, M
 	INX	HL
 	MOV	D, M
-	POP	HL
-	MOV	A, D
-	ORA	E
+	XCHG
+	POP	DE
+	INX	HL
+	PUSH	DE
+	XCHG
+	LXI	HL, 0xd
+	DAD	SP
+	MOV	M, E
+	INX	HL
+	MOV	M, D
+	POP	DE
+	PUSH	DE
+	LXI	HL, 0xd
+	DAD	SP
+	MOV	E, M
+	INX	HL
+	MOV	D, M
+	XCHG
+	POP	DE
+	INX	BC
+	LXI	HL, 9
+	DAD	SP
+	MOV	M, C
+	INX	HL
+	MOV	M, B
+	LXI	HL, 7
+	DAD	SP
+	MOV	C, M
+	INX	HL
+	MOV	B, M
+	INX	DE
+	DCX	BC
+	MOV	A, B
+	ORA	C
 	JNZ	.LBB0_2
 .LBB0_3:
-	LXI	HL, 0xa
+	LXI	HL, 4
+	DAD	SP
+	MOV	E, M
+	INX	HL
+	MOV	D, M
+	XCHG
+	MOV	A, M
+	CALL	use8
+	LXI	HL, 0xd
 	DAD	SP
 	SPHL
 	RET
@@ -155,13 +176,11 @@ multi_live:                             ; @multi_live
 	DAD	SP
 	MOV	A, M
 	POP	HL
-	PUSH	DE
 	MOV	D, H
-	LXI	HL, 3
+	LXI	HL, 1
 	DAD	SP
 	MOV	L, M
 	MOV	H, D
-	POP	DE
 	ADD	L
 	ADI	3
 	LXI	HL, 2
@@ -169,128 +188,42 @@ multi_live:                             ; @multi_live
 	SPHL
 	RET
                                         ; -- End function
-	.globl	nested_calls                    ; -- Begin function nested_calls
-nested_calls:                           ; @nested_calls
+	.globl	main                            ; -- Begin function main
+main:                                   ; @main
 ; %bb.0:
 	LXI	HL, 0xfffd
 	DAD	SP
 	SPHL
-	PUSH	HL
-	LXI	HL, 2
-	DAD	SP
-	MOV	M, E
-	POP	HL
-	PUSH	HL
-	LXI	HL, 3
-	DAD	SP
-	MOV	M, A
-	POP	HL
-	CALL	get8
-	PUSH	HL
-	LXI	HL, 4
-	DAD	SP
-	MOV	M, A
-	POP	HL
-	PUSH	HL
-	LXI	HL, 2
-	DAD	SP
-	MOV	A, M
-	POP	HL
+	MVI	A, 0xb
 	CALL	use8
-	PUSH	HL
-	LXI	HL, 4
+	LXI	HL, 2
 	DAD	SP
-	MOV	A, M
-	POP	HL
-	PUSH	DE
-	MOV	D, H
-	LXI	HL, 3
-	DAD	SP
-	MOV	L, M
-	MOV	H, D
-	POP	DE
-	ADD	L
-	PUSH	HL
-	LXI	HL, 4
-	DAD	SP
-	MOV	M, A
-	POP	HL
-	CALL	get8
-	MOV	L, A
-	PUSH	HL
-	LXI	HL, 4
-	DAD	SP
-	MOV	A, M
-	POP	HL
-	ADD	L
-	LXI	HL, 3
-	DAD	SP
-	SPHL
-	RET
-                                        ; -- End function
-	.globl	main                            ; -- Begin function main
-main:                                   ; @main
-; %bb.0:
-	LXI	HL, 0xfffc
-	DAD	SP
-	SPHL
-	LXI	HL, 3
-	DAD	SP
-	PUSH	DE
 	MOV	D, H
 	MOV	E, L
-	LXI	HL, 3
+	LXI	HL, 0
 	DAD	SP
 	MOV	M, E
 	INX	HL
 	MOV	M, D
 	XCHG
-	POP	DE
 	MVI	A, 0xb
 	MOV	M, A
 	MVI	A, 3
 	CALL	use8
 	MVI	A, 6
-	PUSH	DE
-	LXI	HL, 3
+	LXI	HL, 0
 	DAD	SP
 	MOV	E, M
 	INX	HL
 	MOV	D, M
 	XCHG
-	POP	DE
 	MOV	M, A
-	CALL	get8
-	PUSH	HL
-	LXI	HL, 2
-	DAD	SP
-	MOV	M, A
-	POP	HL
-	MVI	A, 6
-	CALL	use8
-	CALL	get8
-	MOV	L, A
-	PUSH	HL
-	LXI	HL, 2
-	DAD	SP
 	MOV	A, M
-	POP	HL
-	ADD	L
-	ADI	5
-	PUSH	HL
-	LXI	HL, 3
-	DAD	SP
-	MOV	E, M
-	INX	HL
-	MOV	D, M
-	POP	HL
-	STAX	DE
-	LDAX	DE
 	MVI	L, 0
 	MOV	H, L
 	MOV	L, A
 	XCHG
-	LXI	HL, 4
+	LXI	HL, 3
 	DAD	SP
 	SPHL
 	XCHG
