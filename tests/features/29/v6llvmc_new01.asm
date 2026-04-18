@@ -1,0 +1,80 @@
+	.text
+	.globl	interleaved_add                 ; -- Begin function interleaved_add
+interleaved_add:                        ; @interleaved_add
+; %bb.0:
+	PUSH	HL
+	LXI	HL, __v6c_ss.interleaved_add+2
+	MOV	M, C
+	INX	HL
+	MOV	M, B
+	POP	HL
+	XCHG
+	SHLD	__v6c_ss.interleaved_add
+	XCHG
+	SHLD	__v6c_ss.interleaved_add+7
+	LXI	HL, 0
+	DAD	SP
+	MOV	A, M
+	ORA	A
+	JZ	.LBB0_3
+; %bb.1:
+	MVI	L, 0
+	MOV	B, L
+	MOV	C, A
+	LHLD	__v6c_ss.interleaved_add+7
+	XCHG
+.LBB0_2:                                ; =>This Inner Loop Header: Depth=1
+	MOV	L, C
+	MOV	H, B
+	PUSH	HL
+	LHLD	__v6c_ss.interleaved_add
+	PUSH	HL
+	MOV	A, M
+	STA	__v6c_ss.interleaved_add+6
+	PUSH	HL
+	LXI	HL, __v6c_ss.interleaved_add+2
+	MOV	C, M
+	INX	HL
+	MOV	B, M
+	POP	HL
+	LDAX	BC
+	PUSH	DE
+	MOV	D, H
+	LXI	HL, __v6c_ss.interleaved_add+6
+	MOV	L, M
+	MOV	H, D
+	POP	DE
+	ADD	L
+	STAX	DE
+	POP	HL
+	INX	HL
+	SHLD	__v6c_ss.interleaved_add
+	LHLD	__v6c_ss.interleaved_add
+	INX	BC
+	MOV	L, C
+	MOV	H, B
+	SHLD	__v6c_ss.interleaved_add+2
+	POP	HL
+	MOV	C, L
+	MOV	B, H
+	INX	DE
+	DCX	BC
+	MOV	A, B
+	ORA	C
+	JNZ	.LBB0_2
+.LBB0_3:
+	LHLD	__v6c_ss.interleaved_add+7
+	MOV	A, M
+	JMP	use8
+                                        ; -- End function
+	.globl	main                            ; -- Begin function main
+main:                                   ; @main
+; %bb.0:
+	MVI	A, 0xb
+	CALL	use8
+	LXI	HL, 0xb
+	RET
+                                        ; -- End function
+	.local	__v6c_ss.interleaved_add        ; @__v6c_ss.interleaved_add
+	.comm	__v6c_ss.interleaved_add,9,1
+	.addrsig

@@ -60,6 +60,14 @@ void V6CInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     return;
   }
 
+  // SP → HL: LXI HL, 0 + DAD SP (no direct MOV path on 8080).
+  if (DestReg == V6C::HL && SrcReg == V6C::SP) {
+    BuildMI(MBB, MI, DL, get(V6C::LXI), V6C::HL).addImm(0);
+    BuildMI(MBB, MI, DL, get(V6C::DAD))
+        .addReg(V6C::SP);
+    return;
+  }
+
   llvm_unreachable("Cannot copy between these register classes");
 }
 

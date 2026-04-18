@@ -523,6 +523,57 @@ static bool isSameAddress(const MachineOperand &A, const MachineOperand &B) {
   return false;
 }
 
+/// Check if any LHLD of the same address is reachable from AfterD
+/// without passing through a covering SHLD.  ShldC is the SHLD being
+/// folded — it doesn't count as a covering store (it will be removed).
+static bool isUncoveredLhldReachable(
+    MachineBasicBlock &MBB,
+    MachineBasicBlock::iterator AfterD,
+    MachineBasicBlock::iterator ShldC,
+    const MachineOperand &Addr) {
+
+  // 1. Scan remainder of current BB after the folded LHLD.
+  for (auto I = AfterD, E = MBB.end(); I != E; ++I) {
+    if (I->getOpcode() == V6C::SHLD && isSameAddress(Addr, I->getOperand(1)))
+      return false;  // another SHLD covers all forward paths
+    if (I->getOpcode() == V6C::LHLD && isSameAddress(Addr, I->getOperand(1)))
+      return true;   // uncovered reader in same BB
+  }
+
+  // 2. BFS through successor BBs (including self-loops via back-edges).
+  //    Do NOT pre-insert MBB — it must be revisited when reached via a
+  //    back-edge so the self-loop scan (begin → ShldC) runs.
+  SmallPtrSet<MachineBasicBlock *, 8> Visited;
+  SmallVector<MachineBasicBlock *, 8> Worklist;
+
+  for (auto *Succ : MBB.successors())
+    if (Visited.insert(Succ).second)
+      Worklist.push_back(Succ);
+
+  while (!Worklist.empty()) {
+    MachineBasicBlock *Cur = Worklist.pop_back_val();
+    bool IsSelf = (Cur == &MBB);
+
+    // Self-loop: scan from BB top to ShldC (C is being folded, not a cover).
+    auto ScanEnd = IsSelf ? MachineBasicBlock::iterator(ShldC) : Cur->end();
+
+    for (auto I = Cur->begin(); I != ScanEnd; ++I) {
+      if (I->getOpcode() == V6C::SHLD && isSameAddress(Addr, I->getOperand(1)))
+        goto next_bb;  // covered — don't follow successors
+      if (I->getOpcode() == V6C::LHLD && isSameAddress(Addr, I->getOperand(1)))
+        return true;   // uncovered reader
+    }
+
+    // No kill found — propagate to successors.
+    for (auto *Succ : Cur->successors())
+      if (Visited.insert(Succ).second)
+        Worklist.push_back(Succ);
+    next_bb:;
+  }
+
+  return false;  // no uncovered reader reachable
+}
+
 /// Replace SHLD addr / LHLD addr pairs with PUSH HL / POP HL (O43).
 ///
 /// When a static-stack spill (SHLD) and its matching reload (LHLD) are in
@@ -592,6 +643,11 @@ bool V6CPeephole::foldShldLhldToPushPop(MachineBasicBlock &MBB) {
     }
 
     if (Abort || !Found)
+      continue;
+
+    // Safety: check that no uncovered LHLD reads this address via any
+    // forward path (including loop back-edges and cross-BB paths).
+    if (isUncoveredLhldReachable(MBB, std::next(MatchIt), I, ShldAddr))
       continue;
 
     // Replace SHLD with PUSH HL.

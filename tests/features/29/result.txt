@@ -1,0 +1,75 @@
+== Test Case ==
+__attribute__((leaf)) extern void use8(unsigned char x);
+
+void interleaved_add(unsigned char *dst, const unsigned char *src1,
+                     const unsigned char *src2, unsigned char n) {
+    unsigned char i;
+    for (i = 0; i < n; i++) {
+        dst[i] = src1[i] + src2[i];
+    }
+    use8(dst[0]);
+}
+
+== Bug Description ==
+
+O43 (foldShldLhldToPushPop) incorrectly folds SHLD/LHLD to PUSH/POP when
+an uncovered LHLD of the same address is reachable via a loop back-edge.
+
+The PUSH/POP replacement preserves the value in HL but does NOT write it
+back to the static stack slot.  The LHLD at the top of the loop reads stale
+data on subsequent iterations.
+
+== v6llvmc assembly (BEFORE fix, O16 disabled) ==
+
+.LBB0_2:                                ; =>This Inner Loop Header
+    ...
+    LHLD  __v6c_ss.interleaved_add       ; <-- reads slot +0 (stale!)
+    ...
+    POP   HL
+    INX   HL
+    PUSH  HL                             ; <-- BUG: was SHLD (writeback lost)
+    POP   HL                             ; <-- BUG: was LHLD
+    ...
+    JNZ   .LBB0_2
+
+Lines 51-52: PUSH HL / POP HL is a no-op on HL and does NOT update the
+static slot.  The LHLD at the loop top re-reads the original (stale) value
+of the pointer on every iteration instead of the incremented value.
+
+== v6llvmc assembly (AFTER fix, O16 disabled) ==
+
+.LBB0_2:                                ; =>This Inner Loop Header
+    ...
+    LHLD  __v6c_ss.interleaved_add       ; <-- reads slot +0 (correct!)
+    ...
+    POP   HL
+    INX   HL
+    SHLD  __v6c_ss.interleaved_add       ; <-- FIXED: writeback preserved
+    LHLD  __v6c_ss.interleaved_add       ; <-- FIXED: reload preserved
+    ...
+    JNZ   .LBB0_2
+
+Lines 51-52: SHLD / LHLD writes the incremented pointer back to the static
+slot, so the LHLD at the loop top reads the correct value on each iteration.
+
+== Fix ==
+
+Added isUncoveredLhldReachable() — a BFS walk through MBB.successors() that
+checks whether any LHLD of the same address is reachable without a covering
+SHLD.  If so, the fold is suppressed (the SHLD must stay to keep the memory
+writeback).
+
+Self-loop handling: when the current BB is its own successor, the scan runs
+from BB begin to the SHLD position (the SHLD being folded cannot act as its
+own cover).
+
+== Comparison ==
+
+| Metric          | Before (bug)  | After (fix)     |
+|-----------------|---------------|-----------------|
+| Correctness     | WRONG         | CORRECT         |
+| Loop body +0    | PUSH+POP (2B) | SHLD+LHLD (6B)  |
+| Cost per iter   | 28cc          | 40cc            |
+
+The fix trades 12cc and 4B per iteration for correctness.  The sumarray
+positive test case (no uncovered readers) still folds to PUSH/POP.

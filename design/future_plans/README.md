@@ -46,8 +46,10 @@
 | O41 | Pre-RA INX/DCX Pseudo (Small-Constant Pointer Add) | [O41_pre_ra_inx_dcx_pseudo.md](O41_pre_ra_inx_dcx_pseudo.md) | V6C |
 | O42 | Liveness-Aware Pseudo Expansion (Skip PUSH/POP When Dead) | [O42_liveness_aware_expansion.md](O42_liveness_aware_expansion.md) | V6C |
 | O43 | SHLD/LHLD to PUSH/POP Peephole (Static Stack Spill Shortening) ✅ | [O43_shld_lhld_to_push_pop.md](O43_shld_lhld_to_push_pop.md) | V6C |
+| O43-fix | SHLD/LHLD Safety Guard (Block fold when uncovered LHLD reachable) ✅ | [O43_fix_shld_lhld_safety_guard.md](O43_fix_shld_lhld_safety_guard.md) | V6C |
 | O44 | Adjacent XCHG Cancellation Peephole ✅ | [O44_xchg_cancellation.md](O44_xchg_cancellation.md) | V6C |
 | O45 | Adjacent POP/PUSH Cancellation Peephole | [O45_pop_push_cancellation.md](O45_pop_push_cancellation.md) | V6C |
+| O46 | MVI M, imm8 Immediate Store Peephole | [O46_mvi_m_immediate_store.md](O46_mvi_m_immediate_store.md) | V6C |
 
 ---
 
@@ -97,8 +99,10 @@
 | O41 | Pre-RA INX/DCX Pseudo (±1..±3) | V6C | 12cc, 3B + free reg pair | Very high | Low | Very Low | O20 done | [x] |
 | O42 | Liveness-Aware Pseudo Expansion | V6C | 21-24cc, 2-3B per PUSH/POP | Very high | Low-Med | Low | O10+O20 done | [x] |
 | O43 | SHLD/LHLD→PUSH/POP Peephole | V6C | 12cc, 4B per pair | Med-High | Low | Very Low | O10 done | [x] |
+| O43-fix | SHLD/LHLD Safety Guard (correctness) | V6C | N/A (bugfix) | N/A | Low | Very Low | O43 done | [x] |
 | O44 | Adjacent XCHG Cancellation | V6C | 8cc, 2B per pair | Medium | Very Low | Very Low | None | [x] |
 | O45 | Adjacent POP/PUSH Cancellation | V6C | 24cc, 2B per pair | High | Very Low | Very Low | O42 done | [ ] |
+| O46 | MVI M, imm8 Immediate Store | V6C | 4cc, 1B per instance | Low-Med | Very Low | Very Low | None | [ ] |
 
 ### Recommended order
 
@@ -132,6 +136,7 @@
 25. ~~**O43** — SHLD/LHLD→PUSH/POP peephole, 12cc+4B per short-lived HL spill, ~40 lines~~ ✅
 26. ~~**O44** — adjacent XCHG cancellation, 8cc+2B per pair, ~15 lines~~ ✅
 27. **O45** — adjacent POP/PUSH cancellation, 24cc+2B per pair, ~20 lines
+28. **O46** — MVI M, imm8 ISel pattern, 4cc+1B per immediate store, ~30 lines
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅

@@ -8,6 +8,7 @@ __attribute__((leaf)) extern unsigned char get8(void);
 // Case 1: Interleaved pointer loop — 4 ptrs + counter = high register pressure.
 // The loop body has NO calls, so Avail is not cleared between spill and reload.
 // With leaf attr, static stack allocation is used (STA/LDA/SHLD/LHLD).
+__attribute__((noinline))
 void interleaved_add(unsigned char *dst, const unsigned char *src1,
                      const unsigned char *src2, unsigned char n) {
     unsigned char i;
