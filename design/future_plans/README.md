@@ -7,7 +7,6 @@
 | O1 | Redundant MOV Elimination after BUILD_PAIR + ADD16 | [O01_redundant_mov_elimination.md](O01_redundant_mov_elimination.md) | V6C |
 | O2 | Sequential Address Reuse (LXI → INX Folding) | [O02_sequential_lxi_inx_folding.md](O02_sequential_lxi_inx_folding.md) | V6C |
 | O3 | Narrow-Type Arithmetic (i8 Chain Instead of i16) | [O03_narrow_type_arithmetic.md](O03_narrow_type_arithmetic.md) | V6C |
-| O4 | ADD M / SUB M Direct Memory Operand | [O04_add_sub_m_direct_memory.md](O04_add_sub_m_direct_memory.md) | V6C |
 | O5 | BUILD_PAIR(x, 0) + ADD16 Fusion | [O05_build_pair_add16_fusion.md](O05_build_pair_add16_fusion.md) | V6C |
 | O6 | LDA/STA for Absolute Address Loads | [O06_lda_sta_absolute_addr.md](O06_lda_sta_absolute_addr.md) | V6C |
 | O7 | Loop Strength Reduction via TTI | [O07_loop_strength_reduction.md](O07_loop_strength_reduction.md) | V6C |
@@ -49,7 +48,20 @@
 | O43-fix | SHLD/LHLD Safety Guard (Block fold when uncovered LHLD reachable) ✅ | [O43_fix_shld_lhld_safety_guard.md](O43_fix_shld_lhld_safety_guard.md) | V6C |
 | O44 | Adjacent XCHG Cancellation Peephole ✅ | [O44_xchg_cancellation.md](O44_xchg_cancellation.md) | V6C |
 | O45 | Adjacent POP/PUSH Cancellation Peephole | [O45_pop_push_cancellation.md](O45_pop_push_cancellation.md) | V6C |
-| O46 | MVI M, imm8 Immediate Store Peephole | [O46_mvi_m_immediate_store.md](O46_mvi_m_immediate_store.md) | V6C |
+| O46 | MVI M, imm8 Immediate Store Peephole (superseded by O49) | [O46_mvi_m_immediate_store.md](O46_mvi_m_immediate_store.md) | V6C |
+| O47 | Sub-Register Liveness (Dead Half-Register Elimination) | [O47_subreg_liveness.md](O47_subreg_liveness.md) | V6C |
+| O48 | Scavenger-Based Pseudo Expansion (Centralized Preservation) | [O48_scavenger_based_expansion.md](O48_scavenger_based_expansion.md) | V6C |
+| O49 | Direct Memory ALU/Store ISel (All M-Operand Instructions) | [O49_direct_memory_alu_isel.md](O49_direct_memory_alu_isel.md) | V6C |
+| O50 | Aggressive Inlining Control (TTI Override) | [O50_aggressive_inlining_control.md](O50_aggressive_inlining_control.md) | llvm-z80 |
+| O51 | LSR Cost Tuning (isLSRCostLess Enhancement) | [O51_lsr_cost_tuning.md](O51_lsr_cost_tuning.md) | llvm-z80 |
+| O52 | Index IV Rewriting (8-bit Loop Indices) | [O52_index_iv_rewriting.md](O52_index_iv_rewriting.md) | llvm-mos |
+| O53 | Enhanced Value Tracking (Full RegVal) | [O53_enhanced_value_tracking.md](O53_enhanced_value_tracking.md) | llvm-z80 |
+| O54 | Optimal Stack Adjustment Strategy | [O54_optimal_stack_adjustment.md](O54_optimal_stack_adjustment.md) | llvm-z80 |
+| O55 | Additional Peepholes (CMA, XRA A, Idempotent ALU) | [O55_additional_peepholes.md](O55_additional_peepholes.md) | llvm-z80 |
+| O56 | Pre-RA Load Folding (optimizeLoadInstr) | [O56_pre_ra_load_folding.md](O56_pre_ra_load_folding.md) | llvm-z80 |
+| O57 | Shift/Rotate Chaining | [O57_shift_rotate_chaining.md](O57_shift_rotate_chaining.md) | llvm-mos |
+| O58 | CmpZero Backward Scan Enhancement | [O58_cmpzero_backward_scan.md](O58_cmpzero_backward_scan.md) | llvm-mos |
+| O59 | Frequency-Weighted Spill Slot Allocation | [O59_spill_slot_allocation.md](O59_spill_slot_allocation.md) | llvm-mos |
 
 ---
 
@@ -60,7 +72,6 @@
 | O1 | Redundant MOV elimination | V6C | 8cc, 1B | Very high | Low | Low | None (superseded by O12) | [ ] |
 | O2 | Sequential LXI → INX | V6C | 4cc, 2B | High | Medium | Low-Med | None | [ ] |
 | O3 | Narrow-type arithmetic | V6C | 30-100cc | Very high | High | Med-High | None | [ ] |
-| O4 | ADD M / SUB M direct | V6C | 4-8cc, 1B | High | Medium | Low-Med | O2 helps | [ ] |
 | O5 | BUILD_PAIR(x,0)+ADD16 | V6C | 16-24cc | Very high | Medium | Low-Med | None | [ ] |
 | O6 | LDA/STA absolute addr | V6C | 2cc, 1B | Medium | Low | Low | None | [x] |
 | O7 | Loop Strength Reduction (TTI) | V6C | 120-160cc/iter | High (loops) | Medium | Medium | None | [x] |
@@ -102,7 +113,20 @@
 | O43-fix | SHLD/LHLD Safety Guard (correctness) | V6C | N/A (bugfix) | N/A | Low | Very Low | O43 done | [x] |
 | O44 | Adjacent XCHG Cancellation | V6C | 8cc, 2B per pair | Medium | Very Low | Very Low | None | [x] |
 | O45 | Adjacent POP/PUSH Cancellation | V6C | 24cc, 2B per pair | High | Very Low | Very Low | O42 done | [ ] |
-| O46 | MVI M, imm8 Immediate Store | V6C | 4cc, 1B per instance | Low-Med | Very Low | Very Low | None | [ ] |
+| O46 | MVI M, imm8 Immediate Store (superseded by O49) | V6C | 4cc, 1B per instance | Low-Med | Very Low | Very Low | None | [ ] |
+| O47 | Sub-Register Liveness (Dead Half-Reg Elim) | V6C | 8cc, 2B per pair | Medium | Low (peephole) / High (RA) | Very Low / Med | O10, O20 done | [ ] |
+| O48 | Scavenger-Based Pseudo Expansion | V6C | 21-24cc, 2-3B per PUSH/POP + eliminates O45 | Very high | Medium | Low-Med | O10, O20, supersedes O42 | [ ] |
+| O49 | Direct Memory ALU/Store ISel (M-ops) | V6C | 4-8cc, 1-2B per instance | High | Low-Med | Very Low | O48 helps, supersedes O4+O46 | [ ] |
+| O50 | Aggressive Inlining Control (TTI) | llvm-z80 | indirect (prevents spill explosions) | High | Very Low | Low | None | [ ] |
+| O51 | LSR Cost Tuning (isLSRCostLess) | llvm-z80 | indirect (better LSR formulas) | High | Very Low | Very Low | O7 done | [ ] |
+| O52 | Index IV Rewriting (8-bit indices) | llvm-mos | 14cc/iter | High | Low | Low | Complements O7 | [ ] |
+| O53 | Enhanced Value Tracking (RegVal) | llvm-z80 | 1-2B, 4-8cc per pattern | Very high | Medium | Low-Med | O13 done | [ ] |
+| O54 | Optimal Stack Adjustment | llvm-z80 | 3-7B, 8-20cc per frame | Medium | Low | Low | None | [ ] |
+| O55 | Additional Peepholes (CMA, XRA A) | llvm-z80 | 4cc, 1B per instance | Medium | Very Low | Very Low | None | [ ] |
+| O56 | Pre-RA Load Folding | llvm-z80 | 4cc, 1B per fold | Low-Med | Medium | Low | Complements O49 | [ ] |
+| O57 | Shift/Rotate Chaining | llvm-mos | 4-24cc per chain | Low | Medium | Low | None | [ ] |
+| O58 | CmpZero Backward Scan | llvm-mos | 4cc, 1B per instance | Medium | Low | Very Low | O17 done | [ ] |
+| O59 | Freq-Weighted Spill Slot Alloc | llvm-mos | indirect (better slot placement) | Medium | High | Medium | O10 done | [ ] |
 
 ### Recommended order
 
@@ -136,9 +160,19 @@
 25. ~~**O43** — SHLD/LHLD→PUSH/POP peephole, 12cc+4B per short-lived HL spill, ~40 lines~~ ✅
 26. ~~**O44** — adjacent XCHG cancellation, 8cc+2B per pair, ~15 lines~~ ✅
 27. **O45** — adjacent POP/PUSH cancellation, 24cc+2B per pair, ~20 lines
-28. **O46** — MVI M, imm8 ISel pattern, 4cc+1B per immediate store, ~30 lines
+28. **O49** — direct memory ALU/store ISel (all 11 M-operand instructions), supersedes O4+O46, ~80 lines
+29. **O47** — sub-register liveness peephole, 8cc+2B per dead save/restore pair, ~35 lines
+30. **O50** — aggressive inlining control, TTI override to limit inlining, ~10 lines
+31. **O51** — LSR cost tuning, evaluate Insns-first vs NumRegs-first ordering, ~10 lines
+32. **O55** — additional peepholes (CMA, XRA A, idempotent ALU), ~20 lines
+33. **O58** — CmpZero backward scan, skip past safe instructions in flag elimination, ~30 lines
+34. **O54** — optimal stack adjustment, POP/PUSH for small SP changes, ~30 lines
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
+19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅
+20. ~~**O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines~~ ✅
+21. ~~**O16** — store-to-load forwarding, 44-52cc per eliminated reload~~ ✅
+22. **O48** — scavenger-based pseudo expansion, centralizes PUSH/POP preservation, supersedes O42+O45, ~120 lines
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅
 20. ~~**O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines~~ ✅
 21. ~~**O16** — store-to-load forwarding, 44-52cc per eliminated reload~~ ✅
@@ -147,20 +181,24 @@
 23. **O15** — conditional call, 12cc+3B per instance, reduces branch count
 24. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
 25. **O2** — sequential LXI→INX folding
-26. **O4** — ADD M / SUB M direct memory, builds on O2
+26. **O53** — enhanced value tracking (full RegVal), extends O13 with flag state + sub-reg composition, ~300 lines
+27. **O56** — pre-RA load folding, fold single-use loads into M-operand consumers, ~100 lines
 
 **Phase 4 — Loop & stack (Medium-High complexity, massive payoff)**:
 27. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
 28. **O22** — TTI cost hooks (arithmetic, memory, cmp costs), extends O7
 29. ~~**O10** — static stack allocation for non-reentrant functions, supersedes O8 T2~~ ✅
 30. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
+31. **O52** — index IV rewriting, narrow 16-bit loop indices to 8-bit via SCEV, ~80 lines
 
 **Phase 5 — Advanced (High complexity)**:
 30. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
 31. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
+32. **O59** — frequency-weighted spill slot allocation, enhances O10 with block frequency analysis, ~200 lines
 
 **Deferred**:
 - **O9** — inline assembly MC parser, implement when needed
+- **O57** — shift/rotate chaining, low priority — shifts uncommon in 8080 code
 
 ### Comparison with AVR
 
@@ -173,7 +211,7 @@ This means:
   V6C spills often. Optimizations that reduce live ranges (O3, O5) have
   outsized impact.
 - **Address setup cost** dominates on V6C. AVR's `LD r, Z+` is 2cc; V6C
-  needs `INX HL` (6cc) or `LXI HL` (10cc). O2 and O4 directly address this.
+  needs `INX HL` (6cc) or `LXI HL` (10cc). O2 and O49 directly address this.
 - **Accumulator bottleneck** has no AVR equivalent. AVR's ALU works on any
   register. V6C funnels everything through A. O1 (eliminating redundant MOV
   through A) is V6C-specific and high impact.
