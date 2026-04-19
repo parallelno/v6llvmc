@@ -36,10 +36,16 @@ static llvm::cl::opt<bool> V6CNoStaticStack(
     llvm::cl::desc("Disable static stack allocation"),
     llvm::cl::init(false));
 
+static llvm::cl::opt<bool> V6CAnnotatePseudos(
+    "mv6c-annotate-pseudos",
+    llvm::cl::desc("Add asm comments showing pseudo expansion origins"),
+    llvm::cl::init(false));
+
 namespace llvm {
 
 unsigned getV6CStartAddress() { return V6CStartAddress; }
 bool getV6CStaticStackEnabled() { return V6CStaticStack && !V6CNoStaticStack; }
+bool getV6CAnnotatePseudosEnabled() { return V6CAnnotatePseudos; }
 
 // Data layout: little-endian, 16-bit pointers (8-bit aligned),
 // all types 8-bit aligned, native integer widths 8 and 16, stack alignment 8.

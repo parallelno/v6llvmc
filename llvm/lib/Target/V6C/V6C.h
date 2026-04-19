@@ -23,6 +23,9 @@ unsigned getV6CStartAddress();
 /// Whether static stack allocation is enabled (-mv6c-static-stack).
 bool getV6CStaticStackEnabled();
 
+/// Whether pseudo expansion annotation comments are enabled.
+bool getV6CAnnotatePseudosEnabled();
+
 /// Pre-RA optimization pass: constant sinking past branches (O37).
 FunctionPass *createV6CConstantSinkingPass();
 

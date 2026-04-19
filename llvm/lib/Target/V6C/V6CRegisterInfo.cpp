@@ -111,6 +111,14 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
   int Offset = MFI.getObjectOffset(FrameIndex) + MFI.getStackSize() + SPAdj;
 
+  // Insert annotation comment before expansion (if enabled).
+  MachineInstr *CommentMI = nullptr;
+  if (getV6CAnnotatePseudosEnabled()) {
+    CommentMI = BuildMI(MBB, II, DL, TII.get(V6C::V6C_PSEUDO_COMMENT))
+                    .addImm(MI.getOpcode())
+                    .getInstr();
+  }
+
   // --- Static stack expansion (O10) ---
   // If this function uses static stack allocation, expand spill/reload
   // pseudos using direct global addresses instead of SP-relative sequences.
@@ -332,6 +340,8 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
     // Fallback for other instructions with frame indices in static mode:
     // replace with global address offset. This shouldn't normally happen.
+    if (CommentMI)
+      CommentMI->eraseFromParent();
     MI.getOperand(FIOperandNum)
         .ChangeToGA(GV, StaticOffset, MI.getOperand(FIOperandNum).getTargetFlags());
     return false;
@@ -556,6 +566,8 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
   // For other instructions with frame indices, replace the FI operand
   // with SP + offset. This is a fallback; specific pseudos are preferred.
+  if (CommentMI)
+    CommentMI->eraseFromParent();
   MI.getOperand(FIOperandNum).ChangeToImmediate(Offset);
   return false;
 }

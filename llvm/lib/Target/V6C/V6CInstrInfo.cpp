@@ -438,8 +438,19 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   MachineBasicBlock &MBB = *MI.getParent();
   DebugLoc DL = MI.getDebugLoc();
 
+  // Speculatively insert annotation comment before expansion.
+  // Removed in `default` case when no expansion occurs.
+  MachineInstr *CommentMI = nullptr;
+  if (getV6CAnnotatePseudosEnabled()) {
+    CommentMI = BuildMI(MBB, MI, DL, get(V6C::V6C_PSEUDO_COMMENT))
+                    .addImm(MI.getOpcode())
+                    .getInstr();
+  }
+
   switch (MI.getOpcode()) {
   default:
+    if (CommentMI)
+      CommentMI->eraseFromParent();
     return false;
 
   case V6C::V6C_BUILD_PAIR: {

@@ -632,6 +632,13 @@ def V6C_RELOAD16 : V6CPseudo<(outs GR16:$dst), (ins i16imm:$fi),
 // These expand to real instructions during or after ISel.
 //===----------------------------------------------------------------------===//
 
+// V6C_PSEUDO_COMMENT — Asm annotation marker for pseudo expansion debugging.
+// Carries the opcode number of the source pseudo. AsmPrinter converts
+// this to an assembly comment like "; --- V6C_RELOAD8 ---".
+// Enabled via -mv6c-annotate-pseudos. No code is generated.
+def V6C_PSEUDO_COMMENT : V6CPseudo<(outs), (ins i16imm:$opcode),
+    "# PSEUDO_COMMENT $opcode", []>;
+
 // Adjcallstackdown / adjcallstackup — frame setup/teardown markers
 let Defs = [SP], Uses = [SP], hasSideEffects = 1 in {
   def ADJCALLSTACKDOWN : V6CPseudo<(outs), (ins i16imm:$amt, i16imm:$amt2),

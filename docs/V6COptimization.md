@@ -182,6 +182,37 @@ After:  ANI 0x0F        ; A = A & 0x0F, sets Z flag
 
 ---
 
+## Debug Tools
+
+### Pseudo Expansion Annotations
+
+**Flag:** `-mv6c-annotate-pseudos` (default: off)
+
+**Purpose:** Inserts assembly comments before each pseudo-instruction expansion, showing which pseudo generated the following real instructions. Useful for understanding and debugging the compiler's code generation.
+
+**Usage:**
+```bash
+clang -target i8080-unknown-v6c -O2 -S input.c -o output.s -mllvm -mv6c-annotate-pseudos
+llc -march=v6c -O2 -mv6c-annotate-pseudos < input.ll
+```
+
+**Example output:**
+```asm
+	;--- V6C_RELOAD8 ---
+	LDA	__v6c_ss.multi_live+1
+	;--- V6C_RELOAD8 ---
+	MOV	D, H
+	LXI	HL, __v6c_ss.multi_live
+	MOV	L, M
+	MOV	H, D
+```
+
+**Scope:** Covers both `expandPostRAPseudo` (V6CInstrInfo.cpp) and `eliminateFrameIndex` (V6CRegisterInfo.cpp) expansions.
+
+**Note:** When enabled, annotation comments inserted between real instructions may reduce some peephole optimization opportunities (adjacency-sensitive patterns like XCHG cancellation or consecutive load/store merging). Use only for debugging, not production builds.
+
+---
+
 ### V6CSPTrickOpt
 
 **Purpose:** Replace byte-by-byte memory copy/set sequences (≥6 bytes) with the SP-trick: temporarily repurpose SP as a high-speed sequential read pointer using `POP` (12cc per 2 bytes vs 8cc per byte for MOV).

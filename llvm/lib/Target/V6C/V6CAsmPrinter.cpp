@@ -11,6 +11,7 @@
 #include "V6CMCInstLower.h"
 #include "V6CSubtarget.h"
 #include "V6CTargetMachine.h"
+#include "V6CInstrInfo.h"
 #include "MCTargetDesc/V6CInstPrinter.h"
 #include "TargetInfo/V6CTargetInfo.h"
 
@@ -42,6 +43,13 @@ public:
 };
 
 void V6CAsmPrinter::emitInstruction(const MachineInstr *MI) {
+  if (MI->getOpcode() == V6C::V6C_PSEUDO_COMMENT) {
+    unsigned OrigOpc = MI->getOperand(0).getImm();
+    const TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
+    OutStreamer->emitRawComment(Twine("--- ") + TII->getName(OrigOpc) + " ---");
+    return;
+  }
+
   V6CMCInstLower MCInstLowering(OutContext, *this);
 
   MCInst TmpInst;

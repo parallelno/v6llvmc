@@ -329,3 +329,9 @@ llvm-build/bin/clang -target i8080-unknown-v6c -O2 -S input.c -o output.s \
   -mllvm --enable-deferred-spilling \
   -mllvm -sink-insts-to-avoid-spills
 ```
+
+### Debugging
+
+| Option | Effect |
+|--------|--------|
+| `-mllvm -mv6c-annotate-pseudos` | Inserts `;--- V6C_RELOAD8 ---` style comments before each pseudo expansion, showing which pseudo generated the following instructions. Useful for understanding spill/reload and load/store patterns. |

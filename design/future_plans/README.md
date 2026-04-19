@@ -50,7 +50,6 @@
 | O45 | Adjacent POP/PUSH Cancellation Peephole | [O45_pop_push_cancellation.md](O45_pop_push_cancellation.md) | V6C |
 | O46 | MVI M, imm8 Immediate Store Peephole (superseded by O49) | [O46_mvi_m_immediate_store.md](O46_mvi_m_immediate_store.md) | V6C |
 | O47 | Sub-Register Liveness (Dead Half-Register Elimination) | [O47_subreg_liveness.md](O47_subreg_liveness.md) | V6C |
-| O48 | Scavenger-Based Pseudo Expansion (Centralized Preservation) | [O48_scavenger_based_expansion.md](O48_scavenger_based_expansion.md) | V6C |
 | O49 | Direct Memory ALU/Store ISel (All M-Operand Instructions) | [O49_direct_memory_alu_isel.md](O49_direct_memory_alu_isel.md) | V6C |
 | O50 | Aggressive Inlining Control (TTI Override) | [O50_aggressive_inlining_control.md](O50_aggressive_inlining_control.md) | llvm-z80 |
 | O51 | LSR Cost Tuning (isLSRCostLess Enhancement) | [O51_lsr_cost_tuning.md](O51_lsr_cost_tuning.md) | llvm-z80 |
@@ -115,7 +114,6 @@
 | O45 | Adjacent POP/PUSH Cancellation | V6C | 24cc, 2B per pair | High | Very Low | Very Low | O42 done | [ ] |
 | O46 | MVI M, imm8 Immediate Store (superseded by O49) | V6C | 4cc, 1B per instance | Low-Med | Very Low | Very Low | None | [ ] |
 | O47 | Sub-Register Liveness (Dead Half-Reg Elim) | V6C | 8cc, 2B per pair | Medium | Low (peephole) / High (RA) | Very Low / Med | O10, O20 done | [ ] |
-| O48 | Scavenger-Based Pseudo Expansion | V6C | 21-24cc, 2-3B per PUSH/POP + eliminates O45 | Very high | Medium | Low-Med | O10, O20, supersedes O42 | [ ] |
 | O49 | Direct Memory ALU/Store ISel (M-ops) | V6C | 4-8cc, 1-2B per instance | High | Low-Med | Very Low | O48 helps, supersedes O4+O46 | [ ] |
 | O50 | Aggressive Inlining Control (TTI) | llvm-z80 | indirect (prevents spill explosions) | High | Very Low | Low | None | [ ] |
 | O51 | LSR Cost Tuning (isLSRCostLess) | llvm-z80 | indirect (better LSR formulas) | High | Very Low | Very Low | O7 done | [ ] |
@@ -172,7 +170,6 @@
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅
 20. ~~**O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines~~ ✅
 21. ~~**O16** — store-to-load forwarding, 44-52cc per eliminated reload~~ ✅
-22. **O48** — scavenger-based pseudo expansion, centralizes PUSH/POP preservation, supersedes O42+O45, ~120 lines
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅
 20. ~~**O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines~~ ✅
 21. ~~**O16** — store-to-load forwarding, 44-52cc per eliminated reload~~ ✅
