@@ -1,6 +1,11 @@
 	.text
 	.globl	interleaved_add                 ; -- Begin function interleaved_add
 interleaved_add:                        ; @interleaved_add
+	;=== void interleaved_add(void* arg0, void* arg1, void* arg2, char arg3) ===
+	;  arg0 = HL
+	;  arg1 = DE
+	;  arg2 = BC
+	;  arg3 = stack
 ; %bb.0:
 	;--- V6C_SPILL16 ---
 	PUSH	HL
@@ -92,6 +97,10 @@ interleaved_add:                        ; @interleaved_add
                                         ; -- End function
 	.globl	multi_live                      ; -- Begin function multi_live
 multi_live:                             ; @multi_live
+	;=== char multi_live(char arg0, char arg1, char arg2) ===
+	;  arg0 = A
+	;  arg1 = E
+	;  arg2 = C
 ; %bb.0:
 	;--- V6C_SPILL8 ---
 	PUSH	HL
@@ -115,6 +124,7 @@ multi_live:                             ; @multi_live
                                         ; -- End function
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
+	;=== int main(void) ===
 ; %bb.0:
 	LXI	HL, 0xffff
 	DAD	SP

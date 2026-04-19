@@ -184,11 +184,15 @@ After:  ANI 0x0F        ; A = A & 0x0F, sets Z flag
 
 ## Debug Tools
 
-### Pseudo Expansion Annotations
+### Pseudo Expansion & Func Declaration Annotations
 
 **Flag:** `-mv6c-annotate-pseudos` (default: off)
 
-**Purpose:** Inserts assembly comments before each pseudo-instruction expansion, showing which pseudo generated the following real instructions. Useful for understanding and debugging the compiler's code generation.
+**Purpose:** Two features in one flag:
+1. **Function header comments** — emits a C-like declaration and parameter→register mapping at the start of each function.
+2. **Pseudo expansion comments** — inserts `;--- PSEUDO_NAME ---` before each pseudo-instruction expansion.
+
+Useful for understanding calling convention register assignments and debugging code generation.
 
 **Usage:**
 ```bash
@@ -196,8 +200,14 @@ clang -target i8080-unknown-v6c -O2 -S input.c -o output.s -mllvm -mv6c-annotate
 llc -march=v6c -O2 -mv6c-annotate-pseudos < input.ll
 ```
 
+Add `-fno-discard-value-names` to preserve original C parameter names (otherwise they appear as `arg0`, `arg1`, etc.).
+
 **Example output:**
 ```asm
+	;=== char multi_live(char x, char y, char z) ===
+	;  x = A
+	;  y = E
+	;  z = C
 	;--- V6C_RELOAD8 ---
 	LDA	__v6c_ss.multi_live+1
 	;--- V6C_RELOAD8 ---
@@ -207,7 +217,15 @@ llc -march=v6c -O2 -mv6c-annotate-pseudos < input.ll
 	MOV	H, D
 ```
 
-**Scope:** Covers both `expandPostRAPseudo` (V6CInstrInfo.cpp) and `eliminateFrameIndex` (V6CRegisterInfo.cpp) expansions.
+**Register assignment** (position-based, V6C calling convention):
+| Position | i8 | i16/ptr |
+|----------|-----|--------|
+| Arg 1    | A   | HL     |
+| Arg 2    | E   | DE     |
+| Arg 3    | C   | BC     |
+| Arg 4+   | stack | stack |
+
+**Scope:** Function headers via `emitFunctionBodyStart` (V6CAsmPrinter.cpp). Pseudo comments cover both `expandPostRAPseudo` (V6CInstrInfo.cpp) and `eliminateFrameIndex` (V6CRegisterInfo.cpp) expansions.
 
 **Note:** When enabled, annotation comments inserted between real instructions may reduce some peephole optimization opportunities (adjacency-sensitive patterns like XCHG cancellation or consecutive load/store merging). Use only for debugging, not production builds.
 

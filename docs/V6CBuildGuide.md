@@ -334,4 +334,4 @@ llvm-build/bin/clang -target i8080-unknown-v6c -O2 -S input.c -o output.s \
 
 | Option | Effect |
 |--------|--------|
-| `-mllvm -mv6c-annotate-pseudos` | Inserts `;--- V6C_RELOAD8 ---` style comments before each pseudo expansion, showing which pseudo generated the following instructions. Useful for understanding spill/reload and load/store patterns. |
+| `-mllvm -mv6c-annotate-pseudos` | Emits function header comments (C declaration + param→register map) and `;--- PSEUDO ---` comments before each pseudo expansion. Add `-fno-discard-value-names` to preserve original C parameter names. |
