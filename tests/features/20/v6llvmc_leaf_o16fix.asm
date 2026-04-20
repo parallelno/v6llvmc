@@ -103,10 +103,8 @@ multi_live:                             ; @multi_live
 	;  arg2 = C
 ; %bb.0:
 	;--- V6C_SPILL8 ---
-	PUSH	HL
 	LXI	HL, __v6c_ss.multi_live
 	MOV	M, E
-	POP	HL
 	;--- V6C_SPILL8 ---
 	STA	__v6c_ss.multi_live+1
 	MOV	A, C
@@ -114,10 +112,8 @@ multi_live:                             ; @multi_live
 	;--- V6C_RELOAD8 ---
 	LDA	__v6c_ss.multi_live+1
 	;--- V6C_RELOAD8 ---
-	MOV	D, H
 	LXI	HL, __v6c_ss.multi_live
 	MOV	L, M
-	MOV	H, D
 	ADD	L
 	ADI	3
 	RET

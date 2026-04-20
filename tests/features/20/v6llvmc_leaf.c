@@ -2,8 +2,10 @@
 // Same test as v6llvmc.c but with __attribute__((leaf)) on extern functions,
 // enabling static stack allocation. Shows O16 effect with STA/LDA/SHLD/LHLD.
 
-__attribute__((leaf)) extern void use8(unsigned char x);
-__attribute__((leaf)) extern unsigned char get8(void);
+__attribute__((leaf))
+extern void use8(unsigned char x);
+__attribute__((leaf))
+extern unsigned char get8(void);
 
 // Case 1: Interleaved pointer loop — 4 ptrs + counter = high register pressure.
 // The loop body has NO calls, so Avail is not cleared between spill and reload.

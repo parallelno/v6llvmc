@@ -197,25 +197,37 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
         BuildMI(MBB, II, DL, TII.get(V6C::LDA), V6C::A)
             .addGlobalAddress(GV, StaticOffset);
       } else if (DstReg == V6C::H || DstReg == V6C::L) {
-        // Reloading into H or L: use DE as temp.
+        // Reloading into H or L: use DE as temp to preserve other half.
         bool LoadingH = (DstReg == V6C::H);
-        Register SaveOther = V6C::D;
         Register OtherHL = LoadingH ? V6C::L : V6C::H;
-        // O42: skip PUSH/POP DE when DE is dead after this instruction.
-        bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
-        if (!DEDead)
-          BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
-            .addReg(SaveOther, RegState::Define).addReg(OtherHL);
-        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-            .addReg(V6C::HL, RegState::Define)
-            .addGlobalAddress(GV, StaticOffset);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
-            .addReg(DstReg, RegState::Define);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
-            .addReg(OtherHL, RegState::Define).addReg(SaveOther);
-        if (!DEDead)
-          BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+        // O49: skip saving/restoring the other half when it's dead.
+        bool OtherHLDead = isRegDeadAfterMI(OtherHL, MI, MBB, this);
+        if (OtherHLDead) {
+          // Other half dead: just clobber entire HL (20cc, 4B).
+          BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+              .addReg(V6C::HL, RegState::Define)
+              .addGlobalAddress(GV, StaticOffset);
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+              .addReg(DstReg, RegState::Define);
+        } else {
+          // Other half live: save it in D, reload, restore.
+          Register SaveOther = V6C::D;
+          // O42: skip PUSH/POP DE when DE is dead after this instruction.
+          bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
+          if (!DEDead)
+            BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+              .addReg(SaveOther, RegState::Define).addReg(OtherHL);
+          BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+              .addReg(V6C::HL, RegState::Define)
+              .addGlobalAddress(GV, StaticOffset);
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+              .addReg(DstReg, RegState::Define);
+          BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+              .addReg(OtherHL, RegState::Define).addReg(SaveOther);
+          if (!DEDead)
+            BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+        }
       } else {
         // B,C,D,E: PUSH HL; LXI HL, addr; MOV r, M; POP HL (42cc, 6B)
         // O42: skip PUSH/POP HL when HL is dead after this instruction.
@@ -418,28 +430,41 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     Register DstReg = MI.getOperand(0).getReg();
     bool DstIsHorL = (DstReg == V6C::H || DstReg == V6C::L);
     if (DstIsHorL) {
-      // Reloading into H or L: use DE as temp to avoid clobbering A.
+      // Reloading into H or L: use DE as temp to preserve other half.
       bool LoadingH = (DstReg == V6C::H);
-      Register SaveOther = V6C::D; // temp for non-target half
       Register OtherHL = LoadingH ? V6C::L : V6C::H;
-      // O42: skip PUSH/POP DE when DE is dead; adjust offset accordingly.
-      bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
-      int AdjOffset = DEDead ? Offset : Offset + 2;
-      if (!DEDead)
-        BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
-      BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
-          .addReg(SaveOther, RegState::Define).addReg(OtherHL);
-      BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-          .addReg(V6C::HL, RegState::Define).addImm(AdjOffset);
-      BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
-      // MOV H,M / MOV L,M: 8080 latches [HL] address before writing dst.
-      BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
-          .addReg(DstReg, RegState::Define);
-      // Restore the non-target half.
-      BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
-          .addReg(OtherHL, RegState::Define).addReg(SaveOther);
-      if (!DEDead)
-        BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+      // O49: skip saving/restoring the other half when it's dead.
+      bool OtherHLDead = isRegDeadAfterMI(OtherHL, MI, MBB, this);
+      if (OtherHLDead) {
+        // Other half dead: just clobber entire HL.
+        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+            .addReg(V6C::HL, RegState::Define).addImm(Offset);
+        BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
+        // MOV H,M / MOV L,M: 8080 latches [HL] address before writing dst.
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+            .addReg(DstReg, RegState::Define);
+      } else {
+        // Other half live: save it in D, reload, restore.
+        Register SaveOther = V6C::D;
+        // O42: skip PUSH/POP DE when DE is dead; adjust offset accordingly.
+        bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
+        int AdjOffset = DEDead ? Offset : Offset + 2;
+        if (!DEDead)
+          BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+            .addReg(SaveOther, RegState::Define).addReg(OtherHL);
+        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+            .addReg(V6C::HL, RegState::Define).addImm(AdjOffset);
+        BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
+        // MOV H,M / MOV L,M: 8080 latches [HL] address before writing dst.
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+            .addReg(DstReg, RegState::Define);
+        // Restore the non-target half.
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+            .addReg(OtherHL, RegState::Define).addReg(SaveOther);
+        if (!DEDead)
+          BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
+      }
     } else {
       // O42: skip PUSH/POP HL when HL is dead; adjust offset accordingly.
       bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);

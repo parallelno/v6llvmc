@@ -171,7 +171,6 @@
 20. ~~**O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines~~ ✅
 21. ~~**O16** — store-to-load forwarding, 44-52cc per eliminated reload~~ ✅
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅
-20. ~~**O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines~~ ✅
 21. ~~**O16** — store-to-load forwarding, 44-52cc per eliminated reload~~ ✅
 22. **O12** — cross-BB copy optimization, supersedes O1
 22. **O24** — I16 immediate unsigned comparison, frees register pair
