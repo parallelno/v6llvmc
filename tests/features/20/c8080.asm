@@ -25,12 +25,12 @@ __init_loop:
 ; 35         add  hl, de
 ; 36         jp   nc, __init_loop
 ; 37     }
-; 38 
+; 38
 ; 39     /* Init stack */
 ; 40 #if __has_include(<c8080/initstack.inc>) && !defined(ARCH_CPM_CCP) && !defined(ARCH_CPM_BDOS) && !defined(ARCH_CPM_BIOS)
 ; 41 #include <c8080/initstack.inc>
 ; 42 #endif
-; 43 
+; 43
 ; 44 #ifdef ARCH_CPM_CCP /* CCP remains in memory */
 ; 45     // clang-format off
 ; 46     asm {
@@ -44,7 +44,7 @@ __init_loop:
 ; 54     }
 ; 55     // clang-format on
 ; 56 #endif
-; 57 
+; 57
 ; 58 #ifdef ARCH_CPM_BDOS /* BDOS remains in memory */
 ; 59     asm {
 ; 60         ld   a, (7)
@@ -55,11 +55,11 @@ __init_loop:
 ; 65         push hl
 ; 66     }
 ; 67 #endif
-; 68 
+; 68
 ; 69 #ifdef ARCH_CPM_BIOS /* BIOS remains in memory */
 ; 70 #error TODO
 ; 71 #endif
-; 72 
+; 72
 ; 73     main(0, NULL);
 	ld hl, 0
 	ld (__a_1_main), hl
@@ -70,7 +70,7 @@ main:
 ; 30     unsigned char buf_src1[4];
 ; 31     unsigned char buf_src2[4];
 ; 32     volatile unsigned char r;
-; 33 
+; 33
 ; 34     buf_dst[0] = 0; buf_dst[1] = 0; buf_dst[2] = 0; buf_dst[3] = 0;
 	xor a
 	ld (main_buf_dst), a
@@ -95,7 +95,7 @@ main:
 	ld (0FFFFh & ((main_buf_src2) + (2))), a
 	ld a, 4
 	ld (0FFFFh & ((main_buf_src2) + (3))), a
-; 37 
+; 37
 ; 38     interleaved_add(buf_dst, buf_src1, buf_src2, 4);
 	ld hl, main_buf_dst
 	ld (__a_1_interleaved_add), hl
@@ -115,7 +115,7 @@ main:
 	ld a, 3
 	call multi_live
 	ld (main_r), a
-; 41 
+; 41
 ; 42     return r;
 	ld hl, (main_r)
 	ld h, 0
@@ -162,24 +162,21 @@ l_2:
 	ld a, (hl)
 	jp use8
 multi_live:
-; 21 unsigned char multi_live(unsigned char a, unsigned char b, unsigned char c) {
+
 	ld (__a_3_multi_live), a
-; 22     unsigned char x = a + 1;
 	ld a, (__a_1_multi_live)
 	inc a
 	ld (multi_live_x), a
-; 23     unsigned char y = b + 2;
 	ld a, (__a_2_multi_live)
 	add 2
 	ld (multi_live_y), a
-; 24     use8(c);
 	ld a, (__a_3_multi_live)
 	call use8
-; 25     return x + y;
 	ld hl, multi_live_x
 	ld a, (multi_live_y)
 	add (hl)
 	ret
+
 use8:
 ; 4 void use8(unsigned char x) {
 	ld (__a_1_use8), a
