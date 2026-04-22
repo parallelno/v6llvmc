@@ -51,12 +51,24 @@ unsigned char spill_pressure(unsigned char a, unsigned char b,
     return a + b;
 }
 
+unsigned char arr_sum(unsigned char* arr, unsigned char n) {
+    unsigned char sum = 0;
+    for (unsigned char i = 0; i < n; ++i) {
+        sum += arr[i];
+        unsigned char tmp2 = (int)(arr) >> 8;
+        unsigned char tmp = tmp2 & 0xFF + n & arr[i-1];
+    }
+    return sum;
+}
+
 // --- 16-bit commute ---
 // i16 add — one operand in HL, the other in DE. Commute should choose
 // HL as LHS to avoid DE↔HL shuffle before V6C_ADD16 expansion.
 unsigned int sum16(unsigned int a, unsigned int b) {
     return a + b;
 }
+
+unsigned char* arr;
 
 int main(void) {
     use8(sum_add(3, 4));
@@ -66,5 +78,6 @@ int main(void) {
     use8(both_live(7, 9));
     use8(spill_pressure(1, 2, 3, 4));
     use16(sum16(0x1234, 0x5678));
+    use8(arr_sum(arr, 5));
     return 0;
 }

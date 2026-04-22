@@ -61,6 +61,7 @@
 | O57 | Shift/Rotate Chaining | [O57_shift_rotate_chaining.md](O57_shift_rotate_chaining.md) | llvm-mos |
 | O58 | CmpZero Backward Scan Enhancement | [O58_cmpzero_backward_scan.md](O58_cmpzero_backward_scan.md) | llvm-mos |
 | O59 | Frequency-Weighted Spill Slot Allocation | [O59_spill_slot_allocation.md](O59_spill_slot_allocation.md) | llvm-mos |
+| O61 | Spill Into the Reload's Immediate Operand (Self-Modifying) | [O61_spill_in_reload_immediate.md](O61_spill_in_reload_immediate.md) | V6C |
 
 ---
 
@@ -125,6 +126,7 @@
 | O57 | Shift/Rotate Chaining | llvm-mos | 4-24cc per chain | Low | Medium | Low | None | [ ] |
 | O58 | CmpZero Backward Scan | llvm-mos | 4cc, 1B per instance | Medium | Low | Very Low | O17 done | [ ] |
 | O59 | Freq-Weighted Spill Slot Alloc | llvm-mos | indirect (better slot placement) | Medium | High | Medium | O10 done | [ ] |
+| O61 | Spill Into Reload Immediate (self-modifying) | V6C | 10-20cc, 1-2B per reload | Very high | Medium | Low-Med | O10 done | [ ] |
 
 ### Recommended order
 
@@ -191,6 +193,7 @@
 30. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
 31. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
 32. **O59** — frequency-weighted spill slot allocation, enhances O10 with block frequency analysis, ~200 lines
+33. **O61** — spill into reload's immediate operand (self-modifying code), 10-20cc+1-2B per reload, ~150 lines
 
 **Deferred**:
 - **O9** — inline assembly MC parser, implement when needed
