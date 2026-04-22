@@ -648,8 +648,13 @@ let Defs = [SP], Uses = [SP], hasSideEffects = 1 in {
 }
 
 // V6C_LEA_FI — Compute address of a frame index (stack slot).
-// Expands in eliminateFrameIndex to: LXI HL, offset; DAD SP
-let Defs = [FLAGS] in
+// Expands in eliminateFrameIndex to:
+//   dst = HL: LXI HL, offset; DAD SP
+//   dst = DE: LXI HL, offset; DAD SP; XCHG          (HL clobbered w/ old DE)
+//   dst = BC: LXI HL, offset; DAD SP; MOV B,H; MOV C,L   (HL clobbered)
+// HL is always clobbered because DAD SP writes HL; listed in Defs so the
+// register allocator does not keep a live value in HL across this pseudo.
+let Defs = [FLAGS, HL] in
 def V6C_LEA_FI : V6CPseudo<(outs GR16:$dst), (ins i16imm:$fi),
     "# LEA $dst, $fi", []>;
 

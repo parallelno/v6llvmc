@@ -362,14 +362,28 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
   unsigned Opc = MI.getOpcode();
   if (Opc == V6C::V6C_LEA_FI) {
-    // Expand: LXI $dst, offset; DAD SP
-    // Note: DAD always uses HL, so $dst must be HL (regalloc should ensure this).
+    // DAD SP always writes the result into HL. If the RA selected HL as
+    // the destination, that is the result. If it selected DE or BC, we
+    // copy HL into the chosen pair afterwards. HL is always clobbered
+    // (modeled in the pseudo's Defs list).
     Register DstReg = MI.getOperand(0).getReg();
     BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-        .addReg(DstReg, RegState::Define)
+        .addReg(V6C::HL, RegState::Define)
         .addImm(Offset);
     BuildMI(MBB, II, DL, TII.get(V6C::DAD))
         .addReg(V6C::SP);
+    if (DstReg == V6C::DE) {
+      // XCHG swaps HL↔DE: result lands in DE; HL receives old DE value.
+      BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+    } else if (DstReg == V6C::BC) {
+      // Copy HL → BC (HL is dead after this pseudo by virtue of being in Defs).
+      BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+          .addReg(V6C::B, RegState::Define).addReg(V6C::H);
+      BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
+          .addReg(V6C::C, RegState::Define).addReg(V6C::L);
+    } else {
+      assert(DstReg == V6C::HL && "V6C_LEA_FI dst must be HL, DE, or BC");
+    }
     MI.eraseFromParent();
     return true;
   }

@@ -12,6 +12,7 @@
 #include "V6CTargetMachine.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
+#include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
 
