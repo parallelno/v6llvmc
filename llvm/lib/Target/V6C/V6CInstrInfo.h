@@ -22,6 +22,8 @@ enum {
   MO_NO_FLAG = 0,
   MO_LO8 = 1, // Low byte of 16-bit value
   MO_HI8 = 2, // High byte of 16-bit value
+  MO_PATCH_IMM = 4, // O61: operand is an MCSymbol pointing at a patched
+                    // reload site; lower as `Sym + 1` (the imm field).
 };
 } // namespace V6CII
 

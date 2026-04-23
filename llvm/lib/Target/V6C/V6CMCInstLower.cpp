@@ -74,6 +74,18 @@ void V6CMCInstLower::lowerInstruction(const MachineInstr &MI,
       MCOp = lowerSymbolOperand(
           MO, Printer.GetBlockAddressSymbol(MO.getBlockAddress()));
       break;
+    case MachineOperand::MO_MCSymbol: {
+      // O61: patched-reload site reference. Operand is an MCSymbol;
+      // MO_PATCH_IMM means we want `Sym + 1` (the imm field of the LXI).
+      MCSymbol *Sym = MO.getMCSymbol();
+      const MCExpr *Expr = MCSymbolRefExpr::create(Sym, Ctx);
+      unsigned TF = MO.getTargetFlags();
+      if (TF & V6CII::MO_PATCH_IMM)
+        Expr = MCBinaryExpr::createAdd(
+            Expr, MCConstantExpr::create(1, Ctx), Ctx);
+      MCOp = MCOperand::createExpr(Expr);
+      break;
+    }
     }
 
     OutMI.addOperand(MCOp);

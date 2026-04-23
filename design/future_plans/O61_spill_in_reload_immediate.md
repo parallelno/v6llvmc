@@ -437,8 +437,8 @@ while keeping each step bounded:
    handling end-to-end on the simplest spill/reload shape (one SHLD
    spills, one LXI reload). Per-occurrence win is small (+8 cc), but
    the goal is to land the infrastructure with K = 1 hard-coded.
-2. **Stage 2 — add the cost model and extend to `DE` / `BC` reload
-   targets.** This is where the real cycles live (+12..+52 cc per
+2. **Stage 2 — add the cost model** and extend to `DE` / `BC` reload
+   targets. This is where the real cycles live (+12..+52 cc per
    reload). Implement the per-reload Δ table and the
    `block_frequency × Δ` chooser. Still K ≤ 1 in the chooser to
    defer the multi-patch logic.

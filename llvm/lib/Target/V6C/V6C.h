@@ -26,6 +26,9 @@ bool getV6CStaticStackEnabled();
 /// Whether pseudo expansion annotation comments are enabled.
 bool getV6CAnnotatePseudosEnabled();
 
+/// Whether the O61 spill-patched-reload rewrite is enabled.
+bool getV6CSpillPatchedReloadEnabled();
+
 /// Pre-RA optimization pass: constant sinking past branches (O37).
 FunctionPass *createV6CConstantSinkingPass();
 
@@ -54,6 +57,9 @@ FunctionPass *createV6CStaticStackAllocPass();
 
 /// Post-RA pass: spill forwarding (O16).
 FunctionPass *createV6CSpillForwardingPass();
+
+/// Post-RA pass: O61 Stage 1 - rewrite HL spill/reload pairs as patched LXI.
+FunctionPass *createV6CSpillPatchedReloadPass();
 
 } // namespace llvm
 

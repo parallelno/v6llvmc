@@ -1,0 +1,217 @@
+Feature 33 — O61 Spill Into the Reload's Immediate Operand (Stage 1)
+====================================================================
+
+Stage 1 scope: rewrite V6C_SPILL16 / V6C_RELOAD16 pairs whose source and
+destination are both `HL`, where a single spill feeds one or more reloads,
+into a SHLD that patches the immediate bytes of a later LXI HL (the
+reload). Behind `-mllvm -mv6c-spill-patched-reload` (default off).
+
+
+-----------------------------------------------------------------
+C test source (tests/features/33/v6llvmc.c)
+-----------------------------------------------------------------
+__attribute__((leaf)) extern unsigned int op1(unsigned int x);
+__attribute__((leaf)) extern unsigned int op2(unsigned int x);
+
+unsigned int hl_one_spill(unsigned int x, unsigned int y) {
+    unsigned int a = op1(x);
+    unsigned int b = op2(y);   // clobbers HL -> spill `a`
+    return a + b;              // reload `a`
+}
+
+unsigned int hl_two_reloads(unsigned int x) {
+    unsigned int a = op1(x);
+    unsigned int b1 = op2(a);  // clobbers HL -> spill `a`
+    unsigned int b2 = op2(a);  // reload `a` again
+    return b1 + b2;
+}
+
+unsigned int g1, g2;
+
+int main(void) {
+    g1 = hl_one_spill(0x1234, 0x5678);
+    g2 = hl_two_reloads(0xabcd);
+    return 0;
+}
+
+
+-----------------------------------------------------------------
+c8080 assembly (main + dependent funcs, translated to i8080 dialect)
+-----------------------------------------------------------------
+main:
+    LXI     HL, 0
+    SHLD    __a_1_main
+    SHLD    __a_2_main
+    LXI     HL, 0x1234
+    SHLD    __a_1_hl_one_spill
+    LXI     HL, 0x5678
+    CALL    hl_one_spill
+    SHLD    g1
+    LXI     HL, 0xabcd
+    CALL    hl_two_reloads
+    SHLD    g2
+    LXI     HL, 0
+    RET
+
+hl_one_spill:
+    SHLD    __a_2_hl_one_spill
+    LHLD    __a_1_hl_one_spill
+    CALL    op1
+    SHLD    hl_one_spill_a
+    LHLD    __a_2_hl_one_spill
+    CALL    op2
+    SHLD    hl_one_spill_b
+    LHLD    hl_one_spill_a
+    XCHG
+    LHLD    hl_one_spill_b
+    DAD     DE
+    RET
+
+hl_two_reloads:
+    SHLD    __a_1_hl_two_reloads
+    CALL    op1
+    SHLD    hl_two_reloads_a
+    CALL    op2
+    SHLD    hl_two_reloads_b1
+    LHLD    hl_two_reloads_a
+    CALL    op2
+    SHLD    hl_two_reloads_b2
+    LHLD    hl_two_reloads_b1
+    XCHG
+    LHLD    hl_two_reloads_b2
+    DAD     DE
+    RET
+
+op1:
+    SHLD    __a_1_op1
+    LHLD    op_acc
+    XCHG
+    LHLD    __a_1_op1
+    CALL    __o_xor_16        ; HL ^= DE
+    SHLD    op_acc
+    LHLD    __a_1_op1
+    INX     HL
+    RET
+
+op2:
+    SHLD    __a_1_op2
+    LHLD    op_acc
+    XCHG
+    LHLD    __a_1_op2
+    CALL    __o_xor_16
+    SHLD    op_acc
+    LHLD    __a_1_op2
+    INX     HL
+    INX     HL
+    RET
+
+__o_xor_16:
+    MOV     A, H
+    XRA     D
+    MOV     H, A
+    MOV     A, L
+    XRA     E
+    MOV     L, A
+    ORA     H
+    RET
+
+
+-----------------------------------------------------------------
+c8080 stats (worst-case cycles / body bytes, RET included)
+-----------------------------------------------------------------
+                     cycles   bytes
+main                    224      35
+hl_one_spill            260      37
+hl_two_reloads          268      40
+op1                     140      22
+op2                     148      23
+__o_xor_16               48      10
+
+
+-----------------------------------------------------------------
+v6llvmc assembly (-O2 -mllvm -mv6c-spill-patched-reload)
+-----------------------------------------------------------------
+hl_one_spill:                           ; Stage 1 filter rejects (HL->DE via XCHG)
+    XCHG
+    PUSH    HL
+    XCHG
+    CALL    op1
+    SHLD    __v6c_ss.hl_one_spill+2
+    POP     HL
+    CALL    op2
+    XCHG
+    LHLD    __v6c_ss.hl_one_spill+2
+    DAD     DE
+    RET
+
+hl_two_reloads:                         ; Stage 1 fires on `a`
+    CALL    op1
+    SHLD    .LLo61_0+1                  ; O61: spill patches LXI imm
+    CALL    op2
+    PUSH    HL                          ; fold captured the b1 slot
+.LLo61_0:
+    LXI     HL, 0                       ; O61: patched reload of `a`
+    CALL    op2
+    XCHG
+    POP     HL                          ; fold captured the b1 slot
+    DAD     DE
+    RET
+
+main:
+    LXI     HL, 0x1234
+    CALL    op1
+    PUSH    HL
+    LXI     HL, 0x5678
+    CALL    op2
+    XCHG
+    POP     HL
+    XCHG
+    DAD     DE
+    SHLD    g1
+    LXI     HL, 0xabcd
+    CALL    op1
+    SHLD    .LLo61_1+1                  ; O61
+    CALL    op2
+    PUSH    HL
+.LLo61_1:
+    LXI     HL, 0                       ; O61
+    CALL    op2
+    XCHG
+    POP     HL
+    DAD     DE
+    SHLD    g2
+    LXI     HL, 0
+    RET
+
+
+-----------------------------------------------------------------
+v6llvmc stats (worst-case cycles / body bytes, RET included)
+-----------------------------------------------------------------
+                     cycles   bytes     vs O61-off
+hl_one_spill            136      14      unchanged (filter rejected)
+hl_two_reloads          160      20      -8 cc    ( was 168 cc / 20 B )
+main                    308      42      -8 cc    ( was 316 cc / 42 B )
+
+Per-slot impact, `hl_two_reloads`:
+  Baseline (fold only): `a` as PUSH/POP (28 cc / 2 B) + `b1` as SHLD/LHLD (40 cc / 6 B) = 68 cc / 8 B
+  O61 + fold:           `a` as SHLD+LXI (32 cc / 6 B) + `b1` as PUSH/POP (28 cc / 2 B) = 60 cc / 8 B
+  Net:                  -8 cc, same byte count.
+
+Mechanism: prior to O61, the SHLD/LHLD -> PUSH/POP fold (V6CPeephole) could
+only capture one of the two interleaved spill slots (they can't both
+nest on the hardware stack). O61 catches the slot the fold had to leave
+as SHLD/LHLD, and the fold promotes the other slot. The result is two
+cheap lanes instead of one cheap + one expensive.
+
+Stage 1 is narrow by design (HL -> HL only, single spill per slot). The
+filter correctly declines `hl_one_spill` because its reload lands in DE
+via XCHG-routed coalescing — that pattern is Stage 2 territory.
+
+
+-----------------------------------------------------------------
+Cycle accounting (docs/Vector_06c_instruction_timings.md)
+-----------------------------------------------------------------
+MOV r,r   = 8     MVI r,n  = 8     XCHG     = 4     DAD rp   = 12
+LXI rp,nn = 12    LDA/STA  = 16    LHLD/SHLD = 20   PUSH rp  = 16
+POP rp    = 12    CALL adr = 24    RET      = 12    INX/DCX  = 8
+XRA r     = 4     ORA r    = 4

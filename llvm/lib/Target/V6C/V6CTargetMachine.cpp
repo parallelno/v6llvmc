@@ -41,11 +41,18 @@ static llvm::cl::opt<bool> V6CAnnotatePseudos(
     llvm::cl::desc("Add asm comments showing pseudo expansion origins"),
     llvm::cl::init(false));
 
+static llvm::cl::opt<bool> V6CSpillPatchedReload(
+    "mv6c-spill-patched-reload",
+    llvm::cl::desc("O61: rewrite HL spill/reload pairs as patched LXI HL "
+                   "(self-modifying code, static-stack only)"),
+    llvm::cl::init(false), llvm::cl::Hidden);
+
 namespace llvm {
 
 unsigned getV6CStartAddress() { return V6CStartAddress; }
 bool getV6CStaticStackEnabled() { return V6CStaticStack && !V6CNoStaticStack; }
 bool getV6CAnnotatePseudosEnabled() { return V6CAnnotatePseudos; }
+bool getV6CSpillPatchedReloadEnabled() { return V6CSpillPatchedReload; }
 
 // Data layout: little-endian, 16-bit pointers (8-bit aligned),
 // all types 8-bit aligned, native integer widths 8 and 16, stack alignment 8.
@@ -144,6 +151,8 @@ public:
     if (getV6CStaticStackEnabled())
       addPass(createV6CStaticStackAllocPass());
     addPass(createV6CSpillForwardingPass());
+    if (getV6CSpillPatchedReloadEnabled())
+      addPass(createV6CSpillPatchedReloadPass());
   }
 
   void addPreEmitPass() override {

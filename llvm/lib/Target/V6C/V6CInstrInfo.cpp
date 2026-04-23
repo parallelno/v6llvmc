@@ -337,8 +337,13 @@ static MachineInstr *findDefiningLXI(MachineBasicBlock &MBB,
 
     // Found LXI defining Reg — return it.
     if (Cand.getOpcode() == V6C::LXI &&
-        Cand.getOperand(0).getReg() == Reg)
+        Cand.getOperand(0).getReg() == Reg) {
+      // O61: a patched LXI carries an MCSymbol imm, not a concrete imm.
+      // Its value is unknown at compile time, so we cannot fold from it.
+      if (!Cand.getOperand(1).isImm())
+        return nullptr;
       return &Cand;
+    }
 
     // If something else defines Reg (including sub-registers), stop.
     if (Cand.modifiesRegister(Reg, TRI))
@@ -361,6 +366,9 @@ static MachineInstr *findDefiningLXI(MachineBasicBlock &MBB,
          ++PredCount) {
       --I;
       if (I->getOpcode() == V6C::LXI && I->getOperand(0).getReg() == Reg) {
+        // O61: patched LXI has an opaque (MCSymbol) imm — can't fold.
+        if (!I->getOperand(1).isImm())
+          return nullptr;
         if (PredLXI && PredLXI->getOperand(1).getImm() !=
                             I->getOperand(1).getImm())
           return nullptr; // Conflicting values from different predecessors.
