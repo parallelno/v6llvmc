@@ -1,20 +1,71 @@
-# O60: Spill Into the Reload's Immediate Operand
+# O61: Spill Into the Reload's Immediate Operand
 
 ## Example
 
-A function exercising spill/reload traffic under register pressure:
+A function exercising spill/reload traffic under register pressure. A
+self-contained reproducer lives at [temp/o61_test.c](../../temp/o61_test.c):
 
 ```c
+// temp/o61_test.c
+__attribute__((leaf)) extern void use8(unsigned char x);
+
+__attribute__((noinline))
 unsigned char arr_sum(unsigned char* arr, unsigned char n) {
     unsigned char sum = 0;
     for (unsigned char i = 0; i < n; ++i) {
         sum += arr[i];
         unsigned char tmp2 = (int)(arr) >> 8;
-        unsigned char tmp = tmp2 & 0xFF + n & arr[i-1];
+        unsigned char tmp = tmp2 & i + n & arr[i-1];
+        use8(tmp);
+        sum |= tmp2;
     }
     return sum;
 }
 ```
+
+Build with:
+
+```
+llvm-build\bin\clang -target i8080-unknown-v6c -O2 -S temp\o61_test.c \
+    -o temp\o61_test.asm \
+    -mllvm --enable-deferred-spilling -mllvm -mv6c-annotate-pseudos \
+    -mllvm -v6c-disable-shld-lhld-fold
+```
+
+The loop body holds `arr` (HL/DE pointer), `i`, `n`, `sum`, `tmp2`, and the
+transient `arr[i]` / `arr[i-1]` loads simultaneously — more live values than
+GPRs — so RA emits multiple `V6C_SPILL*` / `V6C_RELOAD*` pairs per iteration.
+Each reload is a prime O61 candidate: the spilled value is consumed exactly
+once, on a single code path, and the function is static-stack-eligible
+(`noinline`, no address-taken locals, not reachable from an ISR).
+
+### Disabling O43 for O61 measurements
+
+[O43](O43_shld_lhld_to_push_pop.md) (`foldShldLhldToPushPop`) rewrites
+adjacent `SHLD addr` / `LHLD addr` pairs into `PUSH H` / `POP H`, collapsing
+the very spill/reload pairs that O61 wants to rewrite into patched `LXI`
+reloads. When measuring or prototyping O61, O43 must be disabled so the
+SHLD/LHLD pairs survive into the expansion stage where the O61 rewrite
+runs. Disable via the existing hidden flag:
+
+```
+-mllvm -v6c-disable-shld-lhld-fold
+```
+
+Full command for the reproducer:
+
+```
+llvm-build\bin\clang -target i8080-unknown-v6c -O2 -S temp\o61_test.c \
+    -o temp\o61_test.asm \
+    -mllvm --enable-deferred-spilling -mllvm -mv6c-annotate-pseudos \
+    -mllvm -v6c-disable-shld-lhld-fold
+```
+
+Once O61 lands, the two passes should coexist via a cost model that picks
+whichever form is cheaper per pair rather than running both blindly — O43
+wins when the SHLD/LHLD pair is tight and HL-only; O61 wins across the
+broader set of registers and when the spill/reload are far apart (PUSH/POP
+requires an empty intervening stack-discipline window, O61 does not).
 
 ## The Idea
 
@@ -276,3 +327,145 @@ it is safe, requires **no** RA changes, and saves **10–20 cc per reload**
 (and 1–2 B per reload site). The single invasive change in the rest of
 the compiler is teaching constant-tracking passes to treat patched
 `LXI`/`MVI` immediates as opaque.
+
+---
+
+## Revised Cost Model (V6C Cycles, Hybrid-K Strategy)
+
+The earlier tables in this document use a mix of 8080 base timings
+(`LXI=10`, `MVI=7`, `MOV r,r=5`) and V6C timings (`SHLD=20`,
+`LDA=16`). On real V6C every instruction is bus-stretched; the correct
+figures come from
+[V6CInstructionTimings.md](../../docs/V6CInstructionTimings.md) and
+[Vector_06c_instruction_timings.md](../../docs/Vector_06c_instruction_timings.md):
+
+| Instruction        | V6C cc |
+|--------------------|--------|
+| `MOV r,r`          |  8     |
+| `MOV r,M` / `MOV M,r` | 8   |
+| `MVI r,d8`         |  8     |
+| `LXI rp,d16`       | 12     |
+| `LDA a16` / `STA a16` | 16  |
+| `LHLD a16` / `SHLD a16` | 20 |
+| `XCHG`             |  4     |
+| `PUSH rp`          | 16     |
+| `POP rp`           | 12     |
+
+The "pure win — 10cc reload on HL" claim in the reload-comparison table
+becomes **12cc** on V6C, and every other row shifts correspondingly.
+The qualitative conclusions survive, but the break-even math changes.
+
+### Per-target reload cost
+
+| Target | Classical best case                     | cc  | Patched       | cc  | Savings/reload |
+|--------|------------------------------------------|-----|---------------|-----|----------------|
+| HL     | `LHLD addr`                              | 20  | `LXI HL,imm`  | 12  | 8              |
+| DE (HL dead)  | `LHLD addr; XCHG`                 | 24  | `LXI DE,imm`  | 12  | 12             |
+| DE (HL live)  | `XCHG; LHLD addr; XCHG`           | 28  | `LXI DE,imm`  | 12  | **16**         |
+| BC (HL dead)  | `LHLD addr; MOV C,L; MOV B,H`     | 36  | `LXI BC,imm`  | 12  | 24             |
+| BC (HL live, A dead) | `LDA;STA;LDA;STA` (via A × 2) | 64  | `LXI BC,imm`  | 12  | **52**         |
+| BC (HL live, A live) | `PUSH H;LHLD;MOV;MOV;POP H`    | 64  | `LXI BC,imm`  | 12  | **52**         |
+| A      | `LDA addr`                               | 16  | `MVI A,imm`   |  8  | 8              |
+| r8 (A dead) | `LDA addr; MOV r,A`                 | 24  | `MVI r,imm`   |  8  | **16**         |
+| r8 (A live, not A source) | through saved A            | 52+ | `MVI r,imm`   |  8  | **44+**        |
+
+### Per-source spill cost (= write per patched site)
+
+| Source | Sequence                         | cc  |
+|--------|----------------------------------|-----|
+| HL     | `SHLD site+1`                    | 20  |
+| DE (HL dead) | `XCHG; SHLD site+1`        | 24  |
+| DE (HL live) | `XCHG; SHLD site+1; XCHG`  | 28  |
+| A      | `STA site+1`                     | 16  |
+| r8 (non-A) | `MOV A,r; STA site+1`        | 24  |
+
+### Hybrid-K Strategy
+
+The original sketch implicitly assumed every reload either becomes a
+patched `LXI`/`MVI` (K = N) or stays classical (K = 0). That's a
+false dichotomy. For `N_reloads = N` we can pick any K ∈ {1..N} reload
+sites to patch; the remaining `N − K` reloads read from the imm-field
+bytes of *one of the already-patched sites* with a normal `LHLD`/`LDA`
+(the patched site is itself a valid 2-byte / 1-byte slot). No separate
+BSS slot is needed.
+
+Cost:
+```
+cost_hybrid(K) =   K * spill_cost
+                 + Σ_{i ∈ patched}   reload_imm_cost(i)
+                 + Σ_{j ∉ patched}   reload_slot_cost(j)
+```
+
+Greedy rule: sort reloads by `reload_slot_cost − reload_imm_cost`
+(descending) and include the *k*-th reload in the patched set iff its
+marginal savings exceed `spill_cost`. For a single-source spill:
+
+| Spill src | Spill cc | Patch a 2nd site when reload saves > | Typical reload targets that qualify |
+|-----------|----------|--------------------------------------|--------------------------------------|
+| HL (20cc) | 20       | 20 cc per reload                     | BC-reload (24/52 savings) |
+| A  (16cc) | 16       | 16 cc per reload                     | r8-reload with A live (44+ savings) |
+| DE live-HL (28cc) | 28 | 28 cc per reload                   | BC-reload HL-live (52 savings) |
+
+**Practical takeaway:** patching *exactly one* reload (K = 1) is
+almost always the optimum. Additional patches are profitable only when
+the added reload targets `BC` under pressure, or when the spill source
+is cheap (`A`) and the reload target routes through a saved accumulator.
+A hard cap of K ≤ 2 loses almost nothing vs. the optimal greedy for
+realistic register mixes.
+
+### Applied to `arr_sum` slot `__v6c_ss.arr_sum+2`
+
+Spill source: HL (`SHLD` = 20cc). Reloads, in program order:
+
+| # | Original sequence            | cc  | Target | Savings if patched |
+|---|-------------------------------|-----|--------|---------------------|
+| 1 | `LHLD +2`                     | 20  | HL     | 8                   |
+| 2 | `XCHG; LHLD +2; XCHG`         | 28  | DE (HL live) | **16**         |
+| 3 | `LHLD +2`                     | 20  | HL     | 8                   |
+
+Current total (O43 disabled, no O61): 20 + 20 + 28 + 20 = **88 cc**.
+
+**Option A — patch all three** (naïve O61):
+  spill 3×20 = 60, reloads 12+12+12 = 36 → **96 cc** (−8 cc regression)
+
+**Option B — patch best two** (K = 2, cap rule):
+  spill 2×20 = 40, reloads 12 (LXI DE) + 12 (LXI HL) + 20 (LHLD from a patched site's imm bytes) = 44 → **84 cc** (+4 cc saved)
+
+**Option C — patch only the DE reload** (K = 1, greedy optimum):
+  spill 1×20 = 20, reloads 20 (LHLD from DE-reload imm bytes) + 12 (LXI DE) + 20 (LHLD from same bytes) = 52 → **72 cc** (+16 cc saved, 18 % win)
+
+**Option D — patch both HL reloads, leave DE classical**:
+  spill 2×20 = 40, reloads 12 + 28 (DE kept) + 12 = 52 → **92 cc** (−4 cc regression)
+
+### Max achievable on the full loop body
+
+The inner loop `LBB0_4` of `arr_sum` spills/reloads four distinct slots.
+Applying greedy K = 1 per slot with V6C-accurate timings:
+
+| Slot                    | Classical total | O61 K=1 total | Saved |
+|-------------------------|-----------------|----------------|-------|
+| `+0` (BC: count/phase)  | SHLD+through-HL spill (40) + 2×reload (LHLD;MOV;MOV = 2×36)= 112 | 40 (keep classical SHLD for one write) + LXI BC (12) + LHLD site+1;MOV;MOV (36) = 88 | **24** |
+| `+2` (HL/DE pointer)    | 88 (above)      | 72             | 16    |
+| `+5` (16-bit constant)  | XCHG;SHLD;XCHG (28) + 2×reload with HL-live (2×28) = 84 | 28 + LXI DE (12) + LHLD;XCHG (24) = 64 | 20 |
+| `+7` / `+4` (i8 tmp)    | 2×STA (32) + 3×LDA (48) = 80       | STA (16) + MVI r (8) + 2×LDA (32) = 56 | 24 |
+
+Approximate inner-loop savings ≈ **16 + 24 + 20 + 24 = 84 cc per
+iteration**, before counting additional follow-on wins where an O61
+reload eliminates an XCHG pair the peephole can then cancel further.
+
+### Implementation implications
+
+1. The post-RA rewrite needs to enumerate *all* reloads of each spill
+   and compute the greedy K for each slot using the V6C cost model
+   (reuses [O11/O26 cost infra](O26_cost_model_infra.md)).
+2. Choose exactly K reload sites to patch; the remaining reloads keep
+   their original shape but retarget their memory operand from the
+   classical BSS slot to `patched_site_n + offset` (where `n` is one
+   of the patched sites — any one works, but picking the one closest
+   in the linker order keeps the relocation local).
+3. Mark every patched `LXI`/`MVI` with `MO_PATCHED_IMM` so the value
+   trackers (`LoadImmCombine`, `AccumulatorPlanning`) treat them as
+   opaque.
+4. For K = 0 (no reload profitable to patch) the slot stays classical
+   — O61 becomes a no-op for that slot, and O43 (SHLD/LHLD→PUSH/POP)
+   remains free to fold it.

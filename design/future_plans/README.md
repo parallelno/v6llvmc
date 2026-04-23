@@ -61,8 +61,7 @@
 | O57 | Shift/Rotate Chaining | [O57_shift_rotate_chaining.md](O57_shift_rotate_chaining.md) | llvm-mos |
 | O58 | CmpZero Backward Scan Enhancement | [O58_cmpzero_backward_scan.md](O58_cmpzero_backward_scan.md) | llvm-mos |
 | O59 | Frequency-Weighted Spill Slot Allocation | [O59_spill_slot_allocation.md](O59_spill_slot_allocation.md) | llvm-mos |
-| O61 | Spill Into the Reload's Immediate Operand (Self-Modifying) | [O61_spill_in_reload_immediate.md](O61_spill_in_reload_immediate.md) | V6C |
-
+| O61 | Spill Into the Reload's Immediate Operand (Self-Modifying) | [O61_spill_in_reload_immediate.md](O61_spill_in_reload_immediate.md) | V6C || O62 | Efficient i16 / i8 Shift Expansion (Constant Amount) | [O62_efficient_shift_expansion.md](O62_efficient_shift_expansion.md) | V6C |
 ---
 
 ## Summary Table
@@ -126,8 +125,7 @@
 | O57 | Shift/Rotate Chaining | llvm-mos | 4-24cc per chain | Low | Medium | Low | None | [ ] |
 | O58 | CmpZero Backward Scan | llvm-mos | 4cc, 1B per instance | Medium | Low | Very Low | O17 done | [ ] |
 | O59 | Freq-Weighted Spill Slot Alloc | llvm-mos | indirect (better slot placement) | Medium | High | Medium | O10 done | [ ] |
-| O61 | Spill Into Reload Immediate (self-modifying) | V6C | 10-20cc, 1-2B per reload | Very high | Medium | Low-Med | O10 done | [ ] |
-
+| O61 | Spill Into Reload Immediate (self-modifying) | V6C | 10-20cc, 1-2B per reload | Very high | Medium | Low-Med | O10 done | [ ] || O62 | Efficient i16 Shift Expansion (constant amount) | V6C | 16cc, 1B per shift-by-8/16 | High | Low | Very Low | None | [ ] |
 ### Recommended order
 
 **Phase 1 — Quick wins (Low complexity, immediate benefit)**:
@@ -167,6 +165,7 @@
 32. **O55** — additional peepholes (CMA, XRA A, idempotent ALU), ~20 lines
 33. **O58** — CmpZero backward scan, skip past safe instructions in flag elimination, ~30 lines
 34. **O54** — optimal stack adjustment, POP/PUSH for small SP changes, ~30 lines
+35. **O62** — efficient i16 shift-by-8/16 expansion, 16cc+1B per occurrence, ~60 lines
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅

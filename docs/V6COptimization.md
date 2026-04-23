@@ -184,6 +184,33 @@ After:  ANI 0x0F        ; A = A & 0x0F, sets Z flag
 
 ## Debug Tools
 
+### Disable SHLD/LHLD → PUSH/POP Fold (O43)
+
+**Flag:** `-mllvm -v6c-disable-shld-lhld-fold` (default: off / fold enabled)
+
+**Purpose:** Disables the O43 peephole in `V6CPeephole` that rewrites
+adjacent `SHLD addr` / `LHLD addr` pairs into `PUSH H` / `POP H`. Intended
+for:
+
+1. **Debugging / A-B testing O43.** Compare codegen with and without the
+   fold to attribute size/cycle deltas or isolate a suspected miscompile.
+2. **Measuring future spill/reload research.** Experiments like O61 (spill
+   into the reload's immediate operand) operate on the same SHLD/LHLD
+   pairs that O43 consumes; running O43 first hides the opportunity. Pass
+   this flag during prototyping so the SHLD/LHLD pairs survive to the
+   later stage.
+
+**Usage:**
+```bash
+clang -target i8080-unknown-v6c -O2 -S input.c -o output.s \
+    -mllvm -v6c-disable-shld-lhld-fold
+```
+
+**Scope:** Does not affect any other peephole. Leave disabled in
+production builds — O43 saves 12cc + 4B per folded pair.
+
+---
+
 ### Pseudo Expansion & Func Declaration Annotations
 
 **Flag:** `-mv6c-annotate-pseudos` (default: off)
