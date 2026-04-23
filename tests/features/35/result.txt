@@ -1,0 +1,284 @@
+Feature 35 — O61 Spill Into the Reload's Immediate Operand (Stage 2)
+====================================================================
+
+Stage 2 scope: extend Stage 1's HL-only patcher to a full cost-model
+chooser driven by per-reload cycle-saving Δ × block frequency.
+Patched reload target extended from `HL` to `{HL, DE, BC}`. Still
+K ≤ 1 patched reload per spill; single-source HL spill only.
+Behind `-mllvm -mv6c-spill-patched-reload` (default off).
+
+Δ table (from design/future_plans/O61_spill_in_reload_immediate.md):
+  HL              : +8  cc  (LHLD 20 -> LXI HL 12)
+  DE, HL dead     : +12 cc  (LHLD;XCHG 24 -> LXI DE 12)
+  DE, HL live     : +16 cc  (XCHG;LHLD;XCHG 28 -> LXI DE 12)
+  BC, HL dead     : +24 cc  (LHLD;MOV C,L;MOV B,H 36 -> LXI BC 12)
+  BC, HL live     : +52 cc  (PUSH;LHLD;MOV;MOV;POP 64 -> LXI BC 12)
+
+
+-----------------------------------------------------------------
+C test source (tests/features/35/v6llvmc.c)
+-----------------------------------------------------------------
+__attribute__((leaf)) extern unsigned int op1(unsigned int x);
+__attribute__((leaf)) extern unsigned int op2(unsigned int x);
+
+unsigned int de_one_reload(unsigned int x, unsigned int y) {
+    unsigned int a = op1(x);
+    unsigned int b = op2(y);
+    return a + b;
+}
+
+unsigned int mixed_hl_de(unsigned int x, unsigned int y) {
+    unsigned int a = op1(x);
+    unsigned int t1 = op2(a);
+    unsigned int t2 = op2(y);
+    return t1 + t2 + a;
+}
+
+unsigned int g1, g2;
+
+int main(void) {
+    g1 = de_one_reload(0x1234, 0x5678);
+    g2 = mixed_hl_de(0xaaaa, 0xbbbb);
+    return 0;
+}
+
+
+-----------------------------------------------------------------
+c8080 assembly (main + dependent funcs, translated to i8080 dialect)
+-----------------------------------------------------------------
+main:
+    LXI     HL, 0
+    SHLD    __a_1_main
+    SHLD    __a_2_main
+    LXI     HL, 0x1234
+    SHLD    __a_1_de_one_reload
+    LXI     HL, 0x5678
+    CALL    de_one_reload
+    SHLD    g1
+    LXI     HL, 0xaaaa
+    SHLD    __a_1_mixed_hl_de
+    LXI     HL, 0xbbbb
+    CALL    mixed_hl_de
+    SHLD    g2
+    LXI     HL, 0
+    RET
+
+de_one_reload:
+    SHLD    __a_2_de_one_reload
+    LHLD    __a_1_de_one_reload
+    CALL    op1
+    SHLD    de_one_reload_a
+    LHLD    __a_2_de_one_reload
+    CALL    op2
+    SHLD    de_one_reload_b
+    LHLD    de_one_reload_a
+    XCHG
+    LHLD    de_one_reload_b
+    DAD     DE
+    RET
+
+mixed_hl_de:
+    SHLD    __a_2_mixed_hl_de
+    LHLD    __a_1_mixed_hl_de
+    CALL    op1
+    SHLD    mixed_hl_de_a
+    CALL    op2
+    SHLD    mixed_hl_de_t1
+    LHLD    __a_2_mixed_hl_de
+    CALL    op2
+    XCHG
+    LHLD    mixed_hl_de_t1
+    DAD     DE
+    XCHG
+    LHLD    mixed_hl_de_a
+    DAD     DE
+    RET
+
+op1:
+    SHLD    __a_1_op1
+    LHLD    op_acc
+    XCHG
+    LHLD    __a_1_op1
+    CALL    __o_xor_16
+    SHLD    op_acc
+    LHLD    __a_1_op1
+    INX     HL
+    RET
+
+op2:
+    SHLD    __a_1_op2
+    LHLD    op_acc
+    XCHG
+    LHLD    __a_1_op2
+    CALL    __o_xor_16
+    SHLD    op_acc
+    LHLD    __a_1_op2
+    INX     HL
+    INX     HL
+    RET
+
+__o_xor_16:
+    MOV     A, H
+    XRA     D
+    MOV     H, A
+    MOV     A, L
+    XRA     E
+    MOV     L, A
+    ORA     H
+    RET
+
+
+-----------------------------------------------------------------
+c8080 stats (worst-case cycles / body bytes, RET included)
+-----------------------------------------------------------------
+                     cycles   bytes
+main                    216      34
+de_one_reload           260      37
+mixed_hl_de             320      46
+op1                     140      22
+op2                     148      23
+__o_xor_16               48      10
+
+
+-----------------------------------------------------------------
+v6llvmc assembly baseline (-O2, Stage 2 off)
+  -- from tests/features/35/v6llvmc_old.asm
+-----------------------------------------------------------------
+de_one_reload:
+    XCHG
+    PUSH    HL
+    XCHG
+    CALL    op1
+    SHLD    __v6c_ss.de_one_reload+2
+    POP     HL
+    CALL    op2
+    XCHG
+    LHLD    __v6c_ss.de_one_reload+2
+    DAD     DE
+    RET
+
+mixed_hl_de:
+    XCHG
+    PUSH    HL
+    XCHG
+    CALL    op1
+    PUSH    HL
+    CALL    op2
+    XCHG
+    POP     HL
+    XCHG
+    DAD     DE
+    SHLD    __v6c_ss.mixed_hl_de+2
+    POP     HL
+    CALL    op2
+    XCHG
+    LHLD    __v6c_ss.mixed_hl_de+2
+    DAD     DE
+    RET
+
+main:
+    ; (unchanged between baseline and Stage 2)
+
+
+-----------------------------------------------------------------
+v6llvmc assembly (-O2 -mllvm -mv6c-spill-patched-reload)
+  -- from tests/features/35/v6llvmc_new02.asm
+-----------------------------------------------------------------
+de_one_reload:                          ; Stage 2: DE reload patched
+    XCHG
+    PUSH    HL
+    XCHG
+    CALL    op1
+    SHLD    .LLo61_0+1                  ; O61: writes LXI's imm bytes
+    POP     HL
+    CALL    op2
+.LLo61_0:
+    LXI     DE, 0                       ; O61: patched DE reload
+    DAD     DE
+    RET
+
+mixed_hl_de:                            ; Stage 2 skipped: multi-source
+    XCHG                                ; spill (a is SHLD'd twice below).
+    PUSH    HL
+    XCHG
+    CALL    op1
+    PUSH    HL                          ; push `a` for later reload
+    CALL    op2
+    XCHG
+    POP     HL
+    XCHG
+    DAD     DE                          ; t1 + a (result to HL)
+    SHLD    __v6c_ss.mixed_hl_de+2      ; spill (t1+a)
+    POP     HL                          ; reload y
+    CALL    op2
+    XCHG
+    LHLD    __v6c_ss.mixed_hl_de+2      ; reload (t1+a)
+    DAD     DE
+    RET
+
+main:                                   ; Stage 2 skipped: multi-source spill
+    LXI     HL, 0x1234
+    CALL    op1
+    PUSH    HL
+    LXI     HL, 0x5678
+    CALL    op2
+    XCHG
+    POP     HL
+    XCHG
+    DAD     DE
+    SHLD    g1
+    LXI     HL, 0xaaaa
+    CALL    op1
+    PUSH    HL
+    CALL    op2
+    XCHG
+    POP     HL
+    XCHG
+    DAD     DE
+    PUSH    HL
+    LXI     HL, 0xbbbb
+    CALL    op2
+    XCHG
+    POP     HL
+    DAD     DE
+    SHLD    g2
+    LXI     HL, 0
+    RET
+
+
+-----------------------------------------------------------------
+v6llvmc stats (worst-case cycles / body bytes, RET included)
+-----------------------------------------------------------------
+                     cycles   bytes     vs Stage 2 off
+de_one_reload           118      18      -12 cc, -1 B   (patched DE reload,
+                                                         HL-dead row: Δ=+12)
+mixed_hl_de             196      27      unchanged      (multi-source spill,
+                                                         filter rejected)
+main                    274      38      unchanged      (multi-source spill
+                                                         on __v6c_ss.main)
+
+Per-slot impact, `de_one_reload`:
+  Stage 2 off: `SHLD  ...+2` + `XCHG`+`LHLD ...+2` + `DAD DE` = 20+4+20+10 = 54 cc, 8 B
+  Stage 2 on : `SHLD  .LLo61_0+1` + `LXI DE,0`    + `DAD DE` = 20  +12  +10 = 42 cc, 7 B
+  Net      : -12 cc, -1 B.
+
+Mechanism: Stage 2 runs after V6CSpillForwarding, scans each static-
+stack-eligible function for V6C_SPILL16/V6C_RELOAD16 groups, and for
+each single-source HL spill with all reload dsts in {HL,DE,BC}, scores
+candidate reloads by BlockFrequency × Δ from the per-target table. The
+winning reload is rewritten as `LXI <DstRP>, 0` with a pre-instr label
+.LLo61_N and MO_PATCH_IMM on the imm operand. The spill is retargeted
+to `SHLD .LLo61_N+1` (MCSymbol lowering adds the +1 under MO_PATCH_IMM).
+Remaining reloads (not in these tests) would become the classical load
+sequence for their dst, reading from .LLo61_N+1 instead of the BSS slot.
+
+For Stage 2 `de_one_reload`, the chooser saw exactly one HL→DE reload
+(Δ = +12 cc, HL was dead after the reload because the subsequent DAD DE
+consumes and overwrites DE before any further HL use). It picked the
+DE reload and emitted `LXI DE, 0` + pre-instr label.
+
+`mixed_hl_de` and `main` have *two* SHLD instructions writing the same
+frame slot (multi-source spill). Stage 2 deliberately restricts to
+single-source spills — multi-source K=1 patching is valid in the design
+doc but adds "spill cost paid by each source point" to the cost model
+and is deferred to a follow-on plan.
