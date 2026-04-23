@@ -165,7 +165,7 @@
 32. **O55** — additional peepholes (CMA, XRA A, idempotent ALU), ~20 lines
 33. **O58** — CmpZero backward scan, skip past safe instructions in flag elimination, ~30 lines
 34. **O54** — optimal stack adjustment, POP/PUSH for small SP changes, ~30 lines
-35. **O62** — efficient i16 shift-by-8/16 expansion, 16cc+1B per occurrence, ~60 lines
+35. ~~**O62** — efficient i16 shift-by-8/16 expansion, 16cc+1B per occurrence, ~60 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅

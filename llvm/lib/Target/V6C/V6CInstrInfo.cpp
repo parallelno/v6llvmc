@@ -1465,7 +1465,10 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   case V6C::V6C_SHL16: {
     // Left shift i16 by constant amount.
     // For 1-7: unrolled ADD self (lo+carry→hi).
-    // For 8+: move lo→hi, zero lo, then shift hi in i8 domain.
+    // For 8+ (O62): byte-lane move SrcLo → DstHi; zero DstLo; then
+    //   shift DstHi left by (ShAmt - 8) in i8 domain. The leading
+    //   2-MOV "copy Src to Dst" prologue is skipped because both
+    //   halves of the source-as-dst are immediately overwritten.
     Register DstReg = MI.getOperand(0).getReg();
     Register SrcReg = MI.getOperand(1).getReg();
     unsigned ShAmt = MI.getOperand(2).getImm();
@@ -1475,13 +1478,14 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     MCRegister SrcHi = RI.getSubReg(SrcReg, V6C::sub_hi);
     MCRegister SrcLo = RI.getSubReg(SrcReg, V6C::sub_lo);
 
-    if (DstReg != SrcReg) {
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(SrcHi);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(SrcLo);
-    }
-
     if (ShAmt >= 8) {
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(DstLo);
+      // O62: skip leading copy, emit byte-lane move directly from SrcLo.
+      // GR16 pairs are disjoint (BC, DE, HL), so DstHi != SrcLo always
+      // holds for distinct pairs. For DstReg == SrcReg the MOV becomes
+      // MOV DstHi, DstLo (still distinct halves), matching today's
+      // in-place expansion.
+      if (DstHi != SrcLo)
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(SrcLo);
       BuildMI(MBB, MI, DL, get(V6C::MVIr), DstLo).addImm(0);
       ShAmt -= 8;
       // Remaining: shift DstHi left by ShAmt in i8 domain (ADD A,A).
@@ -1492,7 +1496,12 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
         BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
       }
     } else {
-      // SHL by 1-7: unrolled 16-bit ADD self.
+      // SHL by 1-7: unrolled 16-bit ADD self. Needs both halves of Src
+      // as live-in, so the generic copy prologue is required.
+      if (DstReg != SrcReg) {
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(SrcHi);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(SrcLo);
+      }
       for (unsigned i = 0; i < ShAmt; ++i) {
         BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstLo);
         BuildMI(MBB, MI, DL, get(V6C::ADDr), V6C::A)
@@ -1512,7 +1521,10 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   case V6C::V6C_SRL16: {
     // Logical right shift i16 by constant amount.
     // For 1-7: unrolled ORA A (clear CY) + RAR hi + RAR lo.
-    // For 8+: move hi→lo, zero hi, then shift lo right.
+    // For 8+ (O62): byte-lane move SrcHi → DstLo; zero DstHi; then
+    //   shift DstLo right by (ShAmt - 8) in i8 domain. The leading
+    //   2-MOV "copy Src to Dst" prologue is skipped, and the per-bit
+    //   loop is half-width because DstHi is provably zero.
     Register DstReg = MI.getOperand(0).getReg();
     Register SrcReg = MI.getOperand(1).getReg();
     unsigned ShAmt = MI.getOperand(2).getImm();
@@ -1522,30 +1534,39 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     MCRegister SrcHi = RI.getSubReg(SrcReg, V6C::sub_hi);
     MCRegister SrcLo = RI.getSubReg(SrcReg, V6C::sub_lo);
 
-    if (DstReg != SrcReg) {
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(SrcHi);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(SrcLo);
-    }
-
     if (ShAmt >= 8) {
-      // Move hi to lo, zero hi.
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(DstHi);
+      // O62 byte-aligned fast path.
+      if (DstLo != SrcHi)
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(SrcHi);
       BuildMI(MBB, MI, DL, get(V6C::MVIr), DstHi).addImm(0);
       ShAmt -= 8;
-    }
-
-    // Per-bit logical right shift: clear CY, RAR hi, RAR lo.
-    for (unsigned i = 0; i < ShAmt; ++i) {
-      // Load hi to A, ORA A to clear carry, RAR, store back.
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstHi);
-      BuildMI(MBB, MI, DL, get(V6C::ORAr), V6C::A)
-          .addReg(V6C::A).addReg(V6C::A); // CY = 0, A unchanged
-      BuildMI(MBB, MI, DL, get(V6C::RAR), V6C::A).addReg(V6C::A);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
-      // Load lo to A, RAR (carry = hi bit 0), store back.
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstLo);
-      BuildMI(MBB, MI, DL, get(V6C::RAR), V6C::A).addReg(V6C::A);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+      // Half-width per-bit logical right shift on DstLo only.
+      for (unsigned i = 0; i < ShAmt; ++i) {
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstLo);
+        BuildMI(MBB, MI, DL, get(V6C::ORAr), V6C::A)
+            .addReg(V6C::A).addReg(V6C::A); // CY = 0
+        BuildMI(MBB, MI, DL, get(V6C::RAR), V6C::A).addReg(V6C::A);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+      }
+    } else {
+      // SRL by 1-7: full 2-byte per-bit RAR loop. Needs both halves
+      // as live-in.
+      if (DstReg != SrcReg) {
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(SrcHi);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(SrcLo);
+      }
+      for (unsigned i = 0; i < ShAmt; ++i) {
+        // Load hi to A, ORA A to clear carry, RAR, store back.
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstHi);
+        BuildMI(MBB, MI, DL, get(V6C::ORAr), V6C::A)
+            .addReg(V6C::A).addReg(V6C::A); // CY = 0, A unchanged
+        BuildMI(MBB, MI, DL, get(V6C::RAR), V6C::A).addReg(V6C::A);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
+        // Load lo to A, RAR (carry = hi bit 0), store back.
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstLo);
+        BuildMI(MBB, MI, DL, get(V6C::RAR), V6C::A).addReg(V6C::A);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+      }
     }
 
     MI.eraseFromParent();
@@ -1555,7 +1576,9 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   case V6C::V6C_SRA16: {
     // Arithmetic right shift i16 by constant amount.
     // For 1-7: set CY=sign bit via RLC, then RAR hi, RAR lo.
-    // For 8+: move hi→lo, sign-extend to hi, then shift remaining.
+    // For 8+ (O62): byte-lane move SrcHi → DstLo; sign-extend SrcHi
+    //   into DstHi via RLC+SBB; then per-bit 8-bit arithmetic right
+    //   shift on DstLo only (DstHi is already the sign byte).
     Register DstReg = MI.getOperand(0).getReg();
     Register SrcReg = MI.getOperand(1).getReg();
     unsigned ShAmt = MI.getOperand(2).getImm();
@@ -1565,39 +1588,51 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     MCRegister SrcHi = RI.getSubReg(SrcReg, V6C::sub_hi);
     MCRegister SrcLo = RI.getSubReg(SrcReg, V6C::sub_lo);
 
-    if (DstReg != SrcReg) {
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(SrcHi);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(SrcLo);
-    }
-
     if (ShAmt >= 8) {
-      // Move hi to lo. Sign-extend hi byte: RLC (CY=sign), SBB A (A=0/-1).
-      // Read DstHi before overwriting DstLo in case they alias (they don't
-      // for valid register pairs, but be safe).
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstHi);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(DstHi);
+      // O62 byte-aligned fast path. Read SrcHi into A first so that the
+      // subsequent byte-lane MOV to DstLo cannot clobber the source
+      // (safe even if DstLo aliases SrcHi; harmless when they don't).
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(SrcHi);
+      if (DstLo != SrcHi)
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(SrcHi);
       BuildMI(MBB, MI, DL, get(V6C::RLC), V6C::A).addReg(V6C::A);
       BuildMI(MBB, MI, DL, get(V6C::SBBr), V6C::A)
           .addReg(V6C::A).addReg(V6C::A);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
       ShAmt -= 8;
-    }
-
-    // Per-bit arithmetic right shift:
-    // RLC to get sign bit into CY, reload hi, RAR hi, RAR lo.
-    for (unsigned i = 0; i < ShAmt; ++i) {
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstHi);
-      BuildMI(MBB, MI, DL, get(V6C::RLC), V6C::A)
-          .addReg(V6C::A); // CY = sign bit, A = junk
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A)
-          .addReg(DstHi); // reload hi
-      BuildMI(MBB, MI, DL, get(V6C::RAR), V6C::A)
-          .addReg(V6C::A); // A = sign:hi[7:1], CY = hi[0]
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstLo);
-      BuildMI(MBB, MI, DL, get(V6C::RAR), V6C::A)
-          .addReg(V6C::A); // A = hi[0]:lo[7:1]
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+      // Half-width per-bit arithmetic right shift on DstLo only.
+      // DstHi (sign byte) is already correct and stays correct under
+      // any further ASHR. The original sign bit is preserved as bit 7
+      // of DstLo and rematerialised each iteration via RLC.
+      for (unsigned i = 0; i < ShAmt; ++i) {
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstLo);
+        BuildMI(MBB, MI, DL, get(V6C::RLC), V6C::A)
+            .addReg(V6C::A); // CY = bit 7 = sign, A = junk
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstLo);
+        BuildMI(MBB, MI, DL, get(V6C::RAR), V6C::A)
+            .addReg(V6C::A); // A = sign:lo[7:1]
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+      }
+    } else {
+      // SRA by 1-7: full 2-byte per-bit RAR loop.
+      if (DstReg != SrcReg) {
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(SrcHi);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(SrcLo);
+      }
+      for (unsigned i = 0; i < ShAmt; ++i) {
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstHi);
+        BuildMI(MBB, MI, DL, get(V6C::RLC), V6C::A)
+            .addReg(V6C::A); // CY = sign bit, A = junk
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A)
+            .addReg(DstHi); // reload hi
+        BuildMI(MBB, MI, DL, get(V6C::RAR), V6C::A)
+            .addReg(V6C::A); // A = sign:hi[7:1], CY = hi[0]
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(DstLo);
+        BuildMI(MBB, MI, DL, get(V6C::RAR), V6C::A)
+            .addReg(V6C::A); // A = hi[0]:lo[7:1]
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+      }
     }
 
     MI.eraseFromParent();

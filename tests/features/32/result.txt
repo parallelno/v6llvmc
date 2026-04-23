@@ -1,0 +1,189 @@
+== O62: Efficient i16 Shift Expansion for Constant Amount ==
+
+=== C Test Case (v6llvmc) ===
+
+unsigned short u16_p, u16_q;
+  signed short i16_p, i16_q;
+unsigned char  u8_p,  u8_q;
+  signed char  i8_p,  i8_q;
+
+// O62 primary targets: i16 shifts by byte-aligned and >byte amounts.
+// All shift functions take the value plus two ptrs and store *p = x and
+// *q = x << n separately, forcing dst != src at SHL16/SRL16/SRA16
+// expansion time (otherwise RA would coalesce dst onto src).
+
+void u16_shl8 (unsigned short x, unsigned short *p, unsigned short *q) { *p = x; *q = x <<  8; }
+void u16_shl10(unsigned short x, unsigned short *p, unsigned short *q) { *p = x; *q = x << 10; }
+void u16_srl8 (unsigned short x, unsigned short *p, unsigned short *q) { *p = x; *q = x >>  8; }
+void u16_srl10(unsigned short x, unsigned short *p, unsigned short *q) { *p = x; *q = x >> 10; }
+
+void i16_shl8 (  signed short x,   signed short *p,   signed short *q) { *p = x; *q = x <<  8; }
+void i16_shl10(  signed short x,   signed short *p,   signed short *q) { *p = x; *q = x << 10; }
+void i16_sra8 (  signed short x,   signed short *p,   signed short *q) { *p = x; *q = x >>  8; }
+void i16_sra10(  signed short x,   signed short *p,   signed short *q) { *p = x; *q = x >> 10; }
+
+// i8 sanity (must not regress).
+void u8_shl3  (unsigned char  x, unsigned char  *p, unsigned char  *q) { *p = x; *q = x << 3; }
+void i8_shl3  (  signed char  x,   signed char  *p,   signed char  *q) { *p = x; *q = x << 3; }
+
+// NOTE: u8 >> N and i8 >> N store-trunc patterns trigger an unrelated
+// pre-existing ISel selection failure (no truncstore-i8 pattern over
+// V6CISD::SRL16/SRA16). Tracked in design/plan_efficient_shift_expansion.md
+// §7 "Future Enhancements" — out of scope for O62.
+
+=== Shift body comparison (excerpts; static-stack save/restore omitted) ===
+
+--- u16_srl8 — bytes saved per call: 2B, cycles saved: 8cc ---
+
+  OLD (4 insns, 4B, 16cc):                NEW (2 insns, 3B, 11cc):
+    MOV  H, B    ; 4cc, 1B  (DEAD)         MOV  L, B    ; 4cc, 1B
+    MOV  L, C    ; 4cc, 1B  (DEAD use)     MVI  H, 0    ; 7cc, 2B
+    MOV  L, H    ; 4cc, 1B
+    MVI  H, 0    ; 7cc, 2B  (— same —)
+
+--- u16_srl10 — bytes saved per call: 8B, cycles saved: 32cc ---
+
+  OLD (12 insns, 12B, 48cc):              NEW (8 insns, 9B, 36cc):
+    MOV  H, B    ; (dead)                  MOV  L, B
+    MOV  L, C    ; (dead use)              MVI  H, 0
+    MOV  L, H                              MOV  A, L
+    MVI  H, 0                              ORA  A
+    MOV  A, H    ; per-bit on H            RAR
+    ORA  A                                 MOV  L, A
+    RAR                                    MOV  A, L
+    MOV  H, A                              ORA  A
+    MOV  A, L    ; per-bit on L            RAR
+    RAR                                    MOV  L, A
+    MOV  L, A
+    MOV  A, H    ; per-bit on H (iter 2)
+    ORA  A
+    RAR
+    MOV  H, A
+    MOV  A, L    ; per-bit on L (iter 2)
+    RAR
+    MOV  L, A
+
+  (Old loop did 7 insns/iter × 2 iters; new loop does 4 insns/iter × 2 iters,
+   omitting the H-rotate triple since H is provably 0 after MVI H,0.)
+
+--- i16_sra8 — bytes saved per call: 2B, cycles saved: 8cc ---
+
+  OLD (6 insns, 6B, 25cc):                NEW (5 insns, 5B, 21cc):
+    MOV  H, B    ; (dead)                  MOV  A, B
+    MOV  L, C    ; (dead use)              MOV  L, B
+    MOV  A, H                              RLC
+    MOV  L, H                              SBB  A
+    RLC                                    MOV  H, A
+    SBB  A
+    MOV  H, A
+
+--- i16_sra10 — bytes saved per call: 8B, cycles saved: 32cc ---
+
+  OLD (16 insns, 16B, 64cc):              NEW (13 insns, 13B, 52cc):
+    MOV  H, B    ; (dead)                  MOV  A, B
+    MOV  L, C    ; (dead use)              MOV  L, B
+    MOV  A, H                              RLC
+    MOV  L, H                              SBB  A
+    RLC                                    MOV  H, A
+    SBB  A                                 MOV  A, L      ; per-bit on L
+    MOV  H, A                              RLC
+    MOV  A, H    ; per-bit on H            MOV  A, L
+    RLC                                    RAR
+    MOV  A, H                              MOV  L, A
+    RAR                                    MOV  A, L      ; per-bit on L
+    MOV  H, A                              RLC            ;   (iter 2)
+    MOV  A, L    ; per-bit on L            MOV  A, L
+    RAR                                    RAR
+    MOV  L, A                              MOV  L, A
+    MOV  A, H    ; per-bit on H (iter 2)
+    RLC
+    MOV  A, H
+    RAR
+    MOV  H, A
+    MOV  A, L    ; per-bit on L (iter 2)
+    RAR
+    MOV  L, A
+
+  (Half-width per-bit loop on L only; H stays as the sign byte and need
+   not be re-rotated each iteration.)
+
+--- u16_shl8 / u16_shl10 / i16_shl8 / i16_shl10 — UNCHANGED ---
+
+  These cases are custom-lowered in V6CISelLowering::LowerSHL_i16 via
+  ISD::BUILD_PAIR(0, lo) and never reach the V6C_SHL16 pseudo. Codegen
+  was already optimal for byte-aligned SHL; O62 only adds the matching
+  pseudo-side path so non-ISel-folded callers benefit too.
+
+--- u8_shl3 / i8_shl3 — UNCHANGED ---
+
+  i8 SHL by constant is unrolled to ADD A,A in i8 domain by ISel; never
+  involves V6C_SHL16 (i8 path). No regression.
+
+=== Per-function instruction counts (full function bodies, incl. boilerplate) ===
+
+  Function       Old insns   New insns   Delta
+  -----------    ---------   ---------   -----
+  u16_shl8           25          25         0    (custom-lowered in ISel)
+  u16_shl10          27          27         0    (custom-lowered in ISel)
+  u16_srl8           26          24        -2    (dead leading copy removed)
+  u16_srl10          40          32        -8    (dead copy + half-width loop)
+  i16_shl8           25          25         0    (custom-lowered in ISel)
+  i16_shl10          27          27         0    (custom-lowered in ISel)
+  i16_sra8           29          27        -2    (dead leading copy removed)
+  i16_sra10          45          37        -8    (dead copy + half-width loop)
+  u8_shl3             6           6         0    (i8 path unchanged)
+  i8_shl3             6           6         0    (i8 path unchanged)
+  main               16          16         0
+  -----------    ---------   ---------   -----
+  TOTAL             272         252       -20    (-7.4% on this test)
+
+=== Mechanism ===
+
+  Pre-O62 V6CInstrInfo::expandPostRAPseudo for V6C_SRL16 / V6C_SRA16 /
+  V6C_SHL16 with constant ShAmt:
+
+    1. Always emit "MOV DstHi,SrcHi; MOV DstLo,SrcLo" prologue when
+       DstReg != SrcReg.
+    2. For ShAmt >= 8, immediately overwrite DstHi (SHL) or DstLo
+       (SRL/SRA) — making one of the two prologue MOVs dead.
+    3. Run the full-pair per-bit loop unconditionally for the
+       residual (ShAmt - 8) bits, even though one half is provably
+       0 (SRL) or the sign byte (SRA) and need not be touched.
+
+  O62 rewrites the ShAmt >= 8 branch in each pseudo to:
+
+    1. Skip the generic "copy Src to Dst" prologue.
+    2. Emit a single byte-lane MOV directly from Src half to the
+       Dst half that survives (SrcLo -> DstHi for SHL,
+       SrcHi -> DstLo for SRL/SRA).
+    3. Zero the dead half (MVI 0) for SRL / SHL, or sign-extend it
+       (RLC + SBB A) for SRA.
+    4. Run a HALF-WIDTH per-bit loop on the surviving Dst half only.
+
+  All transformations are local to expandPostRAPseudo. No ISel,
+  scheduler, or RA changes are needed. Correctness is guaranteed by
+  the disjoint-halves property of the GR16 register class (BC, DE, HL
+  pairs share no sub-registers across pairs).
+
+=== Validation ===
+
+  Lit tests:
+    103/103 passed (V6C suite)
+    - shift-i16.ll: srl10_i16 expectation tightened to 2 RARs (was 4)
+    - shift-i16-byte-aligned.ll: NEW — covers SRL/SRA/SHL by 8 and 10
+      including the half-width loop check
+    - shift-var-i16.ll: unchanged, still passing
+
+  Golden tests:
+    15/15 passed
+
+  Feature test diff (tests/features/32):
+    -20 instructions across 10 shift functions (-7.4% on this micro-test).
+
+=== References ===
+
+  - Plan: design/plan_efficient_shift_expansion.md
+  - Implementation: llvm-project/llvm/lib/Target/V6C/V6CInstrInfo.cpp
+    cases V6C_SHL16, V6C_SRL16, V6C_SRA16 in expandPostRAPseudo
+  - Lit tests: llvm-project/llvm/test/CodeGen/V6C/shift-i16.ll
+              llvm-project/llvm/test/CodeGen/V6C/shift-i16-byte-aligned.ll

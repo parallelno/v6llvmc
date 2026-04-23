@@ -89,17 +89,21 @@ define i16 @srl8_i16(i16 %a) {
   ret i16 %r
 }
 
-; srl by 10 = move hi to lo, zero hi, then shift right by 2
+; srl by 10 = move hi to lo, zero hi, then half-width per-bit shift on L by 2.
+; O62: only DstLo (= L) is rotated; DstHi (= H) is provably 0 and is NOT
+; touched in the per-bit body (only 2 RARs total, not 4).
 ; CHECK-LABEL: srl10_i16:
 ; CHECK:       MOV L, H
 ; CHECK-NEXT:  MVI H, 0
-; CHECK:       ORA A
-; CHECK:       RAR
-; CHECK:       RAR
-; CHECK:       ORA A
-; CHECK:       RAR
-; CHECK:       RAR
-; CHECK:       RET
+; CHECK-NEXT:  MOV A, L
+; CHECK-NEXT:  ORA A
+; CHECK-NEXT:  RAR
+; CHECK-NEXT:  MOV L, A
+; CHECK-NEXT:  MOV A, L
+; CHECK-NEXT:  ORA A
+; CHECK-NEXT:  RAR
+; CHECK-NEXT:  MOV L, A
+; CHECK-NEXT:  RET
 define i16 @srl10_i16(i16 %a) {
   %r = lshr i16 %a, 10
   ret i16 %r
