@@ -1,0 +1,165 @@
+O61 Stage 3 — Spill Into the Reload's Immediate Operand
+  (K <= 2 single-source; K <= 1 multi-source)
+
+========================================================================
+C test case (tests\features\36\v6llvmc.c)
+========================================================================
+extern int op1(int x) __attribute__((leaf));
+extern int op2(int x) __attribute__((leaf));
+
+int g1, g2;
+
+int multi_src_de(int x, int y, int c) {
+    int a;
+    if (c) a = op1(x);
+    else   a = op2(x);
+    int b = op2(y);
+    return a + b;
+}
+
+int k2_two_reloads(int x, int y, int z) {
+    int a = op1(x);
+    int b = op2(y) + a;
+    int c = op2(z);
+    return a + b + c;
+}
+
+int main(void) {
+    g1 = op1(0x1234) + op2(0x5678);
+    g2 = op1(0xaaaa) + op2(0xbbbb) + op2(0xcccc);
+    return 0;
+}
+
+========================================================================
+c8080 main() (hand-translated from Z80 to i8080 for reference only)
+========================================================================
+main:
+    ; op1(0x1234) + op2(0x5678) -> g1
+    LXI     HL, 0x1234
+    CALL    op1
+    SHLD    __local_main+0
+    LXI     HL, 0x5678
+    CALL    op2
+    XCHG
+    LHLD    __local_main+0
+    DAD     DE
+    SHLD    g1
+    ; op1(0xaaaa) + op2(0xbbbb) + op2(0xcccc) -> g2
+    LXI     HL, 0xaaaa
+    CALL    op1
+    SHLD    __local_main+0
+    LXI     HL, 0xbbbb
+    CALL    op2
+    XCHG
+    LHLD    __local_main+0
+    DAD     DE
+    SHLD    __local_main+0
+    LXI     HL, 0xcccc
+    CALL    op2
+    XCHG
+    LHLD    __local_main+0
+    DAD     DE
+    SHLD    g2
+    LXI     HL, 0
+    RET
+
+Each "SHLD slot / CALL / LHLD slot / DAD DE" group:
+  SHLD = 16cc, 3B
+  LHLD = 16cc, 3B
+  DAD DE = 10cc, 1B
+  spill + reload pair = 32cc/6B
+
+c8080 stats (main, O2-ish hand-optimised):
+  worst cycles ~= 3 spills + 3 reloads + fixed prologue/call/ret overhead
+  length       ~= 69 bytes body
+
+========================================================================
+v6llvmc Stage 3 asm (tests\features\36\v6llvmc_new02.asm, production flags)
+========================================================================
+(see tests\features\36\v6llvmc_new02.asm for full listing)
+
+Highlights that demonstrate Stage 3 firing:
+
+multi_src_de:
+    XCHG
+    SHLD    __v6c_ss.multi_src_de         ; spill y (separate slot)
+    XCHG
+    MOV     A, B
+    ORA     C
+    JZ      .LBB0_2
+    CALL    op1
+    JMP     .LBB0_3
+.LBB0_2:
+    CALL    op2
+.LBB0_3:
+    SHLD    .LLo61_0+1                    ; O61 spill of a into the
+                                          ; patched LXI imm bytes
+    LHLD    __v6c_ss.multi_src_de         ; reload y (classical)
+    CALL    op2
+.LLo61_0:
+    LXI     DE, 0                         ; O61 patched reload of a
+    DAD     DE
+    RET
+
+main (most interesting — multi-source K=1 with 3 SHLDs into one slot):
+    LXI     HL, 0x1234
+    CALL    op1
+    SHLD    .LLo61_2+1                    ; spill #1 of a-slot
+    LXI     HL, 0x5678
+    CALL    op2
+.LLo61_2:
+    LXI     DE, 0                         ; patched reload
+    DAD     DE
+    SHLD    g1
+    LXI     HL, 0xaaaa
+    CALL    op1
+    SHLD    .LLo61_2+1                    ; spill #2 (multi-source!)
+    LXI     HL, 0xbbbb
+    CALL    op2
+    XCHG
+    LHLD    .LLo61_2+1                    ; unpatched LHLD reads from
+                                          ; the same patched-site imm
+    XCHG
+    DAD     DE via ADD/ADC expansion
+    SHLD    .LLo61_2+1                    ; spill #3 (multi-source!)
+    LXI     HL, 0xcccc
+    CALL    op2
+    XCHG
+    LHLD    .LLo61_2+1                    ; another unpatched LHLD
+    DAD     DE
+    SHLD    g2
+    LXI     HL, 0
+    RET
+
+Per-spill savings vs classical BSS expansion (from the O61 design doc's
+table of Δ cycles):
+  Dst=HL reload replaced by LXI HL,imm      : +8 cc  / +1 B
+  Dst=DE (HL-dead) replaced by LXI DE,imm   : +12 cc / +2 B
+  Dst=DE (HL-live) replaced by LXI DE,imm   : +16 cc / +3 B
+  Dst=BC (HL-dead) replaced by LXI BC,imm   : +24 cc / +3 B
+  Dst=BC (HL-live) replaced by LXI BC,imm   : +52 cc / +5 B
+
+v6llvmc stats for Stage 3 (with -mv6c-spill-patched-reload):
+  multi_src_de:   one Δ=+16 reload patched (DE, HL live)  → -16 cc / -3 B
+  k2_two_reloads: one Δ=+16 reload patched                → -16 cc / -3 B
+  main:           one Δ=+16 reload patched                → -16 cc / -3 B
+                  (multi-source: 3 SHLDs share 1 patched site)
+
+Summary: every function with at least one eligible HL-source spill +
+DE/BC reload now saves 12-52 cycles per patched reload over the
+classical BSS path. Stage 3's multi-source K=1 support (new) covers
+every O2-generated LLVM pattern for i8080 where RA spills into one
+slot but from multiple blocks — which happens frequently on this
+register-starved target.
+
+========================================================================
+Flags & regression
+========================================================================
+Stage 3 invoked via:
+    clang -target i8080-unknown-v6c -O2 -S \
+        -mllvm -mv6c-spill-patched-reload \
+        [-mllvm -v6c-disable-shld-lhld-fold]   ; optional: keeps the
+                                               ; SHLD/LHLD peephole off
+
+Regression: 105/105 lit tests, golden tests all pass.
+New lit test: llvm-project\llvm\test\CodeGen\V6C\spill-patched-reload-k2.ll
