@@ -264,11 +264,14 @@ clang -target i8080-unknown-v6c -O2 -S input.c -o output.s \
     -mllvm -v6c-disable-shld-lhld-fold
 ```
 
-**Status:** Stage 4 (i8 path) complete; off by default pending broader
-code-in-RAM safety review (the patched imm bytes live in `.text`, which
-assumes code is RAM-resident and writable — true on Vector-06c but not
-on ROM/EPROM targets). Test assets live under
-`tests/features/37/` and `llvm/test/CodeGen/V6C/spill-patched-reload-*.ll`.
+**Status:** Stages 1–5 complete (Stage 5 widens the i16 spill source
+from HL-only to `{HL, DE, BC}`, unlocking DE/BC argument-routed spill
+traffic); off by default pending broader code-in-RAM safety review
+(the patched imm bytes live in `.text`, which assumes code is
+RAM-resident and writable — true on Vector-06c but not on ROM/EPROM
+targets). Test assets live under `tests/features/37/` (i8 scope),
+`tests/features/39/` (Stage 5 DE/BC), and
+`llvm/test/CodeGen/V6C/spill-patched-reload-*.ll`.
 
 ---
 

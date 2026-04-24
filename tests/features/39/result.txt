@@ -1,0 +1,200 @@
+=====================================================================
+Feature test 39 — O61 Stage 5 (DE/BC i16 spill sources)
+=====================================================================
+
+## Test case (v6llvmc.c)
+
+```c
+__attribute__((leaf)) extern unsigned int op_u16(unsigned int x);
+__attribute__((leaf)) extern unsigned int op2_u16(unsigned int x);
+__attribute__((leaf)) extern void use3_u16(unsigned int a, unsigned int b,
+                                           unsigned int c);
+__attribute__((leaf)) extern void use2_u16(unsigned int a, unsigned int b);
+
+unsigned int de_bc_three(unsigned int x, unsigned int y, unsigned int z) {
+    unsigned int a = op_u16(x);
+    unsigned int b = op2_u16(y);
+    unsigned int c = op_u16(z);
+    use3_u16(a, b, c);
+    return (unsigned int)(a + b + c);
+}
+
+unsigned int de_one_reload(unsigned int x, unsigned int y) {
+    unsigned int a = op_u16(x);
+    unsigned int b = op2_u16(y);
+    return (unsigned int)(a + b);
+}
+
+int main(void) {
+    use2_u16(de_bc_three(0x1111, 0x2222, 0x3333),
+             de_one_reload(0x4444, 0x5555));
+    return 0;
+}
+```
+
+## c8080 assembly (reference)
+
+See c8080.asm. The c8080 compiler does not implement i16 through
+DE/BC; it routes all i16 arithmetic through HL and performs LXI/LHLD
+spills to named i16 globals. No direct comparison with V6C's
+register-pressure-driven spill/reload traffic is meaningful for this
+feature. c8080.c is preserved for link-comparison only.
+
+## c8080 stats
+
+| Function       | Worst-case cycles     | Bytes |
+|----------------|-----------------------|-------|
+| de_bc_three    | (not meaningful; see above)
+| de_one_reload  | (not meaningful; see above)
+
+## v6llvmc assembly — Stage 4 baseline (v6llvmc.asm)
+
+Compiled with:
+  -O2 -mv6c-spill-patched-reload -v6c-disable-shld-lhld-fold
+
+`de_bc_three` body (spill/reload only, excluding CALL stubs):
+
+```
+; BC-source spill (arg2 %z, classical — Stage 4 rejects DE/BC sources)
+    PUSH    HL                 ; 12cc, 1B
+    LXI     HL, __v6c_ss+4     ; 12cc, 3B
+    MOV     M, C               ;  8cc, 1B
+    INX     HL                 ;  6cc, 1B
+    MOV     M, B               ;  8cc, 1B
+    POP     HL                 ; 12cc, 1B
+; DE-source spill (arg1 %y, classical)
+    XCHG                       ;  4cc, 1B
+    SHLD    __v6c_ss+2         ; 20cc, 3B
+    XCHG                       ;  4cc, 1B
+; CALL op_u16
+; HL-source patched spill of %a
+    SHLD    .LLo61_0+1         ; 20cc, 3B
+; Unpatched DE reload of %y from BSS
+    LHLD    __v6c_ss+2         ; 20cc, 3B
+; CALL op2_u16
+; HL-source classical spill of %b to BSS (Stage 4 only patched %a)
+    SHLD    __v6c_ss+2         ; 20cc, 3B
+; Unpatched BC reload of %z from BSS
+    LHLD    __v6c_ss+4         ; 20cc, 3B
+; CALL op_u16
+; HL-source classical spill of %c
+    SHLD    __v6c_ss+4         ; 20cc, 3B
+; Patched HL reload of %a
+.LLo61_0:
+    LXI     HL, 0              ; 12cc, 3B
+; BSS-sourced DE reload of %b (three reloads ...)
+    XCHG                       ;  4cc, 1B
+    LHLD    __v6c_ss+2         ; 20cc, 3B
+    XCHG                       ;  4cc, 1B
+; BC reload of %c
+    MOV     C, L               ;  8cc, 1B
+    MOV     B, H               ;  8cc, 1B
+; CALL use3_u16 …
+; Unpatched HL/DE reloads of %a / %b / %c for the return sum
+    LHLD    .LLo61_0+1         ; 20cc, 3B
+    XCHG
+    LHLD    __v6c_ss+2         ; 20cc, 3B
+    XCHG
+    DAD     DE                 ; 12cc, 1B
+    XCHG
+    LHLD    __v6c_ss+4         ; 20cc, 3B
+    XCHG
+    DAD     DE                 ; 12cc, 1B
+    RET
+```
+
+Spill+reload cycles: **342 cc**, BSS = 6 B, + inline bytes.
+
+## v6llvmc assembly — Stage 5 (v6llvmc_new01.asm)
+
+Compiled with the same flags; Stage 5 now patches the DE- and
+BC-source spills of `de_bc_three`.
+
+```
+; BC-source patched spill (HL live) — Stage 5 ladder
+    PUSH    HL                 ; 12cc, 1B
+    MOV     L, C               ;  8cc, 1B
+    MOV     H, B               ;  8cc, 1B
+    SHLD    .LLo61_1+1         ; 20cc, 3B
+    POP     HL                 ; 12cc, 1B
+; DE-source patched spill — Stage 5 ladder (trailing XCHG required,
+; HL still live for op_u16 arg0)
+    XCHG                       ;  4cc, 1B
+    SHLD    .LLo61_2+1         ; 20cc, 3B
+    XCHG                       ;  4cc, 1B
+; CALL op_u16
+; HL-source patched spill of %a
+    SHLD    .LLo61_0+1         ; 20cc, 3B
+; Unpatched DE reload of %y from patch site
+    LHLD    .LLo61_2+1         ; 20cc, 3B
+; CALL op2_u16
+; HL-source patched spill of %b to the DE-target patch site (shared)
+    SHLD    .LLo61_2+1         ; 20cc, 3B
+; Unpatched BC reload of %z from patch site
+    LHLD    .LLo61_1+1         ; 20cc, 3B
+; CALL op_u16
+    SHLD    .LLo61_1+1         ; 20cc, 3B
+; Patched reloads
+.LLo61_0:
+    LXI     HL, 0              ; 12cc, 3B
+.LLo61_2:
+    LXI     DE, 0              ; 12cc, 3B
+    MOV     C, L               ;  8cc, 1B
+    MOV     B, H               ;  8cc, 1B
+; CALL use3_u16 …
+    LHLD    .LLo61_0+1         ; 20cc, 3B
+    XCHG
+    LHLD    .LLo61_2+1         ; 20cc, 3B
+    XCHG
+    DAD     DE                 ; 12cc, 1B
+.LLo61_1:
+    LXI     DE, 0              ; 12cc, 3B
+    DAD     DE                 ; 12cc, 1B
+    RET
+```
+
+Spill+reload cycles: **312 cc**, BSS = 0 B.
+
+## v6llvmc stats (Δ = Stage 4 → Stage 5)
+
+| Function       | Stage 4 spill+reload cc | Stage 5 spill+reload cc | Δ cc  | Δ BSS   |
+|----------------|-------------------------|-------------------------|-------|---------|
+| de_bc_three    | 342                     | 312                     | −30   | −6 B    |
+| de_one_reload  | 92                      | 84                      | −8    | −2 B    |
+| main (inline)  | ~40                     | ~32                     | −8    | −6 B    |
+
+Totals: **−46 cc worst-case runtime, −14 B BSS** across this test.
+
+## Per-slot chooser log
+
+`de_bc_three` — three slots (FIs 0, 2, 4):
+
+| FI | Spill src | Reloads (dst × block-freq × Δ) | Winner (K=1) | Notes |
+|----|-----------|--------------------------------|--------------|-------|
+| 0  | HL (%a)   | HL ×1 ×8, DE ×1 ×16            | DE           | Stage 3 behaviour |
+| 2  | DE (%y)   | HL ×1 ×8, DE ×1 ×16            | DE           | Stage 5 DE-source — patched via `XCHG; SHLD; XCHG` |
+| 4  | BC (%z)   | HL ×1 ×8, BC ×1 ×52            | HL           | Stage 5 BC-source — patched via `PUSH H; MOV L,C; MOV H,B; SHLD; POP H`; BC reload goes through HL |
+
+`de_one_reload` — two slots:
+
+| FI | Spill src | Reloads | Winner | Notes |
+|----|-----------|---------|--------|-------|
+| 0  | DE (%y)   | HL ×8   | HL     | Stage 5 DE-source |
+| 2  | HL (%a)   | DE ×16  | DE     | Stage 3 behaviour |
+
+K-cap: all slots had single source and produced K=1 winners; the 2nd
+patch was skipped in each case by the design-doc 2nd-patch exclusion
+(DE only had a HL reload candidate for 2nd; HL-source slot only had
+a DE candidate for 2nd, which Δ=16 would allow but no additional
+reload existed).
+
+## Verification
+
+* All 108 regression tests pass (`python tests\run_all.py`).
+* The four O61 lit tests all pass:
+  - `spill-patched-reload-hl.ll`     — unchanged
+  - `spill-patched-reload-de-bc.ll`  — CHECK anchors re-centred for Stage 5's new DE/BC patched spills
+  - `spill-patched-reload-k2.ll`     — CHECK anchors re-centred
+  - `spill-patched-reload-stage5.ll` — new Stage 5 coverage (BC-source
+    PUSH/MOV/MOV/SHLD/POP ladder + DE-source XCHG/SHLD/XCHG ladder)
+* Feature test cycle/BSS savings recorded above.

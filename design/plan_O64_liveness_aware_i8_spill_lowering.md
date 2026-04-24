@@ -625,4 +625,3 @@ handles `SrcReg != A` or the unpatched reloads O61 skipped.
 * [O64 feature spec](future_plans/O64_liveness_aware_i8_spill_lowering.md)
 * [O42 prior art](future_plans/O42_liveness_aware_expansion.md)
 * [O61 Stage 4 plan (interaction reference)](plan_O61_spill_in_reload_immediate_stage4.md)
-

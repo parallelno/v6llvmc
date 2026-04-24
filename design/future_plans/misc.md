@@ -1,8 +1,8 @@
-1.
+;================================================
 * rename -mv6c-annotate-pseudos into -mv6c-annotate
 * update docs
 
-2.
+;================================================
 unsigned char arr_sum(unsigned char a[], unsigned int n) {
     unsigned char s = 0;
     for (unsigned int i = 0; i < n; ++i)
@@ -32,7 +32,7 @@ so the peephole can do that:
 __v6c_ss.arr_sum:
 	ADI 0
 
-
+;================================================
 used for i8 reg spill when A live
 ; %bb.3:
 	MVI	E, 0
@@ -46,10 +46,19 @@ used for i8 reg spill when A live
 	MOV	B, E
 	MOV	C, A
 
-
+;================================================
 what does it do?
 	;--- V6C_SRL16 ---
 	MOV	D, H
 	MOV	E, L
 	MOV	E, D
 	MOV	D, B
+
+;================================================
+this
+	LXI	HL, __v6c_ss.many_i8+3
+	MOV	L, M
+	XRA	L
+can be
+	LXI	HL, __v6c_ss.many_i8+3
+	XRA	M

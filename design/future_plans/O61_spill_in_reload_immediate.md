@@ -456,6 +456,17 @@ while keeping each step bounded:
    MOV M,C; INX HL; MOV M,B`, 44cc + 5B) with the cheaper
    `MOV H,B; MOV L,C; SHLD slot` (28cc + 5B when HL is dead; add
    `PUSH H`/`POP H` only when HL is live after the expansion).
+6. **Stage 6 — extend i8 spill-side handling to non-A sources**
+   (see [Stage 6 scope](#stage-6--i8-non-a-spill-sources) below).
+   Stage 4 only patches i8 spills whose source is `A`. Stage 6 lifts
+   that restriction so `V6C_SPILL8` pseudos with src ∈ {B, C, D, E, H,
+   L} become eligible, reusing the O64 decision ladder
+   (`expandSpill8Static`) with the `Sym+1` address appender.
+   Reload-side handling is already complete in Stage 4 (all eight r8
+   targets admit `MVI r, imm`).
+   [O64](O64_liveness_aware_i8_spill_lowering.md) has landed, so the
+   shared `expandSpill8Static` helper is available and Stage 6 is
+   unblocked.
 
 At every stage:
 * Gate behind `-mv6c-spill-patched-reload` for A/B testing.
@@ -563,6 +574,208 @@ apply to the classical `eliminateFrameIndex` path as well, not just to
 the patched path. They belong in the same PR as Stage 5 so the
 `__v6c_ss.<fn>+N` baseline reflects the cheaper form before Δ is
 re-measured.
+
+## Stage 6 — i8 non-A spill sources
+
+Stage 4 only patches i8 spills whose source is `A` — because `STA addr`
+is the only i8 absolute-address store on the i8080 and it is
+hard-wired to read `A`. Spills whose source is `B`, `C`, `D`, `E`,
+`H`, or `L` are rejected even though the *reload-side* machinery (MVI
+r,imm for every 8-bit reg) has been in place since Stage 4.
+
+With [O64](O64_liveness_aware_i8_spill_lowering.md) landed, the
+static-stack i8 spill/reload expansion is now a shared decision
+ladder that already terminates in an absolute-address store (or an
+HL-routed `MOV M, r`). That ladder accepts any target address via
+its `AppendAddrFn` appender — a `GlobalAddress + offset` on the
+classical path, or a patched `MCSymbol + MO_PATCH_IMM` on the O61
+path. Stage 6 is therefore **almost entirely a filter change** plus
+one new call site through the shared helper.
+
+### What becomes eligible
+
+Any `V6C_SPILL8` whose source is in `{B, C, D, E, H, L}`, subject to
+the usual static-stack gating. The reload-side emitter is unchanged:
+each patched reload site is `MVI r, 0` with `MO_PATCH_IMM`, 8 cc / 2 B,
+for any `r ∈ {A, B, C, D, E, H, L}`.
+
+### Patched-spill sequence
+
+Exactly the O64 ladder, with the final store targeting `Sym+1`
+instead of `__v6c_ss.<fn>+N`. For `src ∈ {B, C, D, E}`:
+
+| Row | Precondition                       | Patched sequence                                         | Cost      |
+|-----|-------------------------------------|----------------------------------------------------------|-----------|
+| 1   | HL dead                             | `LXI HL, Sym+1; MOV M, r`                                | 20 cc, 4 B |
+| 2   | HL live, A dead                     | `MOV A, r; STA Sym+1`                                    | 24 cc, 4 B |
+| 3   | HL live, A live, spare `Tmp` dead   | `MOV Tmp, A; MOV A, r; STA Sym+1; MOV A, Tmp`            | 40 cc, 6 B |
+| 4   | HL live, A live, no spare           | `PUSH HL; LXI HL, Sym+1; MOV M, r; POP HL`               | 48 cc, 6 B |
+
+For `src ∈ {H, L}` (A-routed by construction — HL *is* the source):
+
+| Row | Precondition                     | Patched sequence                                           | Cost      |
+|-----|-----------------------------------|------------------------------------------------------------|-----------|
+| 1   | A dead                            | `MOV A, H/L; STA Sym+1`                                    | 24 cc, 4 B |
+| 2   | A live, spare `Tmp` dead          | `MOV Tmp, A; MOV A, H/L; STA Sym+1; MOV A, Tmp`            | 40 cc, 6 B |
+| 3   | A live, no spare                  | `PUSH PSW; MOV A, H/L; STA Sym+1; POP PSW`                 | 52 cc, 5 B |
+
+Every row ends in exactly one store whose address operand is
+`Sym+1` (with `MO_PATCH_IMM`) — Row 1 of the B..E ladder via
+`MOV M, r` through HL (address materialised by the `LXI HL, Sym+1`
+on the previous line), all other rows via `STA Sym+1`. The
+`LXI`/`STA` are the only instructions whose operand changes vs. the
+classical O64 form; the routing MOVs and the `PUSH`/`POP` wrap are
+identical.
+
+### Δ per patched reload (post-O64 baseline)
+
+Because the *spill* side now runs the same ladder whether the
+target is BSS or `Sym+1`, **Δ/spill is zero** — all savings come
+from collapsing the reload to `MVI r, imm`. Compared to the
+O64-baseline classical reload:
+
+| Classical i8 reload (O64 row)                            | Cost    | Patched          | Cost   | Δ / reload |
+|----------------------------------------------------------|---------|------------------|--------|------------|
+| r8, HL dead — `LXI HL, addr; MOV r, M`                   | 20 cc   | `MVI r, imm`     | 8 cc   | +12 cc, +2 B |
+| r8, HL live, A dead — `LDA addr; MOV r, A`               | 24 cc   | `MVI r, imm`     | 8 cc   | +16 cc, +2 B |
+| r8, HL live, A live, spare — Tmp save/restore around LDA | 40 cc   | `MVI r, imm`     | 8 cc   | +32 cc, +4 B |
+| r8, HL live, A live, no spare — `PUSH HL; …; POP HL`     | 48 cc   | `MVI r, imm`     | 8 cc   | +40 cc, +4 B |
+| H/L, other half dead — `LXI HL, addr; MOV H/L, M`        | 20 cc   | `MVI H/L, imm`   | 8 cc   | +12 cc, +2 B |
+| H/L, A dead — `LDA addr; MOV H/L, A`                     | 24 cc   | `MVI H/L, imm`   | 8 cc   | +16 cc, +2 B |
+| H/L, A live, spare — Tmp save/restore around LDA         | 40 cc   | `MVI H/L, imm`   | 8 cc   | +32 cc, +4 B |
+| H/L, A live, no spare — `PUSH PSW; …; POP PSW`           | 52 cc   | `MVI H/L, imm`   | 8 cc   | +44 cc, +3 B |
+
+The per-occurrence win is smaller than Stage 4's optimistic numbers
+(which compared against the *pre-O64* classical expansion), but the
+set of eligible spills is now much larger: every call-site spill of
+a non-A i8 becomes a candidate.
+
+### Cost model
+
+* **K = 1 is always profitable.** The spill side is unchanged
+  (Δ/spill = 0), so the first patch buys `Δ/reload ≥ +12 cc` with
+  zero setup cost. Always worth it.
+* **K = 2: case-dependent.** Adding a second patched site costs
+  *one extra store* at the spill program point, because the ladder's
+  routing prefix (loading `A`, saving/restoring a spare, etc.) is
+  shared — only the final `STA` (or the `LXI HL, Sym+1; MOV M, r`
+  pair) has to be repeated, targeting the second patched site. For
+  each source shape:
+
+  | Spill row at source | Extra store shape              | Extra cost, bytes |
+  |---------------------|--------------------------------|-------------------|
+  | Row 1 (HL dead, MOV M route) | `LXI HL, Sym₂+1; MOV M, r` | 20 cc, 4 B       |
+  | Row 2 (A dead or loaded)     | `STA Sym₂+1`               | 16 cc, 3 B       |
+  | Row 3 (Tmp-saved)            | `STA Sym₂+1`               | 16 cc, 3 B       |
+  | Row 4 (HL-pushed)            | `STA Sym₂+1` or re-LXI+MOV | 16–20 cc          |
+
+  So K = 2 wins on net iff `Δ(2nd reload) > extra_store_cost`.
+  For the "r8 HL-live-A-live-no-spare" class (Δ = +40 cc) paired
+  with a Row-2 spill (extra STA = 16 cc), the net is +24 cc — a
+  clear win. For the "r8 HL-dead" class (Δ = +12 cc) paired with a
+  Row-1 spill (extra = 20 cc), the net is −8 cc — skip.
+* **K ≤ 1 for multi-source spills** (unchanged from Stage 3). Each
+  source point pays the full extra-store cost, and the K = 2
+  arithmetic flips negative quickly.
+* **Second-patch exclusions** (unchanged): never pick an `A`- or
+  `HL`-target reload as the second patch.
+
+For the initial Stage 6 rollout, keep the implementation simple:
+**hard-cap K ≤ 1 for all i8 non-A spill sources**. The K = 2 Δ
+arithmetic above needs per-row inspection of the spill-source
+ladder at chooser time, which complicates the shared helper. Lift
+the cap in a follow-up once measurements justify the extra chooser
+state.
+
+### Implementation
+
+Stage 6 is small because O64 already did the hard work:
+
+1. **Filter widening.** The Stage 5 spill filter
+   ```cpp
+   return Src == V6C::HL || Src == V6C::DE || Src == V6C::BC;
+   ```
+   extends to accept `V6C_SPILL8` with any i8 source register
+   (existing i16 behaviour unchanged). Express the i8 admission as
+   a separate branch, not by enlarging the regclass check, because
+   the ladder helper differs (`expandSpill8Static` vs the i16
+   emitters).
+2. **Emitter call.** Replace the Stage 4 A-only i8 spill emitter
+   ```cpp
+   BuildMI(MBB, R, DL, TII.get(V6C::STA))
+       .addSym(Syms[0], V6CII::MO_PATCH_IMM);
+   ```
+   with a call through the shared O64 helper:
+   ```cpp
+   expandSpill8Static(*SpillMI, SpillMI,
+                      SrcReg, /*SrcIsKill=*/true,
+                      TII, TRI,
+                      [&](MachineInstrBuilder &B) {
+                        B.addSym(Syms[0], V6CII::MO_PATCH_IMM);
+                      });
+   SpillMI->eraseFromParent();
+   ```
+   The helper emits whichever ladder row wins at the spill site;
+   the lambda supplies the patched address to whichever terminal
+   store that row selects (`LXI HL, Sym+1` for Row 1 of the B..E
+   ladder, `STA Sym+1` otherwise).
+3. **Reload-side emitter.** Unchanged from Stage 4. `MVI r, 0`
+   with `MO_PATCH_IMM` for every target 8-bit reg.
+4. **Unpatched-reload retarget.** If the slot has `N > K = 1`
+   reloads, the remaining `N − 1` classical reloads continue to
+   read from `Sym+1` via the normal O64 ladder (now operating on a
+   code-address target instead of the BSS slot). No extra work —
+   the classical reload emitter is unchanged; it just consumes the
+   `Sym+1` address the chooser supplies. The O64 ladder's
+   `LDA addr`/`LXI HL, addr` rows accept `Sym+1` transparently.
+5. **Cost-model integration.** Extend the Δ lookup table with the
+   eight i8 rows above. The chooser's `block_frequency × Δ` scoring
+   is unchanged; K-cap is still 1 at this stage.
+
+### Interactions
+
+* **O64** is a hard prerequisite and has landed. Stage 6 reuses
+  O64's `expandSpill8Static` helper, its `isRegDeadAfterMI` /
+  `findDeadSpareGPR8` liveness queries, and its post-O64 classical
+  baseline directly — no ladder code is duplicated on the patched
+  path.
+* **Stage 4** (A-source i8 patching) continues to be the fast path
+  for `src = A` — its emitter is one instruction (`STA Sym+1`)
+  whereas Stage 6 routes through the ladder. Keep the `src == A`
+  special case at the Stage 6 call site rather than pushing it
+  into the helper.
+* **O63** is orthogonal. Stage 6 uses only flag-clean instructions
+  (the ladder is flag-clean by O64 construction), so whether or
+  not `V6C_SPILL8` still carries `Defs=[FLAGS]` is immaterial.
+* **O43** interaction is unchanged: O43 only folds adjacent
+  SHLD/LHLD pairs, which Stage 6 never emits. Coexists cleanly
+  with the `-v6c-disable-shld-lhld-fold` measurement gate.
+* **LoadImmCombine / AccumulatorPlanning** already treat patched
+  `MVI` / `LXI` operands as opaque (the `MO_PATCH_IMM` flag
+  introduced in Stage 1). No new opt-outs.
+
+### Testing
+
+1. **Lit tests** under
+   `llvm/test/CodeGen/V6C/spill-patched-reload-i8-nonA-*.ll`, one
+   function per source register in `{B, C, D, E, H, L}`, with
+   CHECK lines asserting:
+   * `STA .Lpatch<N>+1` (or `LXI HL, .Lpatch<N>+1; MOV M, r` for
+     Row-1 sites) at the spill;
+   * `.Lpatch<N>:` label followed by `MVI r, 0x00` (or the correct
+     per-target opcode encoding) at the reload.
+2. **Regression.** Stage 4 tests continue to pass unmodified
+   (Stage 6 does not touch the A-source path). O64 lit tests
+   continue to pass unmodified. O43 tests unaffected.
+3. **Feature tests.** Re-generate `tests/features/37/v6llvmc.asm`
+   (the existing O61 reproducer) and any other feature test whose
+   hot loop spills a non-A i8 across a call. Expect strictly lower
+   cycle/byte counts in every affected function; update
+   `result.txt` accordingly following the five-section structure.
+4. **Flag gate.** With `-mv6c-spill-patched-reload` off, Stage 6
+   emits byte-identical output to the O64-only baseline. Verify
+   on every affected test.
+
 
 ## Summary
 

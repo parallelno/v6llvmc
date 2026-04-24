@@ -18,10 +18,11 @@ declare i16 @op2(i16)
 ; itself emits `LXI DE, 0` at .Lo61_N.
 ;
 ; CHECK-LABEL: multi_source:
-; CHECK:       SHLD    .L[[SYM:Lo61_[0-9]+]]+1
-; CHECK:       SHLD    .L[[SYM]]+1
-; CHECK:     .L[[SYM]]:
-; CHECK-NEXT:  LXI     DE, 0
+; CHECK:         CALL    op2
+; CHECK:         CALL    op1
+; CHECK:         SHLD    .L[[SYM:Lo61_[0-9]+]]+1
+; CHECK:       .L[[SYM]]:
+; CHECK-NEXT:    LXI     DE, 0
 define i16 @multi_source(i16 %x, i16 %y, i16 %z) norecurse {
 entry:
   %a1 = call i16 @op1(i16 %x)

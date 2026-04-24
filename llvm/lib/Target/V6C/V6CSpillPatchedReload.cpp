@@ -2,14 +2,18 @@
 //
 // Part of the V6C backend for LLVM.
 //
-// O61 (Stage 3): for static-stack-eligible functions, rewrite HL-source
-// V6C_SPILL16 / V6C_RELOAD16 groups into patched LXI <DstRP> reloads
-// whose imm bytes are written by SHLD spills (self-modifying code).
+// O61 (Stage 3 + Stage 4 + Stage 5): for static-stack-eligible
+// functions, rewrite admissible V6C_SPILL16/RELOAD16 (i16) and
+// V6C_SPILL8/RELOAD8 (i8) groups into patched LXI / MVI reloads
+// whose imm bytes are written by SHLD / STA spills (self-modifying
+// code).
 //
-// Stage 3 filter:
+// Filter (Stage 5):
 //   * function has hasStaticStack(),
-//   * one or more V6C_SPILL16 for the FI, every spill with src = HL,
-//   * one or more V6C_RELOAD16 for the FI, each with dst in {HL, DE, BC}.
+//   * i16 slot: spill src in {HL, DE, BC} (every spill); reload dst
+//     in {HL, DE, BC} (every reload),
+//   * i8  slot: spill src = A (Stage 4 scope; Stage 6 widens this);
+//     reload dst in any GR8 (every reload).
 //
 // Stage 3 chooser:
 //   * K <= 2 patched reloads per single-source spill,
@@ -223,13 +227,14 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
   for (auto &KV : Slots16) {
     PerFI &E = KV.second;
 
-    // Stage 3 filter: >=1 HL-source spill, reload dsts in {HL,DE,BC}.
+    // Stage 5 filter: >=1 spill from {HL,DE,BC}, reload dsts in {HL,DE,BC}.
     if (E.Spills.empty() || E.Reloads.empty())
       continue;
-    bool AllHLSources = llvm::all_of(E.Spills, [](MachineInstr *S) {
-      return S->getOperand(0).getReg() == V6C::HL;
+    bool AllAcceptedSources = llvm::all_of(E.Spills, [](MachineInstr *S) {
+      Register Src = S->getOperand(0).getReg();
+      return Src == V6C::HL || Src == V6C::DE || Src == V6C::BC;
     });
-    if (!AllHLSources)
+    if (!AllAcceptedSources)
       continue;
     bool AllSupported =
         llvm::all_of(E.Reloads, [](MachineInstr *R) {
@@ -268,18 +273,67 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       Syms.push_back(MF.getContext().createTempSymbol(
           "Lo61_", /*AlwaysAddSuffix=*/true));
 
-    // Rewrite every original spill as a sequence of SHLDs (one per
-    // winner). Kill flag goes only on the last emitted SHLD since HL
-    // must be live across the preceding stores.
+    // Rewrite every original spill as a per-source ladder (HL/DE/BC)
+    // ending in one SHLD per winner. Address operand on each SHLD is
+    // <Syms[i], MO_PATCH_IMM>. The materialisation prefix
+    // (XCHG for DE; MOV L,C; MOV H,B for BC) loads HL with the spilled
+    // value once; SHLDs then store HL to each patched site. Trailing
+    // fix-up (XCHG for DE; POP H for BC HL-live) is liveness-gated.
     for (MachineInstr *Spill : E.Spills) {
       MachineBasicBlock *MBB = Spill->getParent();
       DebugLoc DL = Spill->getDebugLoc();
+      Register SrcReg = Spill->getOperand(0).getReg();
       bool IsKill = Spill->getOperand(0).isKill();
-      for (size_t si = 0; si < Syms.size(); ++si) {
-        bool Kill = IsKill && (si + 1 == Syms.size());
-        BuildMI(*MBB, Spill, DL, TII.get(V6C::SHLD))
-            .addReg(V6C::HL, getKillRegState(Kill))
-            .addSym(Syms[si], V6CII::MO_PATCH_IMM);
+      bool HLDead = isRegDeadAfterMI(V6C::HL, *Spill, *MBB, TRI);
+
+      if (SrcReg == V6C::HL) {
+        // SHLD <Sym[i], MO_PATCH_IMM> per winner. Kill HL only on the
+        // last SHLD (HL must remain live across earlier SHLDs).
+        for (size_t si = 0; si < Syms.size(); ++si) {
+          bool Kill = IsKill && (si + 1 == Syms.size());
+          BuildMI(*MBB, Spill, DL, TII.get(V6C::SHLD))
+              .addReg(V6C::HL, getKillRegState(Kill))
+              .addSym(Syms[si], V6CII::MO_PATCH_IMM);
+        }
+      } else if (SrcReg == V6C::DE) {
+        // XCHG; SHLD ... ; [XCHG]. Trailing XCHG is skipped iff DE is
+        // killed by the spill AND HL is dead after — exactly the O42
+        // rule used by the classical DE spill in
+        // V6CRegisterInfo::eliminateFrameIndex.
+        bool SkipTrailing = IsKill && HLDead;
+        BuildMI(*MBB, Spill, DL, TII.get(V6C::XCHG));
+        for (size_t si = 0; si < Syms.size(); ++si) {
+          bool Kill = SkipTrailing && (si + 1 == Syms.size());
+          BuildMI(*MBB, Spill, DL, TII.get(V6C::SHLD))
+              .addReg(V6C::HL, getKillRegState(Kill))
+              .addSym(Syms[si], V6CII::MO_PATCH_IMM);
+        }
+        if (!SkipTrailing)
+          BuildMI(*MBB, Spill, DL, TII.get(V6C::XCHG));
+      } else {
+        assert(SrcReg == V6C::BC && "Stage 5 src must be HL/DE/BC");
+        // [PUSH H;] MOV L,C; MOV H,B; SHLD ... ; [POP H]. PUSH/POP HL
+        // is gated by HL liveness across the spill — same rule the
+        // classical BC spill in V6CRegisterInfo uses (O42).
+        if (!HLDead)
+          BuildMI(*MBB, Spill, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
+        BuildMI(*MBB, Spill, DL, TII.get(V6C::MOVrr))
+            .addReg(V6C::L, RegState::Define)
+            .addReg(V6C::C, getKillRegState(IsKill));
+        BuildMI(*MBB, Spill, DL, TII.get(V6C::MOVrr))
+            .addReg(V6C::H, RegState::Define)
+            .addReg(V6C::B, getKillRegState(IsKill));
+        for (size_t si = 0; si < Syms.size(); ++si) {
+          // HL is restored by the trailing POP H (when emitted) or
+          // dead after the last SHLD (when HLDead skipped PUSH/POP).
+          // Kill on the last SHLD only when no POP follows.
+          bool Kill = HLDead && (si + 1 == Syms.size());
+          BuildMI(*MBB, Spill, DL, TII.get(V6C::SHLD))
+              .addReg(V6C::HL, getKillRegState(Kill))
+              .addSym(Syms[si], V6CII::MO_PATCH_IMM);
+        }
+        if (!HLDead)
+          BuildMI(*MBB, Spill, DL, TII.get(V6C::POP), V6C::HL);
       }
       Spill->eraseFromParent();
     }

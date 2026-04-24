@@ -18,9 +18,10 @@ declare i16 @op2(i16)
 ; (reload dst != HL). Stage 2 must patch with `LXI DE, 0`.
 ;
 ; CHECK-LABEL: de_one_reload:
-; CHECK:       SHLD    .L[[SYM:[^ ]+]]+1
-; CHECK:     .L[[SYM]]:
-; CHECK-NEXT:  LXI     DE, 0
+; CHECK:         CALL    op1
+; CHECK:         SHLD    .L[[SYM:Lo61_[0-9]+]]+1
+; CHECK:       .L[[SYM]]:
+; CHECK-NEXT:    LXI     DE, 0
 define i16 @de_one_reload(i16 %x, i16 %y) norecurse {
 entry:
   %a = call i16 @op1(i16 %x)
