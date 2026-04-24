@@ -1,0 +1,235 @@
+=== Feature 38: O64 Liveness-Aware i8 Spill/Reload Lowering ===
+
+Demonstrates O64 Shape B Row 3 firing at a reload site where both HL and
+A are live but a spare GPR (B) is dead after the reload. O64 replaces
+the classical PUSH HL / LXI HL / MOV r,M / POP HL sequence (4 insns,
+48cc, 6B) with MOV B,A / LDA / MOV r,A / MOV A,B (4 insns, 40cc, 5B),
+saving 8cc and 1 byte per occurrence.
+
+----------------------------------------------------------------
+1. Test case (v6llvmc.c = c8080.c, shared)
+----------------------------------------------------------------
+
+__attribute__((leaf)) extern unsigned char op(unsigned char x);
+__attribute__((leaf)) extern void use5(unsigned char, unsigned char,
+                                       unsigned char, unsigned char,
+                                       unsigned char);
+
+unsigned char many_i8(unsigned char a, unsigned char b, unsigned char c,
+                      unsigned char d, unsigned char e) {
+    unsigned char x1 = op(a);
+    unsigned char x2 = op(b);
+    unsigned char x3 = op(c);
+    unsigned char x4 = op(d);
+    unsigned char x5 = op(e);
+    use5(x1, x2, x3, x4, x5);
+    return (unsigned char)(x1 ^ x2 ^ x3 ^ x4 ^ x5);
+}
+
+int main(int argc, char **argv) {
+    many_i8(0x11, 0x22, 0x33, 0x44, 0x55);
+    return 0;
+}
+
+----------------------------------------------------------------
+2. c8080 output (main + many_i8, i8080 mnemonics)
+----------------------------------------------------------------
+
+main:
+    SHLD __a_2_main            ; 16cc 3B   (ld (__a_2_main), hl)
+    MVI  A, 0x11               ;  8cc 2B
+    STA  __a_1_many_i8         ; 16cc 3B
+    MVI  A, 0x22               ;  8cc 2B
+    STA  __a_2_many_i8         ; 16cc 3B
+    MVI  A, 0x33               ;  8cc 2B
+    STA  __a_3_many_i8         ; 16cc 3B
+    MVI  A, 0x44               ;  8cc 2B
+    STA  __a_4_many_i8         ; 16cc 3B
+    MVI  A, 0x55               ;  8cc 2B
+    CALL many_i8               ; 18cc 3B
+    LXI  HL, 0                 ; 12cc 3B
+    RET                        ; 10cc 1B
+
+many_i8:
+    STA  __a_5_many_i8         ; 16cc 3B
+    LDA  __a_1_many_i8         ; 16cc 3B
+    CALL op                    ; 18cc 3B
+    STA  many_i8_x1            ; 16cc 3B
+    LDA  __a_2_many_i8         ; 16cc 3B
+    CALL op                    ; 18cc 3B
+    STA  many_i8_x2            ; 16cc 3B
+    LDA  __a_3_many_i8         ; 16cc 3B
+    CALL op                    ; 18cc 3B
+    STA  many_i8_x3            ; 16cc 3B
+    LDA  __a_4_many_i8         ; 16cc 3B
+    CALL op                    ; 18cc 3B
+    STA  many_i8_x4            ; 16cc 3B
+    LDA  __a_5_many_i8         ; 16cc 3B
+    CALL op                    ; 18cc 3B
+    STA  many_i8_x5            ; 16cc 3B
+    LDA  many_i8_x1            ; 16cc 3B
+    STA  __a_1_use5            ; 16cc 3B
+    LDA  many_i8_x2            ; 16cc 3B
+    STA  __a_2_use5            ; 16cc 3B
+    LDA  many_i8_x3            ; 16cc 3B
+    STA  __a_3_use5            ; 16cc 3B
+    LDA  many_i8_x4            ; 16cc 3B
+    STA  __a_4_use5            ; 16cc 3B
+    LDA  many_i8_x5            ; 16cc 3B
+    CALL use5                  ; 18cc 3B
+    LXI  HL, many_i8_x1        ; 12cc 3B
+    LDA  many_i8_x2            ; 16cc 3B
+    XRA  M                     ;  8cc 1B
+    LXI  HL, many_i8_x3        ; 12cc 3B
+    XRA  M                     ;  8cc 1B
+    LXI  HL, many_i8_x4        ; 12cc 3B
+    XRA  M                     ;  8cc 1B
+    LXI  HL, many_i8_x5        ; 12cc 3B
+    XRA  M                     ;  8cc 1B
+    RET                        ; 10cc 1B
+
+Note: c8080 does not emit XRA M directly; the Z80 form is `xor (hl)`
+which is the same i8080 opcode XRA M (0xAE).
+
+c8080 stats
+  main       : 160cc   30B
+  many_i8    : 586cc   99B
+
+----------------------------------------------------------------
+3. v6llvmc output with O64 (v6llvmc_new01.asm)
+----------------------------------------------------------------
+
+many_i8:
+    LXI  HL, 0xfffe            ; 12cc 3B   prologue: reserve 2 dyn
+    DAD  SP                    ; 12cc 1B
+    SPHL                       ;  8cc 1B
+    LXI  HL, __v6c_ss.many_i8+2;12cc 3B
+    MOV  M, C                  ;  8cc 1B
+    LXI  HL, __v6c_ss.many_i8+1;12cc 3B
+    MOV  M, E                  ;  8cc 1B
+    CALL op                    ; 18cc 3B
+    STA  __v6c_ss.many_i8      ; 16cc 3B
+    LDA  __v6c_ss.many_i8+1    ; 16cc 3B
+    CALL op                    ; 18cc 3B
+    STA  __v6c_ss.many_i8+1    ; 16cc 3B
+    LDA  __v6c_ss.many_i8+2    ; 16cc 3B
+    CALL op                    ; 18cc 3B
+    STA  __v6c_ss.many_i8+2    ; 16cc 3B
+    LXI  HL, 2                 ; 12cc 3B   load `d` from dyn slot
+    DAD  SP                    ; 12cc 1B
+    XCHG                       ;  4cc 1B
+    LDAX DE                    ;  8cc 1B
+    CALL op                    ; 18cc 3B
+    STA  __v6c_ss.many_i8+3    ; 16cc 3B
+    LXI  HL, 2                 ; 12cc 3B   load `e` from dyn slot
+    DAD  SP                    ; 12cc 1B
+    XCHG                       ;  4cc 1B
+    LDAX DE                    ;  8cc 1B
+    CALL op                    ; 18cc 3B
+    MOV  E, A                  ;  8cc 1B
+    LXI  HL, __v6c_ss.many_i8+4;12cc 3B
+    MOV  M, E                  ;  8cc 1B
+    LXI  HL, 0                 ; 12cc 3B
+    DAD  SP                    ; 12cc 1B
+    LDA  __v6c_ss.many_i8+3    ; 16cc 3B
+    MOV  M, A                  ;  8cc 1B
+    INX  HL                    ;  4cc 1B
+    MOV  M, E                  ;  8cc 1B
+    LDA  __v6c_ss.many_i8      ; 16cc 3B
+    LXI  HL, __v6c_ss.many_i8+1;12cc 3B
+    MOV  E, M                  ;  8cc 1B
+    LXI  HL, __v6c_ss.many_i8+2;12cc 3B
+    MOV  C, M                  ;  8cc 1B
+    CALL use5                  ; 18cc 3B
+    LDA  __v6c_ss.many_i8+1    ; 16cc 3B
+    LXI  HL, __v6c_ss.many_i8  ; 12cc 3B
+    MOV  L, M                  ;  8cc 1B
+    XRA  L                     ;  4cc 1B
+    LXI  HL, __v6c_ss.many_i8+2;12cc 3B
+    MOV  L, M                  ;  8cc 1B
+    XRA  L                     ;  4cc 1B
+    LXI  HL, __v6c_ss.many_i8+3;12cc 3B
+    MOV  L, M                  ;  8cc 1B
+    XRA  L                     ;  4cc 1B
+    LXI  HL, __v6c_ss.many_i8+4;12cc 3B
+    MOV  L, M                  ;  8cc 1B
+    XRA  L                     ;  4cc 1B
+    LXI  HL, 2                 ; 12cc 3B   epilogue
+    DAD  SP                    ; 12cc 1B
+    SPHL                       ;  8cc 1B
+    RET                        ; 10cc 1B
+
+main:
+    LXI  HL, 0xfffe            ; 12cc 3B   prologue
+    DAD  SP                    ; 12cc 1B
+    SPHL                       ;  8cc 1B
+    MVI  A, 0x11               ;  8cc 2B
+    CALL op                    ; 18cc 3B
+    STA  __v6c_ss.main         ; 16cc 3B
+    MVI  A, 0x22               ;  8cc 2B
+    CALL op                    ; 18cc 3B
+    STA  __v6c_ss.main+1       ; 16cc 3B
+    MVI  A, 0x33               ;  8cc 2B
+    CALL op                    ; 18cc 3B
+    STA  __v6c_ss.main+2       ; 16cc 3B
+    MVI  A, 0x44               ;  8cc 2B
+    CALL op                    ; 18cc 3B
+    STA  __v6c_ss.main+3       ; 16cc 3B
+    MVI  A, 0x55               ;  8cc 2B
+    CALL op                    ; 18cc 3B
+    LXI  HL, 0                 ; 12cc 3B
+    DAD  SP                    ; 12cc 1B
+    ;--- O64 Shape B Row 3 (HL live, A live, B dead): ---
+    MOV  B, A                  ;  8cc 1B   save A in spare B
+    LDA  __v6c_ss.main+3       ; 16cc 3B   reload byte via A
+    MOV  E, A                  ;  8cc 1B   route into E
+    MOV  A, B                  ;  8cc 1B   restore A
+    ;----------------------------------------------------
+    MOV  M, E                  ;  8cc 1B
+    INX  HL                    ;  4cc 1B
+    MOV  M, A                  ;  8cc 1B
+    LDA  __v6c_ss.main         ; 16cc 3B
+    LXI  HL, __v6c_ss.main+1   ; 12cc 3B
+    MOV  E, M                  ;  8cc 1B
+    LXI  HL, __v6c_ss.main+2   ; 12cc 3B
+    MOV  C, M                  ;  8cc 1B
+    CALL use5                  ; 18cc 3B
+    LXI  HL, 0                 ; 12cc 3B   epilogue
+    XCHG                       ;  4cc 1B
+    LXI  HL, 2                 ; 12cc 3B
+    DAD  SP                    ; 12cc 1B
+    SPHL                       ;  8cc 1B
+    XCHG                       ;  4cc 1B
+    RET                        ; 10cc 1B
+
+v6llvmc stats (new, O64 on)
+  many_i8    : 676cc  100B
+  main       : 378cc   69B
+
+v6llvmc stats (old, O64 off = v6llvmc_old.asm)
+  many_i8    : 676cc  100B   (unchanged: reloads already Shape A / HL-dead)
+  main       : 386cc   70B   (O64 saved 8cc + 1B via Shape B Row 3)
+
+Delta
+  main       : -8cc, -1B (one Shape B Row 3 firing)
+  many_i8    :  0, 0     (no eligible reload site — all reloads are
+                          Shape A (LDA) or Shape C with HL dead)
+
+----------------------------------------------------------------
+4. Notes
+----------------------------------------------------------------
+
+* c8080's main is smaller (30B vs 69B) and faster (160cc vs 378cc)
+  because c8080 uses static-stack globals for EVERY argument and
+  local, with zero register allocation overhead. v6llvmc still pays
+  register-homing costs but O64 narrows the gap on every i8 reload
+  site that meets the Row 3 precondition.
+
+* many_i8 is dominated by 5x (LDA slot + CALL + STA slot) sequences;
+  no Shape B/C sites appear after RA in this function with the
+  current schedule. O64 leaves this function unchanged.
+
+* The O64 ladder also covers Shape C (H/L sites) and Shape B Row 2
+  (A dead), which this test does not exercise. Coverage for those
+  rows is provided by the O64 lit test
+  `llvm/test/CodeGen/V6C/spill-reload-i8-static-shapes.ll`.

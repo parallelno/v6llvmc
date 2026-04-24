@@ -16,9 +16,9 @@ Cross-referenced with TableGen `SchedWriteRes` names from `V6CSchedule.td`.
 
 | SchedWrite | Cycles | Latency (cost units) | Description |
 |------------|--------|----------------------|-------------|
-| WriteALU4 | 4 | 1 | ALU reg-reg, MOV r,r, rotate, misc single-byte |
+| WriteALU4 | 4 | 1 | ALU reg-reg, rotate, misc single-byte |
 | WriteALU8 | 8 | 2 | ALU mem/imm, INR/DCR reg, SPHL, PCHL, HLT |
-| WriteMOV8 | 8 | 2 | MOV r,M; MOV M,r; MVI r,d8; LDAX; STAX |
+| WriteMOV8 | 8 | 2 | MOV r,r; MOV r,M; MOV M,r; MVI r,d8; LDAX; STAX |
 | WriteINX8 | 8 | 2 | INX, DCX (16-bit inc/dec) |
 | WriteDAD12 | 12 | 3 | DAD, INR M, DCR M, POP, IN, OUT |
 | WriteMOV16 | 12 | 3 | MVI M,d8 |
@@ -36,7 +36,7 @@ Cross-referenced with TableGen `SchedWriteRes` names from `V6CSchedule.td`.
 
 | Mnemonic | Bytes | Cycles | SchedWrite | Notes |
 |----------|-------|--------|------------|-------|
-| MOV r,r | 1 | 8 | WriteALU4 | Register to register |
+| MOV r,r | 1 | 8 | WriteMOV8 | Register to register (Vector-06c: same cost as MOV r,M) |
 | MOV r,M | 1 | 8 | WriteMOV8 | Memory (HL) to register |
 | MOV M,r | 1 | 8 | WriteMOV8 | Register to memory (HL) |
 | MVI r,d8 | 2 | 8 | WriteMOV8 | Immediate to register |

@@ -33,6 +33,7 @@
 #include "V6C.h"
 #include "V6CInstrInfo.h"
 #include "V6CMachineFunctionInfo.h"
+#include "V6CSpillExpand.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -89,36 +90,9 @@ static bool isHLRelated(unsigned Reg) {
 /// Return true if physical register Reg is dead after MI. Scans forward
 /// to end of MBB, then checks successor live-ins.
 ///
-/// Mirrors the helper in V6CRegisterInfo.cpp (same name, same semantics).
-/// The helper there is a file-local `static`, so we duplicate it here
-/// rather than export a shared utility for three uses in two files.
-static bool isRegDeadAfterMI(unsigned Reg, const MachineInstr &MI,
-                             MachineBasicBlock &MBB,
-                             const TargetRegisterInfo *TRI) {
-  for (auto I = std::next(MI.getIterator()); I != MBB.end(); ++I) {
-    bool usesReg = false, defsReg = false;
-    for (const MachineOperand &MO : I->operands()) {
-      if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
-        continue;
-      if (MO.isUse())
-        usesReg = true;
-      if (MO.isDef())
-        defsReg = true;
-    }
-    if (usesReg)
-      return false;
-    if (defsReg)
-      return true;
-  }
-  for (MachineBasicBlock *Succ : MBB.successors()) {
-    for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
-         ++AI) {
-      if (Succ->isLiveIn(*AI))
-        return false;
-    }
-  }
-  return true;
-}
+/// Shared with V6CRegisterInfo.cpp via V6CSpillExpand.h (O64). Prior
+/// Stages 2/3/4 of O61 inlined a copy of this helper; O64 consolidated
+/// it into llvm::isRegDeadAfterMI.
 
 /// Score a single reload candidate. Returns 0 if ineligible (dst not
 /// in the permitted set for this slot's width, or Delta <= 0),
@@ -466,9 +440,10 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       PR->eraseFromParent();
     }
 
-    // Unpatched i8 reloads: mirror V6CRegisterInfo::eliminateFrameIndex
-    // V6C_RELOAD8 expansion, replacing the slot-address operand with
-    // <Syms[0], MO_PATCH_IMM>.
+    // Unpatched i8 reloads: share the O64 decision ladder with
+    // V6CRegisterInfo::eliminateFrameIndex, but with the address
+    // operand supplied as <Syms[0], MO_PATCH_IMM> instead of a
+    // GlobalAddress+offset.
     auto isWinner = [&](size_t i) {
       return llvm::is_contained(Winners, (int)i);
     };
@@ -484,51 +459,12 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
         // LDA <Syms[0], MO_PATCH_IMM>   (16cc, 3B)
         BuildMI(*MBB, R, DL, TII.get(V6C::LDA), V6C::A)
             .addSym(Syms[0], V6CII::MO_PATCH_IMM);
-      } else if (Dst == V6C::H || Dst == V6C::L) {
-        // Reloading into H or L: use DE as temp to preserve other half
-        // (mirrors the static-stack expansion).
-        bool LoadingH = (Dst == V6C::H);
-        Register OtherHL = LoadingH ? V6C::L : V6C::H;
-        bool OtherHLDead = isRegDeadAfterMI(OtherHL, *R, *MBB, TRI);
-        if (OtherHLDead) {
-          // Clobber entire HL, then extract.
-          BuildMI(*MBB, R, DL, TII.get(V6C::LXI))
-              .addReg(V6C::HL, RegState::Define)
-              .addSym(Syms[0], V6CII::MO_PATCH_IMM);
-          BuildMI(*MBB, R, DL, TII.get(V6C::MOVrM))
-              .addReg(Dst, RegState::Define);
-        } else {
-          Register SaveOther = V6C::D;
-          bool DEDead = isRegDeadAfterMI(V6C::DE, *R, *MBB, TRI);
-          if (!DEDead)
-            BuildMI(*MBB, R, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
-          BuildMI(*MBB, R, DL, TII.get(V6C::MOVrr))
-              .addReg(SaveOther, RegState::Define).addReg(OtherHL);
-          BuildMI(*MBB, R, DL, TII.get(V6C::LXI))
-              .addReg(V6C::HL, RegState::Define)
-              .addSym(Syms[0], V6CII::MO_PATCH_IMM);
-          BuildMI(*MBB, R, DL, TII.get(V6C::MOVrM))
-              .addReg(Dst, RegState::Define);
-          BuildMI(*MBB, R, DL, TII.get(V6C::MOVrr))
-              .addReg(OtherHL, RegState::Define).addReg(SaveOther);
-          if (!DEDead)
-            BuildMI(*MBB, R, DL, TII.get(V6C::POP), V6C::DE);
-        }
       } else {
-        // B/C/D/E: [PUSH HL;] LXI HL, Sym+1; MOV r, M; [POP HL].
-        assert((Dst == V6C::B || Dst == V6C::C ||
-                Dst == V6C::D || Dst == V6C::E) &&
-               "Stage 4 i8 reload dst must be GR8");
-        bool HLDead = isRegDeadAfterMI(V6C::HL, *R, *MBB, TRI);
-        if (!HLDead)
-          BuildMI(*MBB, R, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
-        BuildMI(*MBB, R, DL, TII.get(V6C::LXI))
-            .addReg(V6C::HL, RegState::Define)
-            .addSym(Syms[0], V6CII::MO_PATCH_IMM);
-        BuildMI(*MBB, R, DL, TII.get(V6C::MOVrM))
-            .addReg(Dst, RegState::Define);
-        if (!HLDead)
-          BuildMI(*MBB, R, DL, TII.get(V6C::POP), V6C::HL);
+        // O64 ladder handles Shape B and Shape C.
+        expandReload8Static(*R, R, Dst, TII, TRI,
+            [&](MachineInstrBuilder &B) {
+              B.addSym(Syms[0], V6CII::MO_PATCH_IMM);
+            });
       }
       R->eraseFromParent();
     }

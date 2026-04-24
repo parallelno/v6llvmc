@@ -8,6 +8,7 @@
 #include "V6C.h"
 #include "V6CFrameLowering.h"
 #include "V6CMachineFunctionInfo.h"
+#include "V6CSpillExpand.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -69,33 +70,7 @@ V6CRegisterInfo::getLargestLegalSuperClass(
 /// Check if a physical register is dead after a given instruction (O42).
 /// Scans forward from MI (exclusive) to end of MBB.
 /// Returns true if no read before redef, and Reg not in any successor livein.
-static bool isRegDeadAfterMI(unsigned Reg, const MachineInstr &MI,
-                             MachineBasicBlock &MBB,
-                             const TargetRegisterInfo *TRI) {
-  for (auto I = std::next(MI.getIterator()); I != MBB.end(); ++I) {
-    bool usesReg = false, defsReg = false;
-    for (const MachineOperand &MO : I->operands()) {
-      if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
-        continue;
-      if (MO.isUse())
-        usesReg = true;
-      if (MO.isDef())
-        defsReg = true;
-    }
-    if (usesReg)
-      return false;
-    if (defsReg)
-      return true;
-  }
-  for (MachineBasicBlock *Succ : MBB.successors()) {
-    for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
-         ++AI) {
-      if (Succ->isLiveIn(*AI))
-        return false;
-    }
-  }
-  return true;
-}
+// Moved to V6CSpillExpand.cpp (O64). Declared in V6CSpillExpand.h.
 
 bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
                                            int SPAdj,
@@ -142,49 +117,18 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 
     if (Opc == V6C::V6C_SPILL8) {
       Register SrcReg = MI.getOperand(0).getReg();
+      bool IsKill = MI.getOperand(0).isKill();
       if (SrcReg == V6C::A) {
         // STA __v6c_ss+offset (16cc, 3B)
         BuildMI(MBB, II, DL, TII.get(V6C::STA))
-            .addReg(V6C::A)
+            .addReg(V6C::A, getKillRegState(IsKill))
             .addGlobalAddress(GV, StaticOffset);
-      } else if (SrcReg == V6C::H || SrcReg == V6C::L) {
-        // Spilling H or L: use DE as temp.
-        bool SpillingH = (SrcReg == V6C::H);
-        Register ValReg = SpillingH ? V6C::D : V6C::E;
-        Register OtherReg = SpillingH ? V6C::E : V6C::D;
-        Register OtherHL = SpillingH ? V6C::L : V6C::H;
-        // O42: skip PUSH/POP DE when DE is dead after this instruction.
-        bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
-        if (!DEDead)
-          BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
-            .addReg(ValReg, RegState::Define).addReg(SrcReg);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
-            .addReg(OtherReg, RegState::Define).addReg(OtherHL);
-        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-            .addReg(V6C::HL, RegState::Define)
-            .addGlobalAddress(GV, StaticOffset);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVMr)).addReg(ValReg);
-        // Restore HL from DE.
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
-            .addReg(V6C::H, RegState::Define).addReg(V6C::D);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
-            .addReg(V6C::L, RegState::Define).addReg(V6C::E);
-        if (!DEDead)
-          BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
       } else {
-        // B,C,D,E: PUSH HL; LXI HL, addr; MOV M, r; POP HL (42cc, 6B)
-        // O42: skip PUSH/POP HL when HL is dead after this instruction.
-        bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
-        if (!HLDead)
-          BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
-        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-            .addReg(V6C::HL, RegState::Define)
-            .addGlobalAddress(GV, StaticOffset);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
-            .addReg(SrcReg, getKillRegState(MI.getOperand(0).isKill()));
-        if (!HLDead)
-          BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+        // O64 ladder handles Shape B (r in {B,C,D,E}) and Shape C (r in {H,L}).
+        expandSpill8Static(MI, II, SrcReg, IsKill, TII, this,
+            [&](MachineInstrBuilder &B) {
+              B.addGlobalAddress(GV, StaticOffset);
+            });
       }
       MI.eraseFromParent();
       return true;
@@ -196,51 +140,12 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
         // LDA __v6c_ss+offset (16cc, 3B)
         BuildMI(MBB, II, DL, TII.get(V6C::LDA), V6C::A)
             .addGlobalAddress(GV, StaticOffset);
-      } else if (DstReg == V6C::H || DstReg == V6C::L) {
-        // Reloading into H or L: use DE as temp to preserve other half.
-        bool LoadingH = (DstReg == V6C::H);
-        Register OtherHL = LoadingH ? V6C::L : V6C::H;
-        // O49: skip saving/restoring the other half when it's dead.
-        bool OtherHLDead = isRegDeadAfterMI(OtherHL, MI, MBB, this);
-        if (OtherHLDead) {
-          // Other half dead: just clobber entire HL (20cc, 4B).
-          BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-              .addReg(V6C::HL, RegState::Define)
-              .addGlobalAddress(GV, StaticOffset);
-          BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
-              .addReg(DstReg, RegState::Define);
-        } else {
-          // Other half live: save it in D, reload, restore.
-          Register SaveOther = V6C::D;
-          // O42: skip PUSH/POP DE when DE is dead after this instruction.
-          bool DEDead = isRegDeadAfterMI(V6C::DE, MI, MBB, this);
-          if (!DEDead)
-            BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::DE);
-          BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
-              .addReg(SaveOther, RegState::Define).addReg(OtherHL);
-          BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-              .addReg(V6C::HL, RegState::Define)
-              .addGlobalAddress(GV, StaticOffset);
-          BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
-              .addReg(DstReg, RegState::Define);
-          BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
-              .addReg(OtherHL, RegState::Define).addReg(SaveOther);
-          if (!DEDead)
-            BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::DE);
-        }
       } else {
-        // B,C,D,E: PUSH HL; LXI HL, addr; MOV r, M; POP HL (42cc, 6B)
-        // O42: skip PUSH/POP HL when HL is dead after this instruction.
-        bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
-        if (!HLDead)
-          BuildMI(MBB, II, DL, TII.get(V6C::PUSH)).addReg(V6C::HL);
-        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
-            .addReg(V6C::HL, RegState::Define)
-            .addGlobalAddress(GV, StaticOffset);
-        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
-            .addReg(DstReg, RegState::Define);
-        if (!HLDead)
-          BuildMI(MBB, II, DL, TII.get(V6C::POP), V6C::HL);
+        // O64 ladder handles Shape B (r in {B,C,D,E}) and Shape C (r in {H,L}).
+        expandReload8Static(MI, II, DstReg, TII, this,
+            [&](MachineInstrBuilder &B) {
+              B.addGlobalAddress(GV, StaticOffset);
+            });
       }
       MI.eraseFromParent();
       return true;

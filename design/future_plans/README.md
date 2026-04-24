@@ -61,7 +61,10 @@
 | O57 | Shift/Rotate Chaining | [O57_shift_rotate_chaining.md](O57_shift_rotate_chaining.md) | llvm-mos |
 | O58 | CmpZero Backward Scan Enhancement | [O58_cmpzero_backward_scan.md](O58_cmpzero_backward_scan.md) | llvm-mos |
 | O59 | Frequency-Weighted Spill Slot Allocation | [O59_spill_slot_allocation.md](O59_spill_slot_allocation.md) | llvm-mos |
-| O61 | Spill Into the Reload's Immediate Operand (Self-Modifying) | [O61_spill_in_reload_immediate.md](O61_spill_in_reload_immediate.md) | V6C || O62 | Efficient i16 / i8 Shift Expansion (Constant Amount) | [O62_efficient_shift_expansion.md](O62_efficient_shift_expansion.md) | V6C |
+| O61 | Spill Into the Reload's Immediate Operand (Self-Modifying) | [O61_spill_in_reload_immediate.md](O61_spill_in_reload_immediate.md) | V6C |
+| O62 | Efficient i16 / i8 Shift Expansion (Constant Amount) | [O62_efficient_shift_expansion.md](O62_efficient_shift_expansion.md) | V6C |
+| O63 | Split Spill/Reload Pseudos — Drop False `Defs=[FLAGS]` on Static Stack | [O63_split_spill_pseudo_flags.md](O63_split_spill_pseudo_flags.md) | V6C |
+| O64 | Liveness-Aware i8 Spill/Reload Lowering (Static-Stack Shapes B & C) | [O64_liveness_aware_i8_spill_lowering.md](O64_liveness_aware_i8_spill_lowering.md) | V6C |
 ---
 
 ## Summary Table
@@ -125,7 +128,10 @@
 | O57 | Shift/Rotate Chaining | llvm-mos | 4-24cc per chain | Low | Medium | Low | None | [ ] |
 | O58 | CmpZero Backward Scan | llvm-mos | 4cc, 1B per instance | Medium | Low | Very Low | O17 done | [ ] |
 | O59 | Freq-Weighted Spill Slot Alloc | llvm-mos | indirect (better slot placement) | Medium | High | Medium | O10 done | [ ] |
-| O61 | Spill Into Reload Immediate (self-modifying) | V6C | 10-20cc, 1-2B per reload | Very high | Medium | Low-Med | O10 done | [x] || O62 | Efficient i16 Shift Expansion (constant amount) | V6C | 16cc, 1B per shift-by-8/16 | High | Low | Very Low | None | [ ] |
+| O61 | Spill Into Reload Immediate (self-modifying) | V6C | 10-20cc, 1-2B per reload | Very high | Medium | Low-Med | O10 done | [x] |
+| O62 | Efficient i16 Shift Expansion (constant amount) | V6C | 16cc, 1B per shift-by-8/16 | High | Low | Very Low | None | [ ] |
+| O63 | Split Spill Pseudos — drop false FLAGS def on static stack | V6C | 4-12cc, 1-3B per fold (indirect) | Medium | Low-Med | Low-Med | O10 done | [ ] |
+| O64 | Liveness-Aware i8 Spill/Reload (Shapes B & C) | V6C | 8-56cc, 0-2B per non-A i8 spill/reload | Very high | Low-Med | Low | O10 done, O42 done | [x] |
 ### Recommended order
 
 **Phase 1 — Quick wins (Low complexity, immediate benefit)**:

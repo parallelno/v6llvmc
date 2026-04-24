@@ -35,6 +35,7 @@ add_llvm_target(V6CCodeGen
   V6CRedundantFlagElim.cpp
   V6CRegisterInfo.cpp
   V6CSPTrickOpt.cpp
+  V6CSpillExpand.cpp
   V6CSpillForwarding.cpp
   V6CSpillPatchedReload.cpp
   V6CStaticStackAlloc.cpp
