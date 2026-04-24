@@ -50,7 +50,7 @@
 | O45 | Adjacent POP/PUSH Cancellation Peephole | [O45_pop_push_cancellation.md](O45_pop_push_cancellation.md) | V6C |
 | O46 | MVI M, imm8 Immediate Store Peephole (superseded by O49) | [O46_mvi_m_immediate_store.md](O46_mvi_m_immediate_store.md) | V6C |
 | O47 | Sub-Register Liveness (Dead Half-Register Elimination) | [O47_subreg_liveness.md](O47_subreg_liveness.md) | V6C |
-| O49 | Direct Memory ALU/Store ISel (All M-Operand Instructions) | [O49_direct_memory_alu_isel.md](O49_direct_memory_alu_isel.md) | V6C |
+| O49 | Direct Memory ALU/Store ISel (All M-Operand Instructions) ✅ | [O49_direct_memory_alu_isel.md](O49_direct_memory_alu_isel.md) | V6C |
 | O50 | Aggressive Inlining Control (TTI Override) | [O50_aggressive_inlining_control.md](O50_aggressive_inlining_control.md) | llvm-z80 |
 | O51 | LSR Cost Tuning (isLSRCostLess Enhancement) | [O51_lsr_cost_tuning.md](O51_lsr_cost_tuning.md) | llvm-z80 |
 | O52 | Index IV Rewriting (8-bit Loop Indices) | [O52_index_iv_rewriting.md](O52_index_iv_rewriting.md) | llvm-mos |
@@ -65,6 +65,7 @@
 | O62 | Efficient i16 / i8 Shift Expansion (Constant Amount) | [O62_efficient_shift_expansion.md](O62_efficient_shift_expansion.md) | V6C |
 | O63 | Split Spill/Reload Pseudos — Drop False `Defs=[FLAGS]` on Static Stack | [O63_split_spill_pseudo_flags.md](O63_split_spill_pseudo_flags.md) | V6C |
 | O64 | Liveness-Aware i8 Spill/Reload Lowering (Static-Stack Shapes B & C) | [O64_liveness_aware_i8_spill_lowering.md](O64_liveness_aware_i8_spill_lowering.md) | V6C |
+| O65 | MOV r, M + ALU r Fold (Direct Memory ALU Peephole) | [O65_mov_alu_m_fold.md](O65_mov_alu_m_fold.md) | V6C |
 ---
 
 ## Summary Table
@@ -117,7 +118,7 @@
 | O45 | Adjacent POP/PUSH Cancellation | V6C | 24cc, 2B per pair | High | Very Low | Very Low | O42 done | [ ] |
 | O46 | MVI M, imm8 Immediate Store (superseded by O49) | V6C | 4cc, 1B per instance | Low-Med | Very Low | Very Low | None | [ ] |
 | O47 | Sub-Register Liveness (Dead Half-Reg Elim) | V6C | 8cc, 2B per pair | Medium | Low (peephole) / High (RA) | Very Low / Med | O10, O20 done | [ ] |
-| O49 | Direct Memory ALU/Store ISel (M-ops) | V6C | 4-8cc, 1-2B per instance | High | Low-Med | Very Low | O48 helps, supersedes O4+O46 | [ ] |
+| O49 | Direct Memory ALU/Store ISel (M-ops) | V6C | 4-8cc, 1-2B per instance | High | Low-Med | Very Low | O48 helps, supersedes O4+O46 | [x] |
 | O50 | Aggressive Inlining Control (TTI) | llvm-z80 | indirect (prevents spill explosions) | High | Very Low | Low | None | [ ] |
 | O51 | LSR Cost Tuning (isLSRCostLess) | llvm-z80 | indirect (better LSR formulas) | High | Very Low | Very Low | O7 done | [ ] |
 | O52 | Index IV Rewriting (8-bit indices) | llvm-mos | 14cc/iter | High | Low | Low | Complements O7 | [ ] |
@@ -132,6 +133,8 @@
 | O62 | Efficient i16 Shift Expansion (constant amount) | V6C | 16cc, 1B per shift-by-8/16 | High | Low | Very Low | None | [ ] |
 | O63 | Split Spill Pseudos — drop false FLAGS def on static stack | V6C | 4-12cc, 1-3B per fold (indirect) | Medium | Low-Med | Low-Med | O10 done | [ ] |
 | O64 | Liveness-Aware i8 Spill/Reload (Shapes B & C) | V6C | 8-56cc, 0-2B per non-A i8 spill/reload | Very high | Low-Med | Low | O10 done, O42 done | [x] |
+| O65 | MOV r, M + ALU r Fold (peephole backstop to O49) | V6C | 4cc, 1B per fold | Med-High | Very Low | Very Low | None (composes with O49) | [ ] |
+
 ### Recommended order
 
 **Phase 1 — Quick wins (Low complexity, immediate benefit)**:
@@ -172,6 +175,7 @@
 33. **O58** — CmpZero backward scan, skip past safe instructions in flag elimination, ~30 lines
 34. **O54** — optimal stack adjustment, POP/PUSH for small SP changes, ~30 lines
 35. ~~**O62** — efficient i16 shift-by-8/16 expansion, 16cc+1B per occurrence, ~60 lines~~ ✅
+36. **O65** — MOV r, M + ALU r fold (peephole backstop to O49), 4cc+1B per fold, ~40–60 lines
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅

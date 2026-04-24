@@ -33,7 +33,7 @@ three_i8:                               ; @three_i8
 	RET
                                         ; -- End function
 	.globl	four_i8                         ; -- Begin function four_i8
-four_i8:                                ; @four_i8
+four_i8: ; 508cc                               ; @four_i8
 ; %bb.0:
 	LXI	HL, 0xffff
 	DAD	SP
@@ -42,10 +42,10 @@ four_i8:                                ; @four_i8
 	MOV	M, C
 	LXI	HL, .LLo61_5+1
 	MOV	M, E
-	CALL	op1
+CALL	op1
 	STA	.LLo61_3+1
 	LDA	.LLo61_5+1
-	CALL	op2
+CALL	op2
 	STA	.LLo61_5+1
 	LDA	.LLo61_4+1
 	CALL	op1
@@ -54,7 +54,7 @@ four_i8:                                ; @four_i8
 	DAD	SP
 	XCHG
 	LDAX	DE
-	CALL	op2
+CALL	op2
 	STA	.LLo61_6+1
 	LXI	HL, 0
 	DAD	SP
@@ -64,7 +64,7 @@ four_i8:                                ; @four_i8
 	MVI	E, 0
 	LXI	HL, .LLo61_4+1
 	MOV	C, M
-	CALL	use4
+CALL	use4
 .LLo61_3:
 	MVI	L, 0
 	LDA	.LLo61_5+1

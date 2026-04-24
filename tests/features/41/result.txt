@@ -1,0 +1,316 @@
+O49 — Direct Memory ALU/Store ISel — feature test 41
+=====================================================
+
+Folds a byte load directly into the 8080 M-operand form of the seven ALU
+ops (ADD/ADC/SUB/SBB/ANA/ORA/XRA/CMP M), plus MVI M, INR M and DCR M.
+Eleven new TableGen pseudos (V6C_{ADD,ADC,SUB,SBB,ANA,ORA,XRA,CMP}_M_P,
+V6C_STORE8_IMM_P, V6C_{INR,DCR}_M_P) match the DAG patterns
+`set Acc, (op Acc, (load addr))`, `store imm, addr`, and the INR/DCR
+RMW. Post-RA expansion shares `expandMemOpM<>()` which emits the real
+M-form when the address is already in HL, wraps with XCHG for DE, or
+uses the MOV L,C / MOV H,B staging with optional PUSH/POP HL for BC
+(skipping PUSH/POP via `isRegDeadAtMI(HL,...)` reusing the O42 idiom).
+
+
+## C source (v6llvmc.c — c8080.c is the same shape, only main's
+##           signature differs: c8080 requires `int main(int, char**)`).
+
+    unsigned char add_m(unsigned char a, const unsigned char *p) { return a + *p; }
+    unsigned char sub_m(unsigned char a, const unsigned char *p) { return a - *p; }
+    unsigned char and_m(unsigned char a, const unsigned char *p) { return a & *p; }
+    unsigned char or_m (unsigned char a, const unsigned char *p) { return a | *p; }
+    unsigned char xor_m(unsigned char a, const unsigned char *p) { return a ^ *p; }
+    int           cmp_m(unsigned char a, const unsigned char *p) { return a == *p; }
+    void store_imm(unsigned char *p) { *p = 0x42; }
+    void inc_m    (unsigned char *p) { (*p)++; }
+    void dec_m    (unsigned char *p) { (*p)--; }
+    unsigned char sum_bytes(const unsigned char *p, unsigned char n) {
+        unsigned char s = 0;
+        for (unsigned char i = 0; i < n; ++i) s += p[i];
+        return s;
+    }
+    int main(void) {
+        static unsigned char buf[4] = {1, 2, 3, 4};
+        unsigned char a = 0x10;
+        a = add_m(a, buf);     a = sub_m(a, buf + 1);
+        a = and_m(a, buf + 2); a = or_m (a, buf + 3);
+        a = xor_m(a, buf);     cmp_m(a, buf);
+        store_imm(buf);        inc_m(buf + 1);       dec_m(buf + 2);
+        return sum_bytes(buf, 4);
+    }
+
+
+## c8080 assembly (main + functions — Z80 mnemonics converted to i8080)
+## --------------------------------------------------------------------
+## c8080 uses a static-stack calling convention through BSS slots
+## (`__a_N_<func>`) for every parameter, so each call site pays
+## LDA/STA traffic. This baseline is for reference only — c8080
+## never sees the M-form optimisation at all.
+
+    main:
+        LXI  HL, 0                  ; argc=0, argv=NULL
+        SHLD __a_1_main
+        SHLD __a_2_main
+        MVI  A, 0x10                ; a = 0x10
+        STA  main_a
+        STA  __a_1_add_m            ; pass a
+        LXI  HL, buf
+        CALL add_m
+        STA  main_a
+        STA  __a_1_sub_m
+        LXI  HL, buf+1
+        CALL sub_m
+        STA  main_a
+        STA  __a_1_and_m
+        LXI  HL, buf+2
+        CALL and_m
+        STA  main_a
+        STA  __a_1_or_m
+        LXI  HL, buf+3
+        CALL or_m
+        STA  main_a
+        STA  __a_1_xor_m
+        LXI  HL, buf
+        CALL xor_m
+        STA  main_a
+        STA  __a_1_cmp_m
+        LXI  HL, buf
+        CALL cmp_m
+        LXI  HL, buf
+        CALL store_imm
+        LXI  HL, buf+1
+        CALL inc_m
+        LXI  HL, buf+2
+        CALL dec_m
+        LXI  HL, buf
+        SHLD __a_1_sum_bytes
+        MVI  A, 4
+        CALL sum_bytes
+        MOV  L, A
+        MVI  H, 0
+        RET
+
+    add_m:
+        SHLD __a_2_add_m
+        LDA  __a_1_add_m
+        ADD  M
+        RET
+
+    sub_m:
+        SHLD __a_2_sub_m
+        LDA  __a_1_sub_m
+        SUB  M
+        RET
+
+    and_m:
+        SHLD __a_2_and_m
+        LDA  __a_1_and_m
+        ANA  M
+        RET
+
+    or_m:
+        SHLD __a_2_or_m
+        LDA  __a_1_or_m
+        ORA  M
+        RET
+
+    xor_m:
+        SHLD __a_2_xor_m
+        LDA  __a_1_xor_m
+        XRA  M
+        RET
+
+    cmp_m:
+        SHLD __a_2_cmp_m
+        LDA  __a_1_cmp_m
+        CMP  M
+        JNZ  l_0
+        MVI  A, 1
+        JMP  l_1
+    l_0:
+        XRA  A
+    l_1:
+        MOV  L, A
+        MVI  H, 0
+        RET
+
+    store_imm:
+        SHLD __a_1_store_imm
+        MVI  M, 66
+        RET
+
+    inc_m:
+        SHLD __a_1_inc_m
+        MOV  A, M
+        INR  A
+        MOV  M, A
+        RET
+
+    dec_m:
+        SHLD __a_1_dec_m
+        MOV  A, M
+        DCR  A
+        MOV  M, A
+        RET
+
+    sum_bytes:                      ; arg: HL=p, A=n
+        STA  __a_2_sum_bytes
+        XRA  A
+        STA  sum_bytes_s
+        STA  sum_bytes_i
+    l_2:
+        LXI  HL, __a_2_sum_bytes
+        CMP  M                      ; cp (hl)
+        JNC  l_4
+        LHLD __a_1_sum_bytes
+        XCHG
+        LHLD sum_bytes_i            ; h=0 via subsequent MVI
+        MVI  H, 0
+        DAD  D
+        LDA  sum_bytes_s
+        ADD  M
+        STA  sum_bytes_s
+        LDA  sum_bytes_i
+        INR  A
+        STA  sum_bytes_i
+        JMP  l_2
+    l_4:
+        LDA  sum_bytes_s
+        RET
+
+
+## c8080 stats (worst-path cycles / body bytes, per function)
+##   add_m       —  37 cc / 6 B      (SHLD+LDA+ADD M+RET)
+##   sub_m       —  37 cc / 6 B
+##   and_m       —  37 cc / 6 B
+##   or_m        —  37 cc / 6 B
+##   xor_m       —  37 cc / 6 B
+##   cmp_m       —  71 cc / 16 B     (SHLD+LDA+CMP M+branch+A materialise)
+##   store_imm   —  32 cc / 6 B      (SHLD+MVI M+RET)
+##   inc_m       —  42 cc / 8 B      (SHLD+MOV A,M/INR/MOV M,A)
+##   dec_m       —  42 cc / 8 B
+##   sum_bytes   — 26+83·n cc / 41 B (tight reload-every-iter loop;
+##                                    inner body ≈ 83 cc/iter)
+##   main        — 474 cc / 73 B     (ten call sites through BSS)
+
+
+## v6llvmc assembly (v6llvmc_new01.asm — O49 enabled)
+## ==================================================
+
+    add_m:
+        XCHG
+        ADD  M
+        XCHG                    ; trailing XCHG is dead (DE is
+        RET                     ;   caller-save); not in O49 scope
+
+    sub_m:  XCHG ; SUB M ; XCHG ; RET
+    and_m:  XCHG ; ANA M ; XCHG ; RET
+    or_m:   XCHG ; ORA M ; XCHG ; RET
+    xor_m:  XCHG ; XRA M ; XCHG ; RET
+
+    cmp_m:                          ; == is consumed as i32, so the
+        MOV  H, A                   ;   DAG never reaches V6Ccmp;
+        LDAX DE                     ;   CMP M fires only in branch
+        MVI  L, 0                   ;   context (see lit cmp_m_br).
+        CMP  H
+        MOV  A, L
+        JNZ  .LBB5_2
+        INR  A
+    .LBB5_2:
+        MOV  H, L
+        MOV  L, A
+        RET
+
+    store_imm:  MVI  M, 0x42 ; RET          ; direct MVI M form
+    inc_m:      INR  M       ; RET          ; direct INR M form
+    dec_m:      DCR  M       ; RET          ; direct DCR M form
+
+    sum_bytes:
+        MOV  A, E
+        ORA  A
+        JZ   .LBB9_1
+        MVI  E, 0
+        MOV  C, E
+        MOV  D, E
+        MOV  E, A
+    .LBB9_4:                    ; inner loop
+        MOV  A, C
+        ADD  M                  ; <-- was MOV A,M ; ADD C ; MOV B,A
+        MOV  C, A
+        INX  HL
+        DCX  DE
+        MOV  A, D
+        ORA  E
+        JNZ  .LBB9_4
+        MOV  A, C
+        RET
+    .LBB9_1:
+        MOV  C, A
+        MOV  A, C
+        RET
+
+    main:
+        LDA  main.buf.1
+        MOV  L, A
+        INR  A                  ; inlined inc_m(&buf[1])
+        STA  main.buf.1
+        LDA  main.buf.2
+        DCR  A                  ; inlined dec_m(&buf[2])
+        STA  main.buf.2
+        MOV  H, A
+        MOV  A, L
+        ADD  H
+        ADI  0x47               ; constant-folded through the rest
+        MOV  L, A
+        MVI  A, 0
+        MOV  H, A
+        RET
+
+
+## v6llvmc stats (worst-path cycles / body bytes, per function)
+##   add_m       — 25 cc /  4 B   (XCHG+ADD M+XCHG+RET)
+##   sub_m       — 25 cc /  4 B   (was 52 cc / 8 B — PUSH/POP/MOV M)
+##   and_m       — 25 cc /  4 B
+##   or_m        — 25 cc /  4 B
+##   xor_m       — 25 cc /  4 B
+##   cmp_m       — unchanged (V6Ccmp not reachable through i32 result)
+##   store_imm   — 20 cc /  3 B   (was 24 cc / 4 B — MVI A+MOV M,A)
+##   inc_m       — 20 cc /  2 B   (was 29 cc / 5 B — load/INR/store)
+##   dec_m       — 20 cc /  2 B   (was 29 cc / 5 B)
+##   sum_bytes   — 10 + 46·n cc / 22 B  (inner ≈ 46 cc/iter; was
+##                                       50 cc/iter in v6llvmc.asm)
+##   main        — heavily inlined + constant-folded; ~15 insns total.
+
+
+## Δ vs v6llvmc_old.asm (pre-O49 baseline)
+## ---------------------------------------
+## sub_m:     −27 cc / −4 B  (collapsed PUSH/POP+MOV M sequence)
+## add/and/or/xor_m: −1 cc / −0 B  (the old path already used LDAX DE
+##                  plus <op> L, so the gain is marginal and comes
+##                  from the trailing XCHG — see Notes below)
+## store_imm:  −4 cc / −1 B
+## inc_m:      −9 cc / −3 B
+## dec_m:      −9 cc / −3 B
+## sum_bytes:  inner loop −4 cc / −1 B per iteration
+##             (the MOV A,M + ADD C + MOV B,A + MOV C,A triple
+##              collapses to MOV A,C + ADD M + MOV C,A).
+
+
+## Notes & follow-ups
+## ------------------
+## 1. The trailing XCHG emitted after ADD/SUB/ANA/ORA/XRA M when the
+##    address came in via DE is a dead instruction at function return
+##    (DE is caller-save on V6C). expandMemOpM emits XCHG both before
+##    and after by symmetry with V6C_LOAD16_P; eliminating the dead
+##    tail belongs in a peephole (XchgOpt already cancels back-to-back
+##    XCHG; catching the return-reaching trail wants liveness).
+## 2. `cmp_m` that returns an i32 (`return a == *p`) does not reach
+##    the V6Ccmp SDNode — it goes through select_cc which materialises
+##    0/1 into a reg first. CMP M fires whenever the comparison is
+##    consumed by a branch or a V6Ccmp-emitting select. The lit test
+##    `cmp_m_br` exercises this path.
+## 3. For BC-held addresses (not exercised in this feature test but
+##    covered by expandMemOpM), the helper emits:
+##      [PUSH HL] ; MOV L,C ; MOV H,B ; <op> M ; [POP HL]
+##    where the PUSH/POP pair is skipped when HL is dead at the
+##    pseudo (reuse of the O42 isRegDeadAtMI(HL,...) idiom).

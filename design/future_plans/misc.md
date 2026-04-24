@@ -55,10 +55,3 @@ what does it do?
 	MOV	D, B
 
 ;================================================
-this
-	LXI	HL, __v6c_ss.many_i8+3
-	MOV	L, M
-	XRA	L
-can be
-	LXI	HL, __v6c_ss.many_i8+3
-	XRA	M

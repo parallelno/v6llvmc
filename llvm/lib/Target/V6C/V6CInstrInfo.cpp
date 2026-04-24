@@ -442,6 +442,43 @@ static bool isRegDeadAtMI(unsigned Reg, const MachineInstr &MI,
   return true;
 }
 
+/// O49 — Direct memory M-operand pseudo expansion helper.
+/// Emits any M-operand instruction (ADDM/SUBM/.../MVIM/INRM/DCRM) with
+/// appropriate HL/DE/BC address staging. `Emit` is a callable that
+/// builds the physical instruction at the insertion point.
+template <typename EmitFn>
+static void expandMemOpM(MachineBasicBlock &MBB, MachineInstr &MI,
+                         const V6CInstrInfo &TII,
+                         const V6CRegisterInfo &RI,
+                         Register AddrReg, EmitFn Emit) {
+  DebugLoc DL = MI.getDebugLoc();
+  auto Ip = MI.getIterator();
+
+  if (AddrReg == V6C::HL) {
+    Emit(MBB, Ip);
+    return;
+  }
+  if (AddrReg == V6C::DE) {
+    // XCHG; OP M; XCHG — always restores HL and DE.
+    BuildMI(MBB, Ip, DL, TII.get(V6C::XCHG));
+    Emit(MBB, Ip);
+    BuildMI(MBB, Ip, DL, TII.get(V6C::XCHG));
+    return;
+  }
+  // AddrReg == V6C::BC — no swap instruction; copy B→H, C→L, restore HL.
+  bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+  if (!HLDead)
+    BuildMI(MBB, Ip, DL, TII.get(V6C::PUSH))
+        .addReg(V6C::HL, RegState::Kill)
+        .addReg(V6C::SP, RegState::ImplicitDefine);
+  BuildMI(MBB, Ip, DL, TII.get(V6C::MOVrr), V6C::L).addReg(V6C::C);
+  BuildMI(MBB, Ip, DL, TII.get(V6C::MOVrr), V6C::H).addReg(V6C::B);
+  Emit(MBB, Ip);
+  if (!HLDead)
+    BuildMI(MBB, Ip, DL, TII.get(V6C::POP), V6C::HL)
+        .addReg(V6C::SP, RegState::ImplicitDefine);
+}
+
 bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   MachineBasicBlock &MBB = *MI.getParent();
   DebugLoc DL = MI.getDebugLoc();
@@ -1729,6 +1766,77 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
         BuildMI(MBB, MI, DL, get(V6C::POP))
             .addDef(V6C::HL);
     }
+    MI.eraseFromParent();
+    return true;
+  }
+
+  //===------------------------------------------------------------------===//
+  // O49 — Direct memory ALU / store / RMW pseudos.
+  //===------------------------------------------------------------------===//
+
+  case V6C::V6C_ADD_M_P:
+  case V6C::V6C_ADC_M_P:
+  case V6C::V6C_SUB_M_P:
+  case V6C::V6C_SBB_M_P:
+  case V6C::V6C_ANA_M_P:
+  case V6C::V6C_ORA_M_P:
+  case V6C::V6C_XRA_M_P: {
+    // Operands: 0=$dst(Acc tied), 1=$lhs(Acc tied), 2=$addr(GR16).
+    unsigned MOpc;
+    switch (MI.getOpcode()) {
+    case V6C::V6C_ADD_M_P: MOpc = V6C::ADDM; break;
+    case V6C::V6C_ADC_M_P: MOpc = V6C::ADCM; break;
+    case V6C::V6C_SUB_M_P: MOpc = V6C::SUBM; break;
+    case V6C::V6C_SBB_M_P: MOpc = V6C::SBBM; break;
+    case V6C::V6C_ANA_M_P: MOpc = V6C::ANAM; break;
+    case V6C::V6C_ORA_M_P: MOpc = V6C::ORAM; break;
+    case V6C::V6C_XRA_M_P: MOpc = V6C::XRAM; break;
+    default: llvm_unreachable("unexpected ALU M opcode");
+    }
+    Register AddrReg = MI.getOperand(2).getReg();
+    expandMemOpM(MBB, MI, *this, RI, AddrReg,
+        [&](MachineBasicBlock &B, MachineBasicBlock::iterator Ip) {
+          // Physical M ALU ops: (outs Acc:$dst)(ins Acc:$lhs), tied.
+          BuildMI(B, Ip, DL, get(MOpc), V6C::A).addReg(V6C::A);
+        });
+    MI.eraseFromParent();
+    return true;
+  }
+
+  case V6C::V6C_CMP_M_P: {
+    // Operands: 0=$lhs(Acc), 1=$addr(GR16). No register output.
+    Register AddrReg = MI.getOperand(1).getReg();
+    expandMemOpM(MBB, MI, *this, RI, AddrReg,
+        [&](MachineBasicBlock &B, MachineBasicBlock::iterator Ip) {
+          // Physical CMPM: (outs)(ins Acc:$lhs).
+          BuildMI(B, Ip, DL, get(V6C::CMPM)).addReg(V6C::A);
+        });
+    MI.eraseFromParent();
+    return true;
+  }
+
+  case V6C::V6C_STORE8_IMM_P: {
+    // Operands: 0=$imm(imm8), 1=$addr(GR16).
+    int64_t Imm = MI.getOperand(0).getImm();
+    Register AddrReg = MI.getOperand(1).getReg();
+    expandMemOpM(MBB, MI, *this, RI, AddrReg,
+        [&](MachineBasicBlock &B, MachineBasicBlock::iterator Ip) {
+          BuildMI(B, Ip, DL, get(V6C::MVIM)).addImm(Imm);
+        });
+    MI.eraseFromParent();
+    return true;
+  }
+
+  case V6C::V6C_INR_M_P:
+  case V6C::V6C_DCR_M_P: {
+    // Operand: 0=$addr(GR16).
+    unsigned MOpc = (MI.getOpcode() == V6C::V6C_INR_M_P) ? V6C::INRM
+                                                        : V6C::DCRM;
+    Register AddrReg = MI.getOperand(0).getReg();
+    expandMemOpM(MBB, MI, *this, RI, AddrReg,
+        [&](MachineBasicBlock &B, MachineBasicBlock::iterator Ip) {
+          BuildMI(B, Ip, DL, get(MOpc));
+        });
     MI.eraseFromParent();
     return true;
   }

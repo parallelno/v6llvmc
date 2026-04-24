@@ -602,6 +602,60 @@ def V6C_STORE8_P : V6CPseudo<(outs), (ins GR8:$src, GR16:$addr),
     "# STORE8P $src, ($addr)",
     [(store i8:$src, i16:$addr)]>;
 
+//===----------------------------------------------------------------------===//
+// O49 — Direct Memory ALU/Store pseudos (M-operand instructions).
+// Expansion in V6CInstrInfo::expandPostRAPseudo via expandMemOpM() helper.
+// addr == HL : direct XXX M
+// addr == DE : XCHG; XXX M; XCHG
+// addr == BC : [PUSH HL;] MOV L,C; MOV H,B; XXX M; [POP HL]
+//              (PUSH/POP skipped when HL dead — O42 liveness-aware).
+//===----------------------------------------------------------------------===//
+
+// ALU M read-variants: A = A op [addr].
+let mayLoad = 1, Defs = [FLAGS] in {
+  let Constraints = "$dst = $lhs" in {
+    def V6C_ADD_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
+        "# ADD_M_P $dst, ($addr)",
+        [(set Acc:$dst, (add Acc:$lhs, (i8 (load i16:$addr))))]>;
+    def V6C_ADC_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
+        "# ADC_M_P $dst, ($addr)", []>;
+    def V6C_SUB_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
+        "# SUB_M_P $dst, ($addr)",
+        [(set Acc:$dst, (sub Acc:$lhs, (i8 (load i16:$addr))))]>;
+    def V6C_SBB_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
+        "# SBB_M_P $dst, ($addr)", []>;
+    def V6C_ANA_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
+        "# ANA_M_P $dst, ($addr)",
+        [(set Acc:$dst, (and Acc:$lhs, (i8 (load i16:$addr))))]>;
+    def V6C_ORA_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
+        "# ORA_M_P $dst, ($addr)",
+        [(set Acc:$dst, (or Acc:$lhs, (i8 (load i16:$addr))))]>;
+    def V6C_XRA_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
+        "# XRA_M_P $dst, ($addr)",
+        [(set Acc:$dst, (xor Acc:$lhs, (i8 (load i16:$addr))))]>;
+  }
+  // CMP M: reads A, writes FLAGS only.
+  def V6C_CMP_M_P : V6CPseudo<(outs), (ins Acc:$lhs, GR16:$addr),
+      "# CMP_M_P $lhs, ($addr)",
+      [(V6Ccmp Acc:$lhs, (i8 (load i16:$addr)))]>;
+}
+
+// MVI M, imm8 via register pointer: store an 8-bit immediate.
+let mayStore = 1 in
+def V6C_STORE8_IMM_P : V6CPseudo<(outs), (ins imm8:$imm, GR16:$addr),
+    "# STORE8_IMM_P $imm, ($addr)",
+    [(store (i8 imm:$imm), i16:$addr)]>;
+
+// INR M / DCR M: read-modify-write byte through a register pointer.
+let mayLoad = 1, mayStore = 1, Defs = [FLAGS] in {
+  def V6C_INR_M_P : V6CPseudo<(outs), (ins GR16:$addr),
+      "# INR_M_P ($addr)",
+      [(store (add (i8 (load i16:$addr)), (i8 1)), i16:$addr)]>;
+  def V6C_DCR_M_P : V6CPseudo<(outs), (ins GR16:$addr),
+      "# DCR_M_P ($addr)",
+      [(store (add (i8 (load i16:$addr)), (i8 -1)), i16:$addr)]>;
+}
+
 // Spill/reload pseudos for register allocation.
 // Expanded in eliminateFrameIndex with PUSH/POP preservation.
 // Non-H/L: PUSH HL; LXI HL,off+2; DAD SP; MOV M,r / MOV r,M; POP HL
