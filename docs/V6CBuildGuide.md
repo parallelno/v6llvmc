@@ -315,6 +315,7 @@ These control register allocation and spill behaviour, which matters on the
 | `-mllvm --sink-insts-to-avoid-spills` | Pre-RA pass that sinks definitions closer to uses, freeing registers across the gap. Helps in straight-line code with high register pressure. |
 | `-mllvm --split-spill-mode=size` | Tells SplitKit to prefer smaller spill code over faster. Alternative: `=speed`. Default: `=default`. |
 | `-mllvm --enable-spill-copy-elim` | Eliminates redundant register-to-register copies introduced by spill code. Unlikely to help on V6C (spills use PUSH/POP and LHLD/SHLD, not copies). |
+| `-mllvm -mv6c-spill-patched-reload` | V6C-specific. Enables O61: rewrite selected spill/reload pairs so the spill writes directly into a `LXI`/`MVI` immediate at the reload site (self-modifying code in `.text`). Requires static-stack (default-on) and assumes code is in RAM. Saves 6–22cc and 1–4B per patched reload. See [V6COptimization.md § O61](V6COptimization.md). |
 
 ### Not Recommended
 

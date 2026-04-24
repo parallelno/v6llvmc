@@ -211,6 +211,67 @@ production builds — O43 saves 12cc + 4B per folded pair.
 
 ---
 
+### O61 — Spill Into the Reload's Immediate Operand
+
+**Flag:** `-mllvm -mv6c-spill-patched-reload` (default: **off**)
+
+**Purpose:** Enables the `V6CSpillPatchedReload` post-RA pass. Instead of
+lowering a spill/reload pair to `SHLD slot` / `LHLD slot` (i16) or
+`STA slot` / `LDA slot; MOV r, M` (i8), the pass rewrites the **reload**
+to `LXI rp, 0` (i16) or `MVI r, 0` (i8) at a labelled site `.LLo61_N:`,
+and rewrites the **spill** to store the live value directly into the
+reload's immediate byte(s) — i.e. `SHLD .LLo61_N+1` / `STA .LLo61_N+1`
+(self-modifying code).
+
+**Preconditions:**
+- Static stack allocation must be active for the function
+  (`hasStaticStack()` — enabled by default, see `-mv6c-no-static-stack`).
+- The SHLD/LHLD → PUSH/POP fold (O43) consumes the same pairs; for
+  prototyping or A/B measurements combine with
+  `-mllvm -v6c-disable-shld-lhld-fold`.
+
+**Chooser (summary):** scores reloads by
+`BlockFrequency × Δ(cycles)` and admits up to:
+- K ≤ 2 patched reloads per single-source spill,
+- K ≤ 1 patched reload per multi-source spill.
+On the second patch of a single-source group the chooser excludes `A`
+(i8, Δ = −8cc only) and `H`/`L` (they alias the `HL` pair used by the
+unpatched classical reload fallback).
+
+**Per-pattern savings (HL dead in the "before" path):**
+
+| Width | Before                           | After        | Δ          |
+|-------|----------------------------------|--------------|------------|
+| i16   | `LHLD slot` = 16cc, 3B           | `LXI rp, 0` patched = 10cc, 3B | −6cc (HL dst), −12cc on `DAD` fold path |
+| i8 → A | `LDA slot` = 13cc, 3B           | `MVI A, 0` patched = 7cc, 2B | −6cc, −1B |
+| i8 → r8 | `LXI HL, slot` + `MOV r, M` = 17cc, 4B | `MVI r, 0` patched = 7cc, 2B | −10cc, −2B + BSS slot eliminated |
+
+With HL live in the "before" path (classical reload wrapped in
+`PUSH HL` / `POP HL`), the i8 non-A saving rises to −22cc / −4B.
+
+**Usage:**
+```bash
+clang -target i8080-unknown-v6c -O2 -S input.c -o output.s \
+    -mllvm -mv6c-spill-patched-reload
+```
+
+For clean demonstration of every patched site (no SHLD/LHLD pairs
+getting folded away into `PUSH`/`POP`), combine with the O43 disable
+flag:
+```bash
+clang -target i8080-unknown-v6c -O2 -S input.c -o output.s \
+    -mllvm -mv6c-spill-patched-reload \
+    -mllvm -v6c-disable-shld-lhld-fold
+```
+
+**Status:** Stage 4 (i8 path) complete; off by default pending broader
+code-in-RAM safety review (the patched imm bytes live in `.text`, which
+assumes code is RAM-resident and writable — true on Vector-06c but not
+on ROM/EPROM targets). Test assets live under
+`tests/features/37/` and `llvm/test/CodeGen/V6C/spill-patched-reload-*.ll`.
+
+---
+
 ### Pseudo Expansion & Func Declaration Annotations
 
 **Flag:** `-mv6c-annotate-pseudos` (default: off)

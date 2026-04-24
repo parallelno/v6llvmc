@@ -446,8 +446,16 @@ while keeping each step bounded:
    `K ≤ 2` for single-source spills, `K ≤ 1` for multi-source spills,
    and the chooser must skip `A`/`HL`-target candidates when picking
    the second patch.
-4. **Stage 4 — extend reload-side handling to individual `B..L` r8
-   targets** (the `r8 A-live` case, Δ ≥ +44 cc).
+4. **Stage 4 — extend reload-side handling to individual `B..L` r8**
+   targets (the `r8 A-live` case, Δ ≥ +44 cc).
+5. **Stage 5 — extend spill-side handling to `DE` and `BC` sources**
+   (see [Stage 5 scope](#stage-5--de--bc-spill-sources) below). Stages 1–4
+   only patch slots whose spill source is `HL`. Stage 5 lifts that
+   restriction so DE- and BC-sourced i16 spills become eligible, and
+   also replaces the current BSS expansion for BC spills (`LXI HL, slot;
+   MOV M,C; INX HL; MOV M,B`, 44cc + 5B) with the cheaper
+   `MOV H,B; MOV L,C; SHLD slot` (28cc + 5B when HL is dead; add
+   `PUSH H`/`POP H` only when HL is live after the expansion).
 
 At every stage:
 * Gate behind `-mv6c-spill-patched-reload` for A/B testing.
@@ -455,6 +463,106 @@ At every stage:
   on the 3–5 functions with the highest spill traffic.
 * Verify that disabling the flag yields byte-identical output to
   baseline.
+
+## Stage 5 — DE / BC spill sources
+
+Stages 1–4 only patch slots whose single spill source is `HL`. On this
+backend many i16 spills originate in `DE` (e.g. the second argument on
+entry, any register-pair result routed through DE) or `BC` (the third
+argument, callee-saved routing). Those slots are rejected today even
+though the reload-side Δ table is already unconditional on source.
+Stage 5 closes that gap and, while doing so, cleans up the two
+inefficient classical expansions currently used for BC.
+
+### Cleanup #1 — BC spill expansion
+
+The current `V6C_SPILL16` with `BC` source expands via `LXI HL, slot;
+MOV M,C; INX HL; MOV M,B` (12 + 8 + 6 + 8 = 34cc + prologue / 44cc with
+HL preservation, 8 bytes with `PUSH H`/`POP H`). The `MOV M,r` routing
+is the reason BC has historically been modelled as "36–48cc through
+HL/A/PUSH-POP" in the spill-side table above.
+
+A cheaper expansion that matches the shape of the DE spill exists:
+
+| HL state after spill | Sequence                                    | cc  | B  |
+|----------------------|---------------------------------------------|-----|----|
+| HL dead              | `MOV H,B; MOV L,C; SHLD slot`               | 36  | 5  |
+| HL live              | `PUSH H; MOV H,B; MOV L,C; SHLD slot; POP H`| 64  | 7  |
+
+The "HL dead" form is strictly better than the current BSS form even
+before O61 patches anything. Stage 5 must emit this form in both the
+classical `eliminateFrameIndex` path **and** the patched path (the
+patched path just retargets `SHLD slot` to `SHLD Sym+1`).
+
+### Cleanup #2 — BC unpatched reload expansion
+
+Symmetric fix on the reload side. The unpatched classical reload for a
+BC target is currently emitted as `LHLD slot; MOV C,L; MOV B,H` (which
+is fine) or `PUSH H; LHLD …; MOV C,L; MOV B,H; POP H` when HL is live.
+Stage 5 must make sure the patched pass's *unpatched-reload* emitter
+uses the same shape instead of the LXI+MOV pattern that some historical
+comments suggest.
+
+### Cleanup #3 — HL preservation is liveness-gated
+
+Both the spill and reload sides must wrap the expansion in `PUSH H` /
+`POP H` **only when HL is live across the expansion point** (checked
+via `LivePhysRegs` / `LiveRegUnits` at the pseudo). The current Stage 3
+rewriter already does this for reloads; Stage 5 extends the same check
+to:
+
+* The DE/BC spill emitters (omit the surrounding `XCHG`/`PUSH HL` when
+  HL is dead after the pseudo).
+* The corresponding i8 emitters when widened (omit the `A` save/restore
+  when A is dead after the pseudo — same criterion, different register).
+
+### New spill-side Δ table (Stage 5)
+
+All costs compared against the cleaned-up classical BSS expansion.
+
+| Spill source | Classical (HL dead / HL live)            | Patched (site+1) | Δ / spill       |
+|--------------|------------------------------------------|------------------|------------------|
+| DE           | `XCHG; SHLD slot` (24) / `XCHG; SHLD; XCHG` (28) | `XCHG; SHLD Sym+1` (24) / `XCHG; SHLD Sym+1; XCHG` (28) | 0 / 0 |
+| BC           | `MOV H,B; MOV L,C; SHLD slot` (28) / above + PUSH/POP (56) | `MOV H,B; MOV L,C; SHLD Sym+1` (28) / above + PUSH/POP (56) | 0 / 0 |
+
+The Δ / spill is **zero** — patching does not change the spill cost on
+this side, only its destination address. All of the savings still come
+from the reload side. The point of Stage 5 is that slot eligibility
+gets unblocked, not that the spill itself gets cheaper.
+
+### Filter changes (Stage 5)
+
+The Stage 3 filter
+
+```cpp
+llvm::all_of(E.Spills, [](MachineInstr *S) {
+  return S->getOperand(0).getReg() == V6C::HL;
+});
+```
+
+becomes
+
+```cpp
+llvm::all_of(E.Spills, [](MachineInstr *S) {
+  Register Src = S->getOperand(0).getReg();
+  return Src == V6C::HL || Src == V6C::DE || Src == V6C::BC;
+});
+```
+
+The K-cap rules (`K ≤ 2` single-source, `K ≤ 1` multi-source) are
+unchanged. The 2nd-patch exclusion list (`A`, `HL`) is unchanged. The
+spill emitter in the rewrite loop gains a per-source switch to emit the
+right store sequence (HL: `SHLD`; DE: `XCHG; SHLD[; XCHG]`; BC:
+`MOV H,B; MOV L,C; SHLD`) to the chosen patched sites, each with the
+`MO_PATCH_IMM` target flag.
+
+### Interaction with the classical expansion
+
+The two spill-side cleanups (BC expansion, liveness-gated HL preservation)
+apply to the classical `eliminateFrameIndex` path as well, not just to
+the patched path. They belong in the same PR as Stage 5 so the
+`__v6c_ss.<fn>+N` baseline reflects the cheaper form before Δ is
+re-measured.
 
 ## Summary
 

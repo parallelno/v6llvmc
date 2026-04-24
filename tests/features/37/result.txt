@@ -1,0 +1,393 @@
+O61 Stage 4 — Spill Into the Reload's Immediate Operand (i8 path)
+  A-source V6C_SPILL8 -> STA <Lo61_N+1>
+  reload   V6C_RELOAD8 -> <Lo61_N:> MVI <r>, 0   (imm byte patched at runtime)
+  K <= 2 single-source; K <= 1 multi-source.
+  2nd-patch chooser skips A (Delta = -8cc) and H/L (alias HL used in
+  unpatched-reload routing path).
+
+========================================================================
+C test case (tests\features\37\v6llvmc.c)
+========================================================================
+__attribute__((leaf)) extern unsigned char op1(unsigned char x);
+__attribute__((leaf)) extern unsigned char op2(unsigned char x);
+__attribute__((leaf)) extern void use2(unsigned char a, unsigned char b);
+
+unsigned char a_spill_r8_reload(unsigned char x, unsigned char y) {
+    unsigned char a = op1(x);   // a held across op2 -> spill A
+    unsigned char b = op2(y);   // clobbers A
+    return a + b;               // reload a into some r8, add
+}
+
+unsigned char k2_i8(unsigned char x, unsigned char y, unsigned char z) {
+    unsigned char a = op1(x);
+    unsigned char b = op2(y);   // reload #1 of a
+    unsigned char s1 = (unsigned char)(a + b);
+    unsigned char c = op2(z);   // reload #2 of a
+    return (unsigned char)(s1 + a + c);
+}
+
+unsigned char multi_src_i8(unsigned char x, unsigned char y, unsigned char c) {
+    unsigned char a;
+    if (c) a = op1(x);
+    else   a = op2(x);
+    unsigned char b = op2(y);
+    return a + b;
+}
+
+unsigned int g_u16;
+unsigned char g_u8;
+
+void mixed_widths(unsigned int x16, unsigned char x8) {
+    unsigned int a16 = (unsigned int)op1((unsigned char)x16) + x16;
+    unsigned char a8  = op2(x8);
+    unsigned int b16 = (unsigned int)op2((unsigned char)x16);
+    unsigned char b8  = op1(x8);
+    g_u16 = a16 + b16;
+    g_u8  = (unsigned char)(a8 + b8);
+}
+
+int main(int argc, char **argv) {
+    use2(a_spill_r8_reload(0x11, 0x22), k2_i8(0x33, 0x44, 0x55));
+    use2(multi_src_i8(0x66, 0x77, 1), 0);
+    mixed_widths(0xabcd, 0xef);
+    return 0;
+}
+
+
+========================================================================
+c8080 asm — main() and dependent funcs (hand-translated Z80 -> i8080)
+========================================================================
+main:
+    LXI     HL, 0
+    SHLD    __a_1_main                   ; argc,argv slots
+    MVI     A, 0x11
+    STA     __a_1_a_spill_r8_reload
+    MVI     A, 0x22
+    CALL    a_spill_r8_reload
+    STA     __a_1_use2
+    MVI     A, 0x33
+    STA     __a_1_k2_i8
+    MVI     A, 0x44
+    STA     __a_2_k2_i8
+    MVI     A, 0x55
+    CALL    k2_i8
+    CALL    use2
+    MVI     A, 0x66
+    STA     __a_1_multi_src_i8
+    MVI     A, 0x77
+    STA     __a_2_multi_src_i8
+    MVI     A, 0x01
+    CALL    multi_src_i8
+    STA     __a_1_use2
+    XRA     A
+    CALL    use2
+    LXI     HL, 0xabcd
+    SHLD    __a_1_mixed_widths
+    MVI     A, 0xef
+    CALL    mixed_widths
+    LXI     HL, 0
+    RET
+
+a_spill_r8_reload:
+    STA     __a_2_a_spill_r8_reload
+    LDA     __a_1_a_spill_r8_reload
+    CALL    op1
+    STA     a_spill_r8_reload_a
+    LDA     __a_2_a_spill_r8_reload
+    CALL    op2
+    STA     a_spill_r8_reload_b
+    LXI     HL, a_spill_r8_reload_a
+    ADD     M
+    RET
+
+k2_i8:
+    STA     __a_3_k2_i8
+    LDA     __a_1_k2_i8
+    CALL    op1
+    STA     k2_i8_a
+    LDA     __a_2_k2_i8
+    CALL    op2
+    STA     k2_i8_b
+    LXI     HL, k2_i8_a
+    ADD     M
+    STA     k2_i8_s1
+    LDA     __a_3_k2_i8
+    CALL    op2
+    STA     k2_i8_c
+    LXI     HL, k2_i8_s1
+    LDA     k2_i8_a
+    ADD     M
+    LXI     HL, k2_i8_c
+    ADD     M
+    RET
+
+multi_src_i8:
+    STA     __a_3_multi_src_i8
+    ORA     A
+    JZ      l_0
+    LDA     __a_1_multi_src_i8
+    CALL    op1
+    STA     multi_src_i8_a
+    JMP     l_1
+l_0:
+    LDA     __a_1_multi_src_i8
+    CALL    op2
+    STA     multi_src_i8_a
+l_1:
+    LDA     __a_2_multi_src_i8
+    CALL    op2
+    STA     multi_src_i8_b
+    LXI     HL, multi_src_i8_a
+    ADD     M
+    RET
+
+mixed_widths:
+    STA     __a_2_mixed_widths
+    LDA     __a_1_mixed_widths
+    CALL    op1
+    MOV     E, A
+    MVI     D, 0
+    LHLD    __a_1_mixed_widths
+    DAD     D
+    SHLD    mixed_widths_a16
+    LDA     __a_2_mixed_widths
+    CALL    op2
+    STA     mixed_widths_a8
+    LDA     __a_1_mixed_widths
+    CALL    op2
+    MOV     L, A
+    MVI     H, 0
+    SHLD    mixed_widths_b16
+    LDA     __a_2_mixed_widths
+    CALL    op1
+    STA     mixed_widths_b8
+    LHLD    mixed_widths_a16
+    XCHG
+    LHLD    mixed_widths_b16
+    DAD     D
+    SHLD    g_u16
+    LXI     HL, mixed_widths_a8
+    ADD     M
+    STA     g_u8
+    RET
+
+op1:
+    STA     __a_1_op1
+    LXI     HL, op_acc
+    XRA     M
+    MOV     M, A
+    LDA     __a_1_op1
+    INR     A
+    RET
+
+op2:
+    STA     __a_1_op2
+    LXI     HL, op_acc
+    XRA     M
+    MOV     M, A
+    LDA     __a_1_op2
+    ADI     2
+    RET
+
+use2:
+    STA     __a_2_use2
+    LXI     HL, op_acc
+    LDA     __a_1_use2
+    XRA     M
+    MOV     M, A
+    LDA     __a_2_use2
+    XRA     M
+    MOV     M, A
+    RET
+
+
+========================================================================
+c8080 stats (worst-case body bytes / cycles, excluding called funcs)
+========================================================================
+  Function                  Bytes    Cycles  (+CALLs counted separately)
+  ----------------------------------------------------------------------
+  main                        72      306 + 7*CALL
+  a_spill_r8_reload           22      117 + 2*CALL
+  k2_i8                       38      211 + 3*CALL
+  multi_src_i8                29      163 + 2*CALL   (worst path)
+  mixed_widths                54      276 + 4*CALL
+  op1                         11       54
+  op2                         11       54
+  use2                        14       67
+
+
+========================================================================
+v6llvmc asm — Stage 4 (tests\features\37\v6llvmc.asm)
+  flags: -O2 -mllvm -mv6c-spill-patched-reload -mllvm -v6c-disable-shld-lhld-fold
+========================================================================
+a_spill_r8_reload:
+    LXI     HL, __v6c_ss.a_spill_r8_reload   ; spill y (MOV M, E)
+    MOV     M, E
+    CALL    op1
+    STA     .LLo61_0+1                       ; Stage 4: A spill targets
+                                             ; the reload's MVI imm byte
+    LDA     __v6c_ss.a_spill_r8_reload       ; reload y
+    CALL    op2
+.LLo61_0:
+    MVI     L, 0                             ; patched: imm = runtime value of a
+    ADD     L
+    RET
+
+k2_i8:                                       ; K=2 single-source i8
+    LXI     HL, __v6c_ss.k2_i8
+    MOV     M, C                             ; spill y
+    LXI     HL, __v6c_ss.k2_i8+2
+    MOV     M, E                             ; spill z
+    CALL    op1
+    STA     .LLo61_1+1                       ; spill A (single source)
+    LDA     __v6c_ss.k2_i8+2                 ; reload z
+    CALL    op2
+    MOV     H, A
+.LLo61_1:
+    MVI     A, 0                             ; 1st patched reload (A dst)
+    ADD     A
+    MOV     L, A
+    MOV     A, H
+    ADD     L
+    STA     .LLo61_1+1                       ; respill for 2nd use
+    LDA     __v6c_ss.k2_i8                   ; reload y
+    CALL    op2
+    MOV     L, A
+    LDA     .LLo61_1+1                       ; 2nd pick: A forbidden on
+                                             ; 2nd patch, falls back to
+                                             ; classical LDA from the
+                                             ; patched imm byte
+    ADD     L
+    RET
+
+multi_src_i8:                                ; K=1 multi-source i8
+    LXI     HL, __v6c_ss.multi_src_i8
+    MOV     M, E
+    MOV     L, A
+    XRA     A
+    CMP     C
+    JZ      .LBB2_2
+    MOV     A, L
+    CALL    op1
+    JMP     .LBB2_3
+.LBB2_2:
+    MOV     A, L
+    CALL    op2
+.LBB2_3:
+    STA     .LLo61_2+1                       ; merged spill site (both arms)
+    LDA     __v6c_ss.multi_src_i8
+    CALL    op2
+.LLo61_2:
+    MVI     L, 0                             ; single patched reload
+    ADD     L
+    RET
+
+mixed_widths:                                ; i8 + i16 slots in one fn
+    PUSH    HL
+    LXI     HL, __v6c_ss.mixed_widths
+    MOV     M, E                             ; spill x8 (i8 slot)
+    POP     HL
+    SHLD    .LLo61_3+1                       ; Stage 3: i16 spill of x16
+    MOV     A, L
+    CALL    op1
+    MVI     L, 0
+    MOV     H, L
+    MOV     L, A
+.LLo61_3:
+    LXI     DE, 0                            ; patched i16 reload (x16)
+    DAD     DE
+    SHLD    .LLo61_4+1                       ; spill a16
+    LDA     __v6c_ss.mixed_widths            ; reload x8
+    CALL    op2
+    STA     .LLo61_5+1                       ; Stage 4: i8 spill of a8
+    LHLD    .LLo61_3+1                       ; unpatched LHLD of x16
+    MOV     A, L
+    CALL    op2
+    MVI     L, 0
+    MOV     H, L
+    MOV     L, A
+.LLo61_4:
+    LXI     DE, 0                            ; patched i16 reload (a16)
+    DAD     DE
+    SHLD    .LLo61_3+1
+    LDA     __v6c_ss.mixed_widths
+    CALL    op1
+    LHLD    .LLo61_3+1
+    SHLD    g_u16
+.LLo61_5:
+    MVI     L, 0                             ; patched i8 reload of a8
+    ADD     L
+    STA     g_u8
+    RET
+
+main:                                        ; driver; 4 patched i8 sites
+    MVI     A, 0x11
+    CALL    op1
+    STA     .LLo61_9+1                       ; spill for later reload
+    MVI     A, 0x22
+    CALL    op2
+    STA     .LLo61_7+1                       ; cross-call spill
+    MVI     A, 0x33
+    CALL    op1
+    STA     .LLo61_8+1
+    MVI     A, 0x44
+    CALL    op2
+    MOV     H, A
+    LDA     .LLo61_7+1                       ; 2nd-patch fallback (classical LDA)
+.LLo61_9:
+    MVI     L, 0                             ; patched reload
+    ADD     L
+    STA     .LLo61_7+1
+    MOV     A, L
+    ADD     A
+    MOV     L, A
+    MOV     A, H
+    ADD     L
+    STA     .LLo61_9+1
+    MVI     A, 0x55
+    CALL    op2
+    MOV     L, A
+    LDA     .LLo61_9+1
+    ADD     L
+    MOV     E, A
+    LDA     .LLo61_7+1
+    CALL    use2
+    ; ... (multi_src_i8 + mixed_widths invocations follow;
+    ;  see v6llvmc.asm for the full body)
+    RET
+
+
+========================================================================
+v6llvmc stats (worst-case body bytes / cycles, excluding called funcs)
+========================================================================
+  Function                  Bytes    Cycles  (+CALLs counted separately)
+  ----------------------------------------------------------------------
+  a_spill_r8_reload           20       98 + 2*CALL
+  k2_i8                       42      199 + 3*CALL
+  multi_src_i8                34      159 + 2*CALL   (worst path)
+  mixed_widths                66      286 + 4*CALL
+  main                       174     ~800 + 9*CALL
+
+Stage 4 vs Stage 3 (same compiler, toggle flag):
+  a_spill_r8_reload     -4 B  / -10 cc   (LXI HL + MOV r,M  ->  MVI r, 0)
+  k2_i8                 -5 B  / -20 cc   (2 patched reloads)
+  multi_src_i8          -4 B  / -10 cc
+  mixed_widths          -4 B  /  -8 cc   (a8 slot collapsed)
+  main                  -9 B  / -36 cc   (4 i8 patches)
+  Total for this TU    -26 B  / -84 cc + 5 BSS slots eliminated
+
+Pattern-level saving per patched i8 reload (non-A dst, HL dead):
+  before:  LXI HL, slot (10cc, 3B) + MOV r, M (7cc, 1B)  =  17 cc, 4 B
+  after :  MVI r, 0                                       =   7 cc, 2 B
+  delta :  -10 cc, -2 B  (+ BSS slot eliminated)
+
+With HL live in the "before" path (PUSH/POP HL wraps added):
+  before: 29 cc, 6 B   ->   after: 7 cc, 2 B   delta: -22 cc, -4 B
+
+Artifacts in this folder:
+  c8080.c           - reference C (inline op1/op2/use2 bodies)
+  c8080.asm         - c8080 output (sjasmplus/Z80 syntax)
+  v6llvmc.c         - v6llvmc driver (extern op1/op2/use2)
+  v6llvmc_old.asm   - Stage 3 baseline (no -mv6c-spill-patched-reload)
+  v6llvmc_new01.asm - first Stage 4 iteration (kept for history)
+  v6llvmc.asm       - canonical Stage 4 output (same content as _new01)
