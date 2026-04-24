@@ -23,6 +23,21 @@
 #include "V6C.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+// Note: we only need the numeric value of V6CII::MO_PATCH_IMM, and
+// deliberately avoid including V6CInstrInfo.h to keep this pass's
+// dependency surface small. Keep this constant in sync with
+// V6CInstrInfo.h.
+static constexpr unsigned V6C_MO_PATCH_IMM = 4;
+
+/// A MachineOperand counts as a "plain" immediate (trackable by this
+/// pass) iff it is an immediate AND carries no target flags. O61's
+/// MO_PATCH_IMM marks an MVI/LXI whose imm bytes are overwritten at
+/// runtime by a spill — the compile-time value is not a reliable
+/// constant, so such operands must be treated as opaque.
+static bool isPlainImm(const llvm::MachineOperand &MO) {
+  return MO.isImm() && MO.getTargetFlags() == 0;
+}
+
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
@@ -268,7 +283,7 @@ void V6CLoadImmCombine::initFromPredecessor(MachineBasicBlock &MBB) {
 
     if (Opc == V6C::MVIr) {
       MCRegister DstReg = MI.getOperand(0).getReg();
-      if (MI.getOperand(1).isImm()) {
+      if (isPlainImm(MI.getOperand(1))) {
         int Idx = regIndex(DstReg);
         if (Idx >= 0)
           KnownVal[Idx] = MI.getOperand(1).getImm() & 0xFF;
@@ -295,7 +310,7 @@ void V6CLoadImmCombine::initFromPredecessor(MachineBasicBlock &MBB) {
     }
     if (Opc == V6C::LXI) {
       MCRegister PairReg = MI.getOperand(0).getReg();
-      if (MI.getOperand(1).isImm()) {
+      if (isPlainImm(MI.getOperand(1))) {
         int64_t Imm16 = MI.getOperand(1).getImm() & 0xFFFF;
         int HiIdx = -1, LoIdx = -1;
         if (PairReg == V6C::BC) {
@@ -398,8 +413,10 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
     // --- MVI r, imm: main optimization target ---
     if (Opc == V6C::MVIr) {
       MCRegister DstReg = MI.getOperand(0).getReg();
-      // MVI can have non-immediate operands (e.g., global lo8/hi8 exprs).
-      if (!MI.getOperand(1).isImm()) {
+      // MVI can have non-immediate operands (e.g., global lo8/hi8 exprs)
+      // or carry MO_PATCH_IMM (O61: runtime-patched imm byte). Both
+      // must be treated as opaque constant definers.
+      if (!isPlainImm(MI.getOperand(1))) {
         invalidate(DstReg);
         continue;
       }
@@ -479,7 +496,7 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
     // --- LXI rp, imm16: eliminate if both halves already hold the value ---
     if (Opc == V6C::LXI) {
       MCRegister PairReg = MI.getOperand(0).getReg();
-      if (MI.getOperand(1).isImm()) {
+      if (isPlainImm(MI.getOperand(1))) {
         int64_t Imm16 = MI.getOperand(1).getImm() & 0xFFFF;
         int64_t Lo = Imm16 & 0xFF;
         int64_t Hi = (Imm16 >> 8) & 0xFF;

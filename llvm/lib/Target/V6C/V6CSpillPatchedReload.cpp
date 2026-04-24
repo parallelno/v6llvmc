@@ -416,18 +416,18 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
     Changed = true;
   }
 
-  // ---- i8 slots (Stage 4) -------------------------------------------
+  // ---- i8 slots (Stage 4 + Stage 6) ---------------------------------
   for (auto &KV : Slots8) {
     PerFI &E = KV.second;
 
-    // Stage 4 filter: >=1 A-source spill, reload dsts in any GR8.
+    // Stage 6 filter: accept any GR8 spill source (A-sourced and
+    // non-A sourced slots use different emitters in the rewrite
+    // loop below). Reload dsts must be any GR8 (unchanged).
     if (E.Spills.empty() || E.Reloads.empty())
       continue;
     bool AllASources = llvm::all_of(E.Spills, [](MachineInstr *S) {
       return S->getOperand(0).getReg() == V6C::A;
     });
-    if (!AllASources)
-      continue;
     bool AllSupportedR8 =
         llvm::all_of(E.Reloads, [](MachineInstr *R) {
           Register D = R->getOperand(0).getReg();
@@ -440,6 +440,9 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
 
     // Chooser: same K caps as i16. 2nd-patch skips A (Delta = -8 cc)
     // and H/L (aliases HL used in unpatched-reload routing).
+    // Stage 6 additionally caps K=1 when any spill source is non-A:
+    // the shared O64 ladder would have to repeat its terminal store
+    // for a 2nd patched site, which the design doc defers.
     SmallVector<int, 2> Winners;
     int W1 = pickBestReload(E.Reloads, /*Excluded=*/{}, /*Width=*/8,
                             /*AllowHL=*/true, /*AllowA=*/true, MBFI, TRI);
@@ -447,7 +450,7 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       continue;
     Winners.push_back(W1);
 
-    if (E.Spills.size() == 1) {
+    if (AllASources && E.Spills.size() == 1) {
       int Exc[] = {W1};
       int W2 = pickBestReload(E.Reloads, Exc, /*Width=*/8,
                               /*AllowHL=*/false, /*AllowA=*/false, MBFI, TRI);
@@ -465,16 +468,31 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       Syms.push_back(MF.getContext().createTempSymbol(
           "Lo61_", /*AlwaysAddSuffix=*/true));
 
-    // Spill rewrite: STA <Sym[i]+1> per winner. Kill flag on last.
+    // Spill rewrite: per-source switch.
+    //   A source      -> one STA <Sym[i]+1> per winner (kill on last).
+    //   non-A source  -> expandSpill8Static (O64 shared ladder) with
+    //                    an appender that supplies <Syms[0]+MO_PATCH_IMM>.
+    //                    Stage 6 hard-caps K=1 for non-A sources.
     for (MachineInstr *Spill : E.Spills) {
       MachineBasicBlock *MBB = Spill->getParent();
       DebugLoc DL = Spill->getDebugLoc();
+      Register SrcReg = Spill->getOperand(0).getReg();
       bool IsKill = Spill->getOperand(0).isKill();
-      for (size_t si = 0; si < Syms.size(); ++si) {
-        bool Kill = IsKill && (si + 1 == Syms.size());
-        BuildMI(*MBB, Spill, DL, TII.get(V6C::STA))
-            .addReg(V6C::A, getKillRegState(Kill))
-            .addSym(Syms[si], V6CII::MO_PATCH_IMM);
+
+      if (SrcReg == V6C::A) {
+        for (size_t si = 0; si < Syms.size(); ++si) {
+          bool Kill = IsKill && (si + 1 == Syms.size());
+          BuildMI(*MBB, Spill, DL, TII.get(V6C::STA))
+              .addReg(V6C::A, getKillRegState(Kill))
+              .addSym(Syms[si], V6CII::MO_PATCH_IMM);
+        }
+      } else {
+        assert(Syms.size() == 1 &&
+               "Stage 6 caps K=1 for non-A i8 spills");
+        expandSpill8Static(*Spill, Spill, SrcReg, IsKill, TII, TRI,
+            [&](MachineInstrBuilder &B) {
+              B.addSym(Syms[0], V6CII::MO_PATCH_IMM);
+            });
       }
       Spill->eraseFromParent();
     }

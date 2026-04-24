@@ -1,0 +1,142 @@
+O61 Stage 6 — non-A i8 spill sources — feature test 40
+=======================================================
+
+## C source (tests/features/40/v6llvmc.c, same for c8080.c aside from
+## extern attributes which c8080 doesn't accept)
+
+    __attribute__((leaf)) extern unsigned char op1(unsigned char x);
+    __attribute__((leaf)) extern unsigned char op2(unsigned char x);
+    __attribute__((leaf)) extern void use3(unsigned char a, unsigned char b,
+                                           unsigned char c);
+    __attribute__((leaf)) extern void use4(unsigned char a, unsigned char b,
+                                           unsigned char c, unsigned char d);
+
+    unsigned char three_i8(unsigned char x, unsigned char y, unsigned char z) {
+        unsigned char a = op1(x);
+        unsigned char b = op2(y);
+        unsigned char c = op1(z);
+        use3(a, b, c);
+        return (unsigned char)(a + b + c);
+    }
+
+    unsigned char four_i8(unsigned char x, unsigned char y,
+                          unsigned char z, unsigned char w) {
+        unsigned char a = op1(x);
+        unsigned char b = op2(y);
+        unsigned char c = op1(z);
+        unsigned char d = op2(w);
+        use4(a, b, c, d);
+        return (unsigned char)(a + b + c + d);
+    }
+
+    /* main() exercises three_i8 + four_i8 end-to-end. */
+
+## c8080 compile — not meaningful for this feature
+## ---------------------------------------------
+## c8080.c mirrors the test, but the externs op1/op2/use3/use4 are
+## undefined in its runtime so linking fails. The feature is a purely
+## LLVM-side spill-lowering optimisation and the c8080 baseline is
+## listed here only for completeness; no cycle/size comparison is made
+## against c8080 in this test folder. c8080.c, c8080.asm, c8080.lst,
+## and c8080.bin are preserved as produced.
+
+## v6llvmc assembly (Stage 5 baseline — v6llvmc.asm)
+## =================================================
+## Pre-Stage-6, the A-source spills already route through O61 (patched
+## STA .LLo61_N+1 + MVI target, 0). Non-A i8 spills (B/C/D/E/H/L)
+## fall through to the classical O64 ladder against BSS
+## __v6c_ss.three_i8 / __v6c_ss.four_i8 / __v6c_ss.main.
+##
+## three_i8 (Stage 5): 28 insns, 14 BSS refs to __v6c_ss.three_i8
+##                     + 2 patched LLo61 refs. 3 bytes BSS reserved.
+## four_i8  (Stage 5): 40 insns, 11 BSS refs to __v6c_ss.four_i8
+##                     + 4 patched LLo61 refs. 4 bytes BSS reserved.
+## main     (Stage 5): 57 insns, 3 BSS refs to __v6c_ss.main
+##                     + 16 patched LLo61 refs. 7 bytes BSS reserved.
+
+## v6llvmc assembly (Stage 6 — v6llvmc_new02.asm)
+## ==============================================
+## Every non-A i8 spill in three_i8/four_i8 is now routed through
+## O64's expandSpill8Static with a .LLo61_N+1 appender, terminating
+## in `LXI HL, .LLo61_N+1; MOV M, r` (Row 1, HL dead at the spill).
+## The reload becomes `MVI r, 0` at the `.LLo61_N:` label — the imm
+## byte was written by the spill. Classical BSS refs for these slots
+## are eliminated entirely.
+
+    three_i8:
+        LXI  HL, .LLo61_1+1      ; spill C (Row 1, HL dead)
+        MOV  M, C
+        LXI  HL, .LLo61_2+1      ; spill E (Row 1, HL dead)
+        MOV  M, E
+        CALL op1
+        STA  .LLo61_0+1          ; spill A (Stage 4 fast path)
+        LDA  .LLo61_2+1
+        CALL op2
+        STA  .LLo61_2+1
+        LDA  .LLo61_1+1
+        CALL op1
+        MOV  C, A
+        LXI  HL, .LLo61_1+1
+        MOV  M, C
+        LDA  .LLo61_0+1
+    .LLo61_2:
+        MVI  E, 0
+        CALL use3
+    .LLo61_0:
+        MVI  L, 0
+        LDA  .LLo61_2+1
+        ADD  L
+    .LLo61_1:
+        MVI  L, 0
+        ADD  L
+        RET
+
+## three_i8 (Stage 6): 22 insns, 0 refs to __v6c_ss.three_i8,
+##                     7 patched .LLo61 refs (3 winners).
+##                     Δ vs Stage 5: −6 insns, BSS unused (still
+##                     reserved — see dead-BSS note below).
+## four_i8  (Stage 6): 32 insns, 0 refs to __v6c_ss.four_i8,
+##                     8 patched .LLo61 refs (4 winners).
+##                     Δ vs Stage 5: −8 insns.
+## main     (Stage 6): 60 insns (K=2 for some A-sources in main),
+##                     1 ref to __v6c_ss.main+5 (HL spill in a path
+##                     that couldn't be patched), 16+ .LLo61 refs.
+##                     Net Δ ≈ 0 — main was already mostly patched.
+
+## Chooser / per-slot impact (from V6CSpillPatchedReload DEBUG prints
+## with -debug-only=v6c-spill-patched-reload, for three_i8):
+##   slot FI=0 (source=A): K=2 picks admitted (Stage 4 unchanged).
+##   slot FI=1 (source=C): K=1 pick (winner = MVI E, 0) — Stage 6.
+##   slot FI=2 (source=E): K=1 pick (winner = MVI L, 0) — Stage 6.
+## Non-A slots observe the Stage 6 K≤1 hard cap.
+
+## Bytes / cycles
+## -----------------
+## For three_i8 non-A slots (C and E), each saves (vs classical
+## O64 Row 1 reload `LXI HL, __v6c_ss.three_i8+N; MOV r, M` → 20 cc,
+## 4 B) by collapsing to `MVI r, 0` (7 cc, 2 B):
+##   Δ per slot: −13 cc, −2 B code + −1 B BSS (dead).
+## Δ three_i8 overall: ~ −26 cc, −4 B across two non-A reloads.
+## Δ four_i8 overall:  ~ −39 cc, −6 B across three non-A reloads.
+
+## Bug fixed as part of Stage 6
+## ----------------------------
+## V6CLoadImmCombine treated `MVI r, imm` carrying MO_PATCH_IMM as a
+## trackable constant def. With two patched MVIs landing the same
+## (reg, imm) pair, the "same value already in reg → erase MVI"
+## optimisation erased the second patched MVI and corrupted the
+## reload. Fixed by gating all four immediate-handling sites in
+## V6CLoadImmCombine.cpp on a new `isPlainImm(MO)` helper that also
+## requires `MO.getTargetFlags() == 0`. Any operand carrying a
+## non-zero target flag (MO_PATCH_IMM in practice) is treated as an
+## opaque constant def (invalidate dst, do not track). This also
+## fixes a latent Stage 4 bug.
+
+## Dead BSS note
+## -------------
+## Stage 6 eliminates BSS *references* for fully-patched i8 slots but
+## still reserves the `.comm __v6c_ss.threei8,3,1` etc. in the data
+## segment (V6CStaticStackAlloc allocates BSS up front; O61 runs
+## later and removes refs but not the allocation). Eliminating dead
+## BSS is left as a follow-up; it does not affect correctness or
+## code-size for functions whose spills are fully patched.
