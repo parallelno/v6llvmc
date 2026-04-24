@@ -2,9 +2,43 @@
 
 *Lightweight post-RA counterpart to [O49](O49_direct_memory_alu_isel.md).*
 *Where O49 proposes folding loads into ALU ops at ISel via dedicated*
-*pseudos, this plan catches the remaining cases via a local peephole — at*
-*the cost of exploiting only the safest possible pattern: strictly adjacent*
-*`MOV r, M; OP r` where `r` is dead after the peephole.*
+*pseudos, this plan catches the remaining cases via a local peephole.*
+
+### Scope (in order of implementation)
+
+**Stage 1 — strict adjacency**: `MOV r, M; OP r` where `r` is dead after
+the peephole and no instructions sit between them (skipping only debug
+MIs). Lowest-risk, highest-frequency variant.
+
+**Stage 2 — non-adjacent fold**: allow an arbitrary number of intervening
+instructions between `MOV r, M` and `OP r`, gated on *all* of the
+following for every instruction in between:
+- does not read or write `r`,
+- does not read or write any register that aliases HL (`H`, `L`, `HL`,
+  and any super-register),
+- does not read or write `A` or `FLAGS` (so both the A operand we'll
+  feed into `OP M` and the FLAGS observer chain are unperturbed),
+- is not a branch, call, return, or other control-flow boundary,
+- is not `mayStore` (a store could alias `[HL]` and mutate the value
+  we just loaded — conservative veto, matches O49's reasoning).
+
+**Stage 3 — INR/DCR/MVI M triad (peephole backstop to O46/O49)**:
+fold
+```
+MOV  A, M      ; V6C::MOVrM, dst=A, Uses=[HL]
+INR/DCR A      ; V6C::INRr/DCRr, defs A+FLAGS
+MOV  M, A      ; V6C::MOVMr, uses A+HL
+```
+into `INR M` / `DCR M`, and
+```
+MVI  A, imm
+MOV  M, A      ; uses A+HL (A dead after)
+```
+into `MVI M, imm`. Requires proving HL is unchanged across the whole
+three-instruction window (no intervening HL write, no intervening store
+that could alias) — same machinery as Stage 2. `A` dead after `MOV M, A`
+is required for all three shapes so we don't accidentally observe the
+modified accumulator.
 
 ## Problem
 
@@ -102,7 +136,9 @@ All eight definitions already exist in
 [V6CInstrInfo.td](../../llvm/lib/Target/V6C/V6CInstrInfo.td) lines 294–303
 with empty pattern lists — no TableGen changes needed.
 
-## Safety conditions (all required)
+## Safety conditions
+
+### Stage 1 — adjacent `MOV r, M; OP r` (all required)
 
 1. **Strict adjacency.** The two MIs are consecutive in the same MBB, with
    no instruction, label, or terminator between them. Skip over
@@ -126,7 +162,48 @@ with empty pattern lists — no TableGen changes needed.
    FLAGS, so there is nothing to preserve. (Condition noted for
    completeness.)
 
+### Stage 2 — non-adjacent `MOV r, M; … ; OP r`
+
+Same as Stage 1 plus a `scanBetween(I, J)` walk over every MI strictly
+between the MOV and the OP. For each MI `K`:
+
+7a. `K` **does not read or write `r`** (including sub- and super-registers).
+7b. `K` **does not read or write any register overlapping HL**
+    (`H`, `L`, `HL`, or any super-register).
+7c. `K` **does not read or write `A` or `FLAGS`** — otherwise the A
+    operand fed into `OP M` or the FLAGS observer downstream would be
+    disturbed.
+7d. `K` **is not a terminator, call, or control-flow boundary**
+    (`isCall`, `isBranch`, `isReturn`, `isBarrier`, or
+    `modifiesRegister(V6C::SP)` for conservative CALL-seq handling).
+7e. `K` **is not `mayStore`** — a store could alias the `[HL]` slot we
+    just loaded. Conservative veto matching the O49 design reasoning.
+
+Debug MIs are always skipped without imposing a condition.
+
+### Stage 3 — `MOV A, M; INR/DCR A; MOV M, A` and `MVI A, imm; MOV M, A`
+
+Both shapes share the same `[HL]` slot on load and store, so HL must
+be provably unchanged across the whole window:
+
+8a. **All MIs in the window (exclusive of head and tail) satisfy
+    Stage 2 conditions 7b/7d/7e.** `r` (= `A`) is expected to change by
+    the middle MI, so 7a/7c are *not* required on the middle instruction
+    of the `INR/DCR` form — but 7c still applies to any extra MI inserted
+    between the three core MIs by e.g. scheduling.
+9a. **`A` is dead after `MOV M, A`** — otherwise the caller observes a
+    different A value (the pre-INR value was never reachable; `INR M`
+    leaves A untouched).
+10a. **Head and tail reference the same HL contents.** Trivially true in
+     the zero-intermediate case; for the general case guaranteed by 7b
+     (no HL writes) and 7e (no aliasing stores).
+11a. **Middle operand register is A.** `INR/DCR A` / `MVI A, imm`.
+     `INR r` for `r ≠ A` is not foldable — no `INR M` equivalent exists
+     for non-A sources because the 8080 `INR M` always targets `[HL]`.
+
 ## Rewrite
+
+### Stages 1 & 2 (`OP r → OP M`)
 
 1. Build `OPM` MI with operands:
    * `def $A` (tied to `use $A` LHS, matching the existing `OPr` form),
@@ -134,13 +211,28 @@ with empty pattern lists — no TableGen changes needed.
    * plus `implicit use HL` / `implicit def FLAGS` / `implicit def A` as
      per the `OPM` instruction description.
    For `CMPM` there is no `$A` def.
-2. Insert `OPM` immediately before the original `OPr`.
-3. Erase `OPr`, then erase `MOVrM`.
+2. Insert `OPM` in place of the original `OPr`.
+3. Erase `OPr`, then erase `MOVrM`. The intervening MIs (Stage 2) stay
+   in place — they were provably independent.
+
+### Stage 3 (`INR/DCR/MVI M`)
+
+`INR A` / `DCR A` / `MVI A, imm` + `MOV M, A` (with a matching `MOV A, M`
+prefix in the INR/DCR case):
+
+1. Build `INRM` / `DCRM` / `MVIM` with the same HL implicit use and
+   FLAGS implicit def as their register-form counterparts (`MVIM` has
+   no FLAGS def). `MVIM` carries the immediate from `MVI A, imm`.
+2. Insert the new MI in place of `MOV M, A`.
+3. Erase `MOV M, A`, the middle MI, and (INR/DCR form) the leading
+   `MOV A, M`.
 
 Kill flags:
-* Transfer the `MOVrM`'s HL kill flag (if any) onto `OPM`'s implicit HL use.
+* Transfer the earliest `MOVrM`'s HL kill flag (if any) onto the new
+  memory-form MI's implicit HL use.
 * The old `r` kill on the `OPr` use is irrelevant (register fully gone).
-* No new defs are introduced beyond what `OPr` already defined (A, FLAGS).
+* No new defs are introduced beyond what the original sequence defined
+  (A, FLAGS for INR/DCR; FLAGS unchanged for MVI).
 
 ## Where it lives
 
@@ -157,32 +249,50 @@ CLI toggle: reuses existing `-v6c-disable-peephole`.
 for each MBB:
   I = MBB.begin()
   while I != MBB.end():
-    N = skipDebug(next(I))
-    if matchMovAluM(I, N, r, AluOp):
-      if r != V6C::A
-         && isRegDeadAfter(r, N)
-         && adjacent(I, N):
-        emit OPM(A, A) before N, carry HL kill from I
-        erase N  (old OPr)
+    if I is MOVrM with dst r:
+      J = findAluConsumerFor(r, starting at next(I))
+      if J found
+         && r != V6C::A
+         && isRegDeadAfter(r, J)
+         && scanBetweenSafe(next(I), J, r):   // Stage 2 conditions 7a-7e
+        emit OPM(A, A) before J, carry HL kill from I
+        erase J  (old OPr)
         erase I  (MOVrM)
         I = next position
         Changed = true
         continue
+    if I is MOVrM with dst=A  [Stage 3]:
+      M = findMidInstr(A, starting at next(I))       // INR A / DCR A
+      if M && next(M) is MOVMr with src=A
+         && isRegDeadAfter(A, MOVMr)
+         && scanBetweenSafe(next(I), M, V6C::A, allowAWrite=false)
+         && scanBetweenSafe(next(M), MOVMr, V6C::A, allowAWrite=false):
+        emit INRM/DCRM before MOVMr
+        erase MOVMr, M, I
+        continue
+    if I is MVIr A, imm [Stage 3b]:
+      K = findMovMr(A, starting at next(I))
+      if K found && isRegDeadAfter(A, K)
+         && scanBetweenSafe(next(I), K, V6C::A, allowAWrite=false):
+        emit MVIM imm before K
+        erase K, I
+        continue
     ++I
 ```
 
-`matchMovAluM` returns the ALU kind from a small opcode→opcode table so
-a single code path handles all seven `OP r → OP M` and `CMP r → CMP M`
-cases.
+A shared opcode-map helper (`aluRegToMemOpcode`, `incDecRegToMemOpcode`)
+handles all nine `OP r → OP M` plus `INR/DCR/MVI` cases. The
+`scanBetweenSafe(begin, end, r, allowAWrite=true)` helper encapsulates
+Stage 2 conditions 7a–7e in a single walk.
 
 ## Relationship to O49
 
 | Aspect | O49 (ISel pseudos) | O65 (this peephole) |
 |---|---|---|
 | Level | DAG / ISel | Post-RA peephole |
-| Scope | All `OP M` forms *including* `MVI M`, `INR M`, `DCR M` | Only the eight `OP r → OP M` ALU folds |
+| Scope | All `OP M` forms | Stages 1–3 cover all `OP M` (8 ALU) + `INR M` + `DCR M` + `MVI M, imm` |
 | Register-allocator interaction | Eliminates the temporary entirely | Requires `r` dead after — may miss cases |
-| Risk | Higher (new pseudos, RA interaction) | Very low (local, dead-reg gated) |
+| Risk | Higher (new pseudos, RA interaction) | Stage 1 very low; stages 2/3 low-medium (rely on explicit scan) |
 | Coverage | Best possible | Backstop for the cases ISel missed |
 
 Both can coexist: O49 removes the load at ISel when patterns fit; O65
@@ -208,25 +318,41 @@ three grounds, addressed here:
 
 ## Estimated savings
 
-- Per fold: **4cc, 1B**.
+- Stage 1 `OP r → OP M` fold: **4cc, 1B**.
+- Stage 3 `MOV A, M; INR/DCR A; MOV M, A → INR/DCR M` fold: **8cc, 2B**
+  per instance (was 20cc/3B, becomes 10cc/1B).
+- Stage 3 `MVI A, imm; MOV M, A → MVI M, imm` fold: **5cc, 1B** per
+  instance (was 15cc/3B, becomes 10cc/2B).
 - Frequency: medium-high. Emerges naturally after O10 (static stack) and
   O20 (honest load/store defs) expose more single-use `[HL]` reads. The
-  reference example (`v6llvmc_new01.asm`) shows 4 folds in one function
-  body; similar patterns appear across the golden-test suite wherever
-  `XRA`/`ORA`/`CMP` is fed from a named global byte.
+  reference example (`v6llvmc_new01.asm`) shows 4 Stage 1 folds in one
+  function body; Stage 3 triggers wherever a struct field or global byte
+  is incremented/decremented/initialized in place.
 
 ## Implementation effort
 
-~40–60 lines in `V6CPeephole.cpp`, one new unit of a small opcode-map
-helper, plus a lit test (`mov-alu-m-fold.ll`) covering each of the eight
-ALU variants and at least one negative case (`MOVrM` result still live,
-`r == A`, non-adjacent).
+Stage 1: ~40–60 lines in `V6CPeephole.cpp`, one small opcode-map helper,
+plus a lit test (`mov-alu-m-fold.ll`) covering each of the eight ALU
+variants and at least one negative case.
+
+Stage 2: +~30 lines for `scanBetweenSafe` helper + lit coverage of the
+non-adjacent case (one intervening `MOV`, one failing case with a store
+in between).
+
+Stage 3: +~60 lines for `INR/DCR/MVI M` pattern matching, opcode map
+extension, and `A`-dead liveness check, plus lit coverage of the three
+shapes (INR M / DCR M / MVI M) and two negative cases (HL redefined
+between the MOVs, A still live after store).
 
 ## Testing
 
 - Lit: new `tests/lit/CodeGen/V6C/mov-alu-m-fold.ll` with CHECK lines
   per ALU variant; negative CHECK-NOTs for the `r` still-live and `r=A`
   cases.
+- Stage 2 lit: one positive (intervening independent MOV) + one negative
+  (intervening store or HL-aliasing op).
+- Stage 3 lit: new `tests/lit/CodeGen/V6C/inc-dec-mvi-m-fold.ll` covering
+  `++global_byte`, `--global_byte`, `global_byte = 42`.
 - Feature test: `tests/features/38/` already exercises the `XRA` case —
   extend with round-trip validation before/after the pass.
 - Golden suite: full 15/15 must still pass.

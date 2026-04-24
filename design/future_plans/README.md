@@ -133,7 +133,7 @@
 | O62 | Efficient i16 Shift Expansion (constant amount) | V6C | 16cc, 1B per shift-by-8/16 | High | Low | Very Low | None | [ ] |
 | O63 | Split Spill Pseudos — drop false FLAGS def on static stack | V6C | 4-12cc, 1-3B per fold (indirect) | Medium | Low-Med | Low-Med | O10 done | [ ] |
 | O64 | Liveness-Aware i8 Spill/Reload (Shapes B & C) | V6C | 8-56cc, 0-2B per non-A i8 spill/reload | Very high | Low-Med | Low | O10 done, O42 done | [x] |
-| O65 | MOV r, M + ALU r Fold (peephole backstop to O49) | V6C | 4cc, 1B per fold | Med-High | Very Low | Very Low | None (composes with O49) | [ ] |
+| O65 | MOV r, M + ALU r Fold (peephole backstop to O49) | V6C | 4cc, 1B per fold | Med-High | Very Low | Very Low | None (composes with O49) | [x] |
 
 ### Recommended order
 
@@ -167,7 +167,7 @@
 25. ~~**O43** — SHLD/LHLD→PUSH/POP peephole, 12cc+4B per short-lived HL spill, ~40 lines~~ ✅
 26. ~~**O44** — adjacent XCHG cancellation, 8cc+2B per pair, ~15 lines~~ ✅
 27. **O45** — adjacent POP/PUSH cancellation, 24cc+2B per pair, ~20 lines
-28. **O49** — direct memory ALU/store ISel (all 11 M-operand instructions), supersedes O4+O46, ~80 lines
+28. ~~**O49** — direct memory ALU/store ISel (all 11 M-operand instructions), supersedes O4+O46, ~80 lines~~ ✅
 29. **O47** — sub-register liveness peephole, 8cc+2B per dead save/restore pair, ~35 lines
 30. **O50** — aggressive inlining control, TTI override to limit inlining, ~10 lines
 31. **O51** — LSR cost tuning, evaluate Insns-first vs NumRegs-first ordering, ~10 lines
@@ -175,7 +175,7 @@
 33. **O58** — CmpZero backward scan, skip past safe instructions in flag elimination, ~30 lines
 34. **O54** — optimal stack adjustment, POP/PUSH for small SP changes, ~30 lines
 35. ~~**O62** — efficient i16 shift-by-8/16 expansion, 16cc+1B per occurrence, ~60 lines~~ ✅
-36. **O65** — MOV r, M + ALU r fold (peephole backstop to O49), 4cc+1B per fold, ~40–60 lines
+36. ~~**O65** — MOV r, M + ALU r fold (peephole backstop to O49), 4cc+1B per fold, ~40–60 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅

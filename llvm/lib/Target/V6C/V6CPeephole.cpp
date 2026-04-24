@@ -62,6 +62,8 @@ private:
   bool cancelAdjacentXchg(MachineBasicBlock &MBB);
   bool foldXchgDad(MachineBasicBlock &MBB);
   bool foldShldLhldToPushPop(MachineBasicBlock &MBB);
+  bool foldMovAluM(MachineBasicBlock &MBB);
+  bool foldIncDecMviM(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -664,6 +666,230 @@ bool V6CPeephole::foldShldLhldToPushPop(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// Map a register-form ALU opcode (V6C::ADDr/.../CMPr) to its memory-form
+/// counterpart (V6C::ADDM/.../CMPM). Returns 0 if Opc is not foldable.
+static unsigned aluRegToMemOpcode(unsigned Opc) {
+  switch (Opc) {
+  case V6C::ADDr: return V6C::ADDM;
+  case V6C::ADCr: return V6C::ADCM;
+  case V6C::SUBr: return V6C::SUBM;
+  case V6C::SBBr: return V6C::SBBM;
+  case V6C::ANAr: return V6C::ANAM;
+  case V6C::XRAr: return V6C::XRAM;
+  case V6C::ORAr: return V6C::ORAM;
+  case V6C::CMPr: return V6C::CMPM;
+  default:        return 0;
+  }
+}
+
+/// Stage 2 helper for O65: walk MIs in [Begin, End) and report whether
+/// every MI is safe to cross while preserving the value of `R` AND the
+/// A / FLAGS / [HL] observer chain.
+///
+/// Each crossed MI must:
+///   * not read or write R (or any aliasing reg),
+///   * not read or write any reg overlapping HL,
+///   * not write A (a write to A would clobber the eventual OP M's lhs),
+///   * not write FLAGS (downstream Jcc must observe the OP M's flags),
+///   * not be a call / branch / return / barrier,
+///   * not be mayStore (a store could alias [HL]).
+static bool scanBetweenSafe(MachineBasicBlock::iterator Begin,
+                            MachineBasicBlock::iterator End, Register R,
+                            const TargetRegisterInfo *TRI) {
+  for (auto K = Begin; K != End; ++K) {
+    if (K->isDebugInstr())
+      continue;
+    if (K->isCall() || K->isBranch() || K->isReturn() || K->isBarrier())
+      return false;
+    if (K->mayStore())
+      return false;
+    for (const MachineOperand &MO : K->operands()) {
+      if (!MO.isReg() || !MO.getReg())
+        continue;
+      Register Reg = MO.getReg();
+      bool TouchesR  = TRI->regsOverlap(Reg, R);
+      bool TouchesHL = TRI->regsOverlap(Reg, V6C::HL);
+      bool TouchesA  = TRI->regsOverlap(Reg, V6C::A);
+      bool TouchesF  = TRI->regsOverlap(Reg, V6C::FLAGS);
+      if (!TouchesR && !TouchesHL && !TouchesA && !TouchesF)
+        continue;
+      if (TouchesR || TouchesHL)
+        return false; // any read or write of R or HL is unsafe
+      if (MO.isDef() && (TouchesA || TouchesF))
+        return false; // crossing a write to A or FLAGS is unsafe
+      // Pure read of A or FLAGS is fine.
+    }
+  }
+  return true;
+}
+
+/// Fold MOV r, M; ...; OP r -> ...; OP M when r is dead after OP (O65,
+/// stages 1+2).
+///
+/// Stage 1 -- strict adjacency (debug MIs skipped).
+/// Stage 2 -- arbitrary independent MIs between the MOV and the OP, as
+///            long as scanBetweenSafe() approves every crossed MI. The
+///            forward window is bounded by kMaxScanWindow to avoid
+///            quadratic behavior in pathologically large blocks.
+bool V6CPeephole::foldMovAluM(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+  const TargetInstrInfo &TII =
+      *MBB.getParent()->getSubtarget().getInstrInfo();
+
+  static constexpr unsigned kMaxScanWindow = 16;
+
+  for (auto I = MBB.begin(), E = MBB.end(); I != E;) {
+    if (I->getOpcode() != V6C::MOVrM) {
+      ++I;
+      continue;
+    }
+
+    Register MovDst = I->getOperand(0).getReg();
+    if (MovDst == V6C::A) {
+      ++I;
+      continue;
+    }
+
+    // Walk forward up to kMaxScanWindow non-debug MIs looking for the
+    // matching OPr. Stop early on any unsafe MI.
+    auto J = std::next(I);
+    unsigned Steps = 0;
+    bool Failed = false;
+    while (J != E && Steps < kMaxScanWindow) {
+      if (J->isDebugInstr()) {
+        ++J;
+        continue;
+      }
+      // Is this the candidate ALU op?
+      unsigned MemOpc = aluRegToMemOpcode(J->getOpcode());
+      if (MemOpc != 0) {
+        bool IsCMP = (J->getOpcode() == V6C::CMPr);
+        unsigned RhsIdx = IsCMP ? 1 : 2;
+        if (J->getOperand(RhsIdx).getReg() == MovDst)
+          break; // found
+      }
+      // Otherwise it must be safe to cross.
+      if (!scanBetweenSafe(J, std::next(J), MovDst, TRI)) {
+        Failed = true;
+        break;
+      }
+      ++J;
+      ++Steps;
+    }
+
+    if (Failed || J == E || Steps >= kMaxScanWindow) {
+      ++I;
+      continue;
+    }
+
+    unsigned MemOpc = aluRegToMemOpcode(J->getOpcode());
+    if (MemOpc == 0) {
+      ++I;
+      continue;
+    }
+
+    bool IsCMP = (J->getOpcode() == V6C::CMPr);
+
+    // r must be dead after the ALU op.
+    if (!isRegDeadAfter(MBB, J, MovDst, TRI)) {
+      ++I;
+      continue;
+    }
+
+    // Build OP M before J. For non-CMP: outs Acc:$dst tied to ins Acc:$lhs.
+    //                      For CMP:    no outs.
+    MachineInstrBuilder MIB =
+        BuildMI(MBB, *J, J->getDebugLoc(), TII.get(MemOpc));
+    if (!IsCMP)
+      MIB.addReg(V6C::A, RegState::Define);
+    MIB.addReg(V6C::A);
+
+    // Erase the ALU op and the original MOV.
+    auto Next = std::next(J);
+    J->eraseFromParent();
+    auto INext = std::next(I);
+    I->eraseFromParent();
+    // Resume scanning from where the MOV used to be: any MI that was
+    // between MOV and OP is now adjacent to the new OP M.
+    I = (INext == Next) ? Next : INext;
+    Changed = true;
+  }
+  return Changed;
+}
+
+/// Find the next non-debug iterator at or after K (does not advance past End).
+static MachineBasicBlock::iterator
+nextNonDebug(MachineBasicBlock::iterator K, MachineBasicBlock::iterator End) {
+  while (K != End && K->isDebugInstr())
+    ++K;
+  return K;
+}
+
+/// Stage 3 fold for O65: collapse MOV A, M; INR/DCR A; MOV M, A into
+/// INR M / DCR M, and MVI A, imm; MOV M, A into MVI M, imm. In both
+/// cases A must be dead after the MOV M, A.
+///
+/// Adjacency: debug MIs are skipped between the head, middle, and tail
+/// instructions of each shape.
+bool V6CPeephole::foldIncDecMviM(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+  const TargetInstrInfo &TII =
+      *MBB.getParent()->getSubtarget().getInstrInfo();
+
+  for (auto I = MBB.begin(), E = MBB.end(); I != E;) {
+    unsigned Opc = I->getOpcode();
+
+    // ---- Shape A: MOV A, M ; INR/DCR A ; MOV M, A -> INR/DCR M ----
+    if (Opc == V6C::MOVrM && I->getOperand(0).getReg() == V6C::A) {
+      auto Mid = nextNonDebug(std::next(I), E);
+      if (Mid != E &&
+          (Mid->getOpcode() == V6C::INRr || Mid->getOpcode() == V6C::DCRr) &&
+          Mid->getOperand(0).getReg() == V6C::A) {
+        auto Tail = nextNonDebug(std::next(Mid), E);
+        if (Tail != E && Tail->getOpcode() == V6C::MOVMr &&
+            Tail->getOperand(0).getReg() == V6C::A &&
+            isRegDeadAfter(MBB, Tail, V6C::A, TRI)) {
+          unsigned MemOpc =
+              (Mid->getOpcode() == V6C::INRr) ? V6C::INRM : V6C::DCRM;
+          BuildMI(MBB, *Tail, Tail->getDebugLoc(), TII.get(MemOpc));
+          auto Next = std::next(Tail);
+          Tail->eraseFromParent();
+          Mid->eraseFromParent();
+          I->eraseFromParent();
+          I = Next;
+          Changed = true;
+          continue;
+        }
+      }
+    }
+
+    // ---- Shape B: MVI A, imm ; MOV M, A -> MVI M, imm ----
+    if (Opc == V6C::MVIr && I->getOperand(0).getReg() == V6C::A) {
+      auto Tail = nextNonDebug(std::next(I), E);
+      if (Tail != E && Tail->getOpcode() == V6C::MOVMr &&
+          Tail->getOperand(0).getReg() == V6C::A &&
+          isRegDeadAfter(MBB, Tail, V6C::A, TRI)) {
+        const MachineOperand &ImmOp = I->getOperand(1);
+        BuildMI(MBB, *Tail, Tail->getDebugLoc(), TII.get(V6C::MVIM))
+            .add(ImmOp);
+        auto Next = std::next(Tail);
+        Tail->eraseFromParent();
+        I->eraseFromParent();
+        I = Next;
+        Changed = true;
+        continue;
+      }
+    }
+
+    ++I;
+  }
+  return Changed;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -672,6 +898,8 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   for (MachineBasicBlock &MBB : MF) {
     Changed |= cancelAdjacentXchg(MBB);
     Changed |= foldShldLhldToPushPop(MBB);
+    Changed |= foldMovAluM(MBB);
+    Changed |= foldIncDecMviM(MBB);
     Changed |= eliminateSelfMov(MBB);
     Changed |= eliminateRedundantMov(MBB);
     Changed |= foldCounterBranch(MBB);

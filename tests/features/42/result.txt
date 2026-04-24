@@ -1,0 +1,219 @@
+O65 -- MOV r, M + ALU r Fold (post-RA peephole) -- feature test 42
+==================================================================
+
+Three-stage post-RA peephole pass that folds:
+
+  Stage 1  MOV r, M; OP r              -> OP M           (strict adjacency)
+  Stage 2  MOV r, M; <safe MIs>; OP r  -> <safe MIs>; OP M
+  Stage 3  MOV A, M; INR/DCR A; MOV M, A  -> INR M / DCR M
+           MVI A, imm; MOV M, A           -> MVI M, imm
+
+Where r != A and r is dead after the ALU op (Stage 3: A dead after the
+store). OP is one of ADD/ADC/SUB/SBB/ANA/XRA/ORA/CMP. The memory-form
+instructions already exist in V6CInstrInfo.td -- this peephole simply
+recovers folds that survive ISel/expansion to post-RA.
+
+Implementation: `foldMovAluM()` (stages 1+2) and `foldIncDecMviM()`
+(stage 3), plus the `scanBetweenSafe()` helper, in V6CPeephole.cpp.
+
+Real-world Stage 3 hits are rare in clang-emitted code because O49
+already pattern-matches (*p)++ / *p = imm directly to INR M / MVI M
+during ISel. Stage 3 is the post-RA backstop for triads emitted by
+expansion or post-scheduling passes.
+
+
+## C source (tests/features/42/v6llvmc.c -- c8080.c is the same shape)
+
+    extern unsigned char op(unsigned char x);
+    extern void use1(unsigned char);
+    extern void use2(unsigned char, unsigned char);
+    unsigned char counter, flag, slot;
+
+    /* Stage 1 candidates: each call site spills a byte to a static-stack
+     * slot, the reload before each XRA/ANA/ORA/ADD produces a foldable
+     * MOV r, M; OP r pair. */
+    unsigned char xor_bytes(unsigned char a, unsigned char b, unsigned char c,
+                            unsigned char d, unsigned char e) {
+        unsigned char x1 = op(a), x2 = op(b), x3 = op(c),
+                      x4 = op(d), x5 = op(e);
+        use1(x1);
+        return (unsigned char)(x1 ^ x2 ^ x3 ^ x4 ^ x5);
+    }
+    /* and_bytes / or_bytes / add_bytes follow the same shape. */
+
+    /* Stage 2: an extra use2() call splits the MOV from the ALU op
+     * with independent reg shuffles between them. */
+    unsigned char xor_with_passthrough(unsigned char a, unsigned char b,
+                                       unsigned char c, unsigned char d) {
+        unsigned char x1 = op(a), x2 = op(b), x3 = op(c), x4 = op(d);
+        use2(x1, x2);
+        return (unsigned char)((x1 ^ x2) ^ (x3 ^ x4));
+    }
+
+    /* Stage 3 candidates -- O49 already lowers most of them at ISel time. */
+    void inc_via_ptr(unsigned char *p) { (*p)++; }
+    void dec_via_ptr(unsigned char *p) { (*p)--; }
+    void set_via_ptr(unsigned char *p) { *p = 0x42; }
+
+
+## c8080 assembly (main + xor_bytes + and_bytes -- Z80 syntax)
+## ==========================================================
+## c8080 stores every byte through static-stack slots; HL-relative
+## reads are coded as `xor (hl)` etc. directly, so c8080 already
+## emits the `XRA M` / `ANA M` form. This baseline is for reference;
+## the feature only changes v6llvmc.
+
+    main:
+        ld   hl, 0
+        ld   (__a_1_main), hl
+        ld   (__a_2_main), hl
+        ld   a, 17
+        ld   (__a_1_xor_bytes), a
+        ld   a, 34
+        ld   (__a_2_xor_bytes), a
+        ld   a, 51
+        ld   (__a_3_xor_bytes), a
+        ld   a, 68
+        ld   (__a_4_xor_bytes), a
+        ld   a, 85
+        call xor_bytes
+        ; (and_bytes / or_bytes / add_bytes / xor_with_passthrough /
+        ;  inc_via_ptr / ... follow with the same arg-spill pattern)
+        ld   hl, 0
+        ret
+
+    xor_bytes:
+        ld   (__a_5_xor_bytes), a
+        ld   a, (__a_1_xor_bytes)
+        call op
+        ld   (xor_bytes_x1), a
+        ld   a, (__a_2_xor_bytes)
+        call op
+        ld   (xor_bytes_x2), a
+        ld   a, (__a_3_xor_bytes)
+        call op
+        ld   (xor_bytes_x3), a
+        ld   a, (__a_4_xor_bytes)
+        call op
+        ld   (xor_bytes_x4), a
+        ld   a, (__a_5_xor_bytes)
+        call op
+        ld   (xor_bytes_x5), a
+        ld   a, (xor_bytes_x1)
+        call use1
+        ld   hl, xor_bytes_x1
+        ld   a, (xor_bytes_x2)
+        xor  (hl)
+        ld   hl, xor_bytes_x3
+        xor  (hl)
+        ld   hl, xor_bytes_x4
+        xor  (hl)
+        ld   hl, xor_bytes_x5
+        xor  (hl)
+        ret
+
+    and_bytes:
+        ld   (__a_3_and_bytes), a
+        ld   a, (__a_1_and_bytes)
+        call op
+        ld   (and_bytes_x1), a
+        ld   a, (__a_2_and_bytes)
+        call op
+        ld   (and_bytes_x2), a
+        ld   a, (__a_3_and_bytes)
+        call op
+        ld   (and_bytes_x3), a
+        ld   a, (and_bytes_x1)
+        call use1
+        ld   hl, and_bytes_x1
+        ld   a, (and_bytes_x2)
+        and  (hl)
+        ld   hl, and_bytes_x3
+        and  (hl)
+        ret
+
+
+## c8080 stats (worst-path cycles / body bytes, excluding RET, per fn)
+##   xor_bytes  -- ~150 cc / 47 B   (4 XRA M, all already direct)
+##   and_bytes  --  ~93 cc / 31 B   (2 ANA M)
+##   or_bytes   --  ~93 cc / 31 B   (2 ORA M)
+##   add_bytes  --  ~93 cc / 31 B   (2 ADD M)
+##   inc_via_ptr / dec_via_ptr / set_via_ptr -- 1-2 instr / RET
+
+
+## v6llvmc assembly with O65 enabled (v6llvmc_new01.asm)
+## =====================================================
+## All 12 strict-adjacent and 0 non-adjacent candidates fold in this
+## test. 3 MOV r, M instructions remain: 1 in add_bytes (blocked by an
+## intervening LDA that writes A), 2 in xor_with_passthrough / main
+## (where MOV E, M precedes a CALL use2 that consumes E -- E is live).
+
+    xor_bytes:
+        ; ... arg setup + 5 calls to op() spilling results to static slots ...
+        LDA   __v6c_ss.xor_bytes
+        CALL  use1
+        LDA   __v6c_ss.xor_bytes+1
+        LXI   HL, __v6c_ss.xor_bytes+2
+        XRA   M                        ; was MOV L, M ; XRA L
+        LXI   HL, __v6c_ss.xor_bytes+3
+        XRA   M                        ; was MOV L, M ; XRA L
+        LXI   HL, __v6c_ss.xor_bytes+4
+        XRA   M                        ; was MOV L, M ; XRA L
+        LXI   HL, __v6c_ss.xor_bytes
+        XRA   M                        ; was MOV L, M ; XRA L
+        RET
+
+    and_bytes:
+        ; ...
+        LDA   __v6c_ss.and_bytes+2
+        LXI   HL, __v6c_ss.and_bytes+1
+        ANA   M                        ; was MOV L, M ; ANA L
+        LXI   HL, __v6c_ss.and_bytes
+        ANA   M                        ; was MOV L, M ; ANA L
+        RET
+
+    or_bytes:                          ; same pattern, ORA M x2
+    add_bytes:                         ; ADD M x1; one MOV L, M survives
+                                       ;   (intervening LDA writes A)
+
+    inc_via_ptr:    INR   M ; RET      ; via O49 ISel
+    dec_via_ptr:    DCR   M ; RET      ; via O49 ISel
+    set_via_ptr:    MVI   M, 0x42 ; RET ; via O49 ISel
+    inc_volatile:   INR   M ; RET
+    dec_volatile:   DCR   M ; RET
+    set_volatile:   MVI   M, 0x55 ; RET
+    inc_indexed:                       ; address arithmetic via DAD DE
+        MVI   A, 0
+        MOV   D, A
+        DAD   DE
+        INR   M
+        RET
+    set_indexed:                       ; same, MVI M, 0x77
+    init_buf:                          ; three direct stores
+    inc_via_ptr_and_read:              ; A is live -- triad NOT folded
+        MOV   A, M
+        INR   A
+        MOV   M, A
+        RET
+
+
+## v6llvmc stats: post-fold instruction counts in the four ALU functions
+##   xor_bytes              -- 4 XRA M folds (-16 cc, -4 B)
+##   and_bytes              -- 2 ANA M folds (-8 cc, -2 B)
+##   or_bytes               -- 2 ORA M folds (-8 cc, -2 B)
+##   add_bytes              -- 1 ADD M fold  (-4 cc, -1 B); 1 MOV L, M
+##                              remains (intervening LDA writes A)
+##   xor_with_passthrough   -- 3 XRA M folds (-12 cc, -3 B); 1 MOV E, M
+##                              remains (E live across CALL use2)
+##
+##   Total in this feature test: 12 folds, -48 cc, -12 B.
+##
+##   Stage 3 candidates: 0 positive (O49 already covers them at ISel),
+##                       1 negative (inc_via_ptr_and_read: A live -> no fold).
+
+
+## Verification
+##   - Lit suite:    91/91 PASS  (incl. mov-alu-m-fold.ll, inc-dec-mvi-m-fold.ll)
+##   - Golden tests: PASS
+##   - Full regression (tests/run_all.py): 110/110 PASS
+##   - tests/features/42/v6llvmc_new01.asm shows the 12 expected folds
