@@ -193,7 +193,7 @@ bool V6CStaticStackAlloc::runOnMachineFunction(MachineFunction &MF) {
     if (ObjSize <= 0)
       continue;
 
-    FuncInfo->addStaticSlot(I, Offset);
+    FuncInfo->addStaticSlot(I, Offset, ObjSize);
     Offset += ObjSize;
 
     LLVM_DEBUG(dbgs() << "  FI#" << I << ": size=" << ObjSize

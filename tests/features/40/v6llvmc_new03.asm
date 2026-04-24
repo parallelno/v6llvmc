@@ -1,21 +1,18 @@
 	.text
 	.globl	three_i8                        ; -- Begin function three_i8
 three_i8:                               ; @three_i8
-; %bb.0: ; 304cc
+; %bb.0:
 	LXI	HL, .LLo61_1+1
 	MOV	M, C
 	LXI	HL, .LLo61_2+1
 	MOV	M, E
 	CALL	op1
-
 	STA	.LLo61_0+1
 	LDA	.LLo61_2+1
 	CALL	op2
-
 	STA	.LLo61_2+1
 	LDA	.LLo61_1+1
 	CALL	op1
-
 	MOV	C, A
 	LXI	HL, .LLo61_1+1
 	MOV	M, C
@@ -152,10 +149,4 @@ main:                                   ; @main
 	XCHG
 	RET
                                         ; -- End function
-	.local	__v6c_ss.three_i8               ; @__v6c_ss.three_i8
-	.comm	__v6c_ss.three_i8,3,1
-	.local	__v6c_ss.four_i8                ; @__v6c_ss.four_i8
-	.comm	__v6c_ss.four_i8,4,1
-	.local	__v6c_ss.main                   ; @__v6c_ss.main
-	.comm	__v6c_ss.main,7,1
 	.addrsig

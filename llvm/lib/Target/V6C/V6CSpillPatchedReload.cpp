@@ -42,6 +42,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineBlockFrequencyInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
@@ -49,6 +50,10 @@
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/Debug.h"
@@ -542,6 +547,91 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
     }
 
     Changed = true;
+  }
+
+  // ---- Dead-BSS compaction ----------------------------------------
+  // After rewriting, slots whose spills/reloads were all redirected to
+  // the patched `.Lo61_N+1` code-symbol addresses no longer reference
+  // the backing `__v6c_ss.<func>` global.  Drop dead FIs from the
+  // static-slot map, repack surviving offsets contiguously, and resize
+  // (or erase) the backing GlobalVariable so AsmPrinter emits a smaller
+  // `.comm` — or none at all.
+  if (Changed) {
+    // Collect the set of frame indices still referenced by any
+    // MachineOperand in the function.
+    SmallSet<int, 8> LiveFIs;
+    for (auto &MBB : MF) {
+      for (auto &MI : MBB) {
+        for (const MachineOperand &MO : MI.operands()) {
+          if (MO.isFI())
+            LiveFIs.insert(MO.getIndex());
+        }
+      }
+    }
+
+    // Walk the existing static-slot map and drop dead entries.
+    SmallVector<int, 8> DeadFIs;
+    for (auto &KV : MFI->getStaticSlotMap()) {
+      if (!LiveFIs.contains(KV.first))
+        DeadFIs.push_back(KV.first);
+    }
+
+    if (!DeadFIs.empty()) {
+      for (int FI : DeadFIs)
+        MFI->eraseStaticSlot(FI);
+
+      // Repack: reassign offsets monotonically by ascending FI order
+      // (matching the original V6CStaticStackAlloc layout policy).
+      SmallVector<std::pair<int, int64_t>, 8> Live;
+      for (auto &KV : MFI->getStaticSlotMap())
+        Live.emplace_back(KV.first, MFI->getStaticSize(KV.first));
+      llvm::sort(Live, [](const auto &A, const auto &B) {
+        return A.first < B.first;
+      });
+
+      int64_t NewTotal = 0;
+      for (auto &P : Live) {
+        MFI->setStaticOffset(P.first, NewTotal);
+        NewTotal += P.second;
+      }
+
+      GlobalVariable *OldGV = MFI->getStaticStackGV();
+      Module *M = MF.getFunction().getParent();
+      LLVMContext &Ctx = M->getContext();
+
+      if (NewTotal == 0) {
+        // Every slot was patched away.  Drop the GV entirely.
+        LLVM_DEBUG(dbgs() << "V6CSpillPatchedReload: all static slots "
+                             "eliminated in "
+                          << MF.getName() << ", erasing "
+                          << OldGV->getName() << "\n");
+        MFI->replaceStaticStackGV(nullptr);
+        if (OldGV->use_empty())
+          OldGV->eraseFromParent();
+      } else if (NewTotal != (int64_t)cast<ArrayType>(
+                                 OldGV->getValueType())->getNumElements()) {
+        // Shrunk.  Replace with a new, smaller GV (type cannot be
+        // mutated in place).  No IR-level users reference it before
+        // PEI runs, so RAUW is a no-op; we just rename+erase.
+        auto *NewArrTy = ArrayType::get(Type::getInt8Ty(Ctx), NewTotal);
+        std::string Name = OldGV->getName().str();
+        // Temporarily rename the old GV so the new one can reuse the
+        // canonical `__v6c_ss.<func>` name expected by downstream
+        // consumers and lit tests.
+        OldGV->setName(Name + ".dead");
+        auto *NewGV = new GlobalVariable(
+            *M, NewArrTy, /*isConstant=*/false,
+            GlobalValue::InternalLinkage,
+            ConstantAggregateZero::get(NewArrTy), Name);
+        NewGV->setAlignment(Align(1));
+        MFI->replaceStaticStackGV(NewGV);
+        if (OldGV->use_empty())
+          OldGV->eraseFromParent();
+        LLVM_DEBUG(dbgs() << "V6CSpillPatchedReload: shrunk "
+                          << NewGV->getName() << " to " << NewTotal
+                          << " bytes in " << MF.getName() << "\n");
+      }
+    }
   }
 
   return Changed;

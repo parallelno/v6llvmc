@@ -132,11 +132,20 @@ O61 Stage 6 — non-A i8 spill sources — feature test 40
 ## opaque constant def (invalidate dst, do not track). This also
 ## fixes a latent Stage 4 bug.
 
-## Dead BSS note
-## -------------
-## Stage 6 eliminates BSS *references* for fully-patched i8 slots but
-## still reserves the `.comm __v6c_ss.threei8,3,1` etc. in the data
-## segment (V6CStaticStackAlloc allocates BSS up front; O61 runs
-## later and removes refs but not the allocation). Eliminating dead
-## BSS is left as a follow-up; it does not affect correctness or
-## code-size for functions whose spills are fully patched.
+## Dead BSS elimination
+## ---------------------
+## After O61 rewrites spill/reload pseudos to patched-reload-site
+## addresses, V6CSpillPatchedReload scans the function for surviving
+## FrameIndex operands and drops any static-stack slot that is no
+## longer referenced. Surviving slots are repacked monotonically and
+## the backing `@__v6c_ss.<func>` global is resized (or erased
+## entirely when every slot was patched away), so AsmPrinter emits a
+## smaller `.comm` — or none at all. In this test, all three
+## `.comm __v6c_ss.three_i8,3,1`, `.comm __v6c_ss.four_i8,4,1`, and
+## `.comm __v6c_ss.main,7,1` directives are eliminated: net BSS
+## saved = 3 + 4 + 7 = 14 bytes.
+##
+## Compaction is a fixed-point post-rewrite step that is agnostic to
+## slot width (i8 / i16) and agnostic to patching origin — any FI
+## that is no longer referenced by any MachineOperand in the function
+## is dropped.
