@@ -14,7 +14,6 @@
 | O9 | Inline Assembly Completion (MC Asm Parser) | [O09_inline_assembly.md](O09_inline_assembly.md) | V6C |
 | O10 | Static Stack Allocation (Non-Reentrant) | [O10_static_stack_allocation.md](O10_static_stack_allocation.md) | llvm-mos |
 | O11 | Dual Cost Model (Bytes + Cycles) | [O11_dual_cost_model.md](O11_dual_cost_model.md) | llvm-mos |
-| O12 | Global Copy Optimization (Cross-BB) | [O12_global_copy_optimization.md](O12_global_copy_optimization.md) | llvm-mos |
 | O13 | Load-Immediate Combining (Register Value Tracking) | [O13_load_immediate_combining.md](O13_load_immediate_combining.md) | llvm-mos |
 | O14 | Tail Call Optimization (CALL+RET → JMP) | [O14_tail_call_optimization.md](O14_tail_call_optimization.md) | llvm-mos |
 | O15 | Conditional Call Optimization (Branch-over-Call → CC/CZ) | [O15_conditional_call_optimization.md](O15_conditional_call_optimization.md) | llvm-z80 |
@@ -49,9 +48,7 @@
 | O44 | Adjacent XCHG Cancellation Peephole ✅ | [O44_xchg_cancellation.md](O44_xchg_cancellation.md) | V6C |
 | O45 | Adjacent POP/PUSH Cancellation Peephole | [O45_pop_push_cancellation.md](O45_pop_push_cancellation.md) | V6C |
 | O46 | MVI M, imm8 Immediate Store Peephole (superseded by O49) | [O46_mvi_m_immediate_store.md](O46_mvi_m_immediate_store.md) | V6C |
-| O47 | Sub-Register Liveness (Dead Half-Register Elimination) | [O47_subreg_liveness.md](O47_subreg_liveness.md) | V6C |
 | O49 | Direct Memory ALU/Store ISel (All M-Operand Instructions) ✅ | [O49_direct_memory_alu_isel.md](O49_direct_memory_alu_isel.md) | V6C |
-| O50 | Aggressive Inlining Control (TTI Override) | [O50_aggressive_inlining_control.md](O50_aggressive_inlining_control.md) | llvm-z80 |
 | O51 | LSR Cost Tuning (isLSRCostLess Enhancement) | [O51_lsr_cost_tuning.md](O51_lsr_cost_tuning.md) | llvm-z80 |
 | O52 | Index IV Rewriting (8-bit Loop Indices) | [O52_index_iv_rewriting.md](O52_index_iv_rewriting.md) | llvm-mos |
 | O53 | Enhanced Value Tracking (Full RegVal) | [O53_enhanced_value_tracking.md](O53_enhanced_value_tracking.md) | llvm-z80 |
@@ -82,7 +79,6 @@
 | O9 | Inline Assembly (MC parser) | V6C | N/A (feature) | N/A | High | Low | None | [ ] |
 | O10 | Static Stack (non-reentrant) | llvm-mos | 32-36cc/access | Very high | Medium | Medium | LTO/single-TU | [x] |
 | O11 | Dual Cost Model (Bytes+Cycles) | llvm-mos | N/A (infra) | N/A | Low | Very Low | None | [x] |
-| O12 | Global Copy Opt (cross-BB) | llvm-mos | 8cc, 1B | Very high | Medium | Low | O11 | [ ] |
 | O13 | LdImm Combining (value track) | llvm-mos | 1B or 4cc+1B | High | Low | Very Low | None | [x] |
 | O14 | Tail Call (CALL+RET→JMP) | llvm-mos | 18cc, 1B | Medium | Very Low | Very Low | None | [x] |
 | O15 | Conditional Call (JNZ+CALL→CNZ) | llvm-z80 | 12cc, 3B | Medium | Medium | Low | None | [ ] |
@@ -117,9 +113,7 @@
 | O44 | Adjacent XCHG Cancellation | V6C | 8cc, 2B per pair | Medium | Very Low | Very Low | None | [x] |
 | O45 | Adjacent POP/PUSH Cancellation | V6C | 24cc, 2B per pair | High | Very Low | Very Low | O42 done | [ ] |
 | O46 | MVI M, imm8 Immediate Store (superseded by O49) | V6C | 4cc, 1B per instance | Low-Med | Very Low | Very Low | None | [ ] |
-| O47 | Sub-Register Liveness (Dead Half-Reg Elim) | V6C | 8cc, 2B per pair | Medium | Low (peephole) / High (RA) | Very Low / Med | O10, O20 done | [ ] |
 | O49 | Direct Memory ALU/Store ISel (M-ops) | V6C | 4-8cc, 1-2B per instance | High | Low-Med | Very Low | O48 helps, supersedes O4+O46 | [x] |
-| O50 | Aggressive Inlining Control (TTI) | llvm-z80 | indirect (prevents spill explosions) | High | Very Low | Low | None | [ ] |
 | O51 | LSR Cost Tuning (isLSRCostLess) | llvm-z80 | indirect (better LSR formulas) | High | Very Low | Very Low | O7 done | [ ] |
 | O52 | Index IV Rewriting (8-bit indices) | llvm-mos | 14cc/iter | High | Low | Low | Complements O7 | [ ] |
 | O53 | Enhanced Value Tracking (RegVal) | llvm-z80 | 1-2B, 4-8cc per pattern | Very high | Medium | Low-Med | O13 done | [ ] |
@@ -168,8 +162,6 @@
 26. ~~**O44** — adjacent XCHG cancellation, 8cc+2B per pair, ~15 lines~~ ✅
 27. **O45** — adjacent POP/PUSH cancellation, 24cc+2B per pair, ~20 lines
 28. ~~**O49** — direct memory ALU/store ISel (all 11 M-operand instructions), supersedes O4+O46, ~80 lines~~ ✅
-29. **O47** — sub-register liveness peephole, 8cc+2B per dead save/restore pair, ~35 lines
-30. **O50** — aggressive inlining control, TTI override to limit inlining, ~10 lines
 31. **O51** — LSR cost tuning, evaluate Insns-first vs NumRegs-first ordering, ~10 lines
 32. **O55** — additional peepholes (CMA, XRA A, idempotent ALU), ~20 lines
 33. **O58** — CmpZero backward scan, skip past safe instructions in flag elimination, ~30 lines
@@ -183,7 +175,6 @@
 21. ~~**O16** — store-to-load forwarding, 44-52cc per eliminated reload~~ ✅
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅
 21. ~~**O16** — store-to-load forwarding, 44-52cc per eliminated reload~~ ✅
-22. **O12** — cross-BB copy optimization, supersedes O1
 22. **O24** — I16 immediate unsigned comparison, frees register pair
 23. **O15** — conditional call, 12cc+3B per instance, reduces branch count
 24. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
@@ -223,89 +214,3 @@ This means:
 - **Accumulator bottleneck** has no AVR equivalent. AVR's ALU works on any
   register. V6C funnels everything through A. O1 (eliminating redundant MOV
   through A) is V6C-specific and high impact.
-
-### Reference: llvm-mos (6502)
-
-See [llvm-mos analysis](llvm_mos_analysis.md) for detailed notes on 6502 backend techniques applicable to V6C.
-
-The **llvm-mos** project (https://github.com/llvm-mos/llvm-mos) targets the
-MOS 6502 — the closest architectural match to i8080 among LLVM backends.
-It is accumulator-only with even fewer registers (A, X, Y; no register pairs).
-Their backend has 12+ custom optimization passes solving the same fundamental
-problems we face. Full analysis: [llvm_mos_analysis.md](llvm_mos_analysis.md).
-
-**Passes directly adapted for V6C** (O10-O14 above):
-- **`MOSNonReentrant` + `MOSStaticStackAlloc`** → O10 (static stack for non-reentrant
-  functions, 3-5× faster spill/reload)
-- **`MOSInstrCost`** → O11 (dual Bytes+Cycles cost model)
-- **`MOSCopyOpt`** → O12 (inter-BB copy forwarding + immediate rematerialization)
-- **`MOSLateOptimization::combineLdImm`** → O13 (register value tracking,
-  replace MVI with MOV/INR/DCR)
-- **`MOSLateOptimization::tailJMP`** → O14 (CALL+RET → JMP tail calls)
-
-**Passes with indirect value for V6C**:
-- **`MOSIndexIV`** — IR-level loop pass that narrows indices to 8 bits via SCEV
-  analysis. Complements O7 (TTI). Almost target-independent; minimal porting.
-- **`MOSZeroPageAlloc`** — frequency-weighted call-graph-aware allocation of
-  scarce fast-access memory. No direct 8080 zero page, but the algorithm is
-  valuable for O8/O10 global bss slot allocation decisions.
-- **`MOSLateOptimization::lowerCmpZeros`** — eliminates compare-against-zero
-  by scanning backward past known-safe instructions. Enhances existing V6C
-  `ZERO_TEST` pass.
-- **`MOSShiftRotateChain`** — chains constant shifts to share intermediate
-  results via dominance analysis. Lower priority for 8080 (shifts less common).
-
-**Key architectural insight**: The 8080 has *more* registers (7 vs 3) but
-*fewer* addressing modes (no indexed, no zero page). llvm-mos compensates for
-its tiny register file with zero-page "soft registers" and indexed addressing.
-V6C must compensate for its addressing limitations with better register
-utilization and cheaper pointer management — different mechanism, same goal.
-
-### Reference: llvm-z80
-
-Two Z80 LLVM backends were analyzed — full details in
-[llvm_z80_analysis.md](llvm_z80_analysis.md).
-
-**jacobly0/llvm-project** (https://github.com/jacobly0/llvm-project, `z80`
-branch, 171 stars) — mature Z80/eZ80 backend, GlobalISel, ~LLVM 15. 14
-custom passes. Key contribution: comprehensive `RegVal` tracking in
-`Z80MachineLateOptimization` that knows per-register constants, flag states,
-and sub-register composition. This is the inspiration for O13's "enhanced"
-form.
-
-**llvm-z80/llvm-z80** (https://github.com/llvm-z80/llvm-z80, `main` branch,
-34 stars) — newer active Z80+SM83 backend, ~LLVM 20, ports from llvm-mos.
-23 custom passes. Key contribution: SM83 (Game Boy) is an 8080 subset, so
-its SM83 code paths are directly applicable to V6C.
-
-**Passes directly adapted for V6C** (O15-O19 above):
-- **`Z80MachineEarlyOptimization`** (jacobly0) → O15 (conditional call,
-  JNZ+CALL → CNZ using the 8080's CC/CNC/CZ/CNZ/CP/CM/CPE/CPO)
-- **`Z80LateOptimization` IX-forwarding** (llvm-z80) → O16 (store-to-load
-  forwarding, tracking spilled register values to eliminate redundant reloads)
-- **`Z80PostRACompareMerge`** (llvm-z80) → O17 (redundant flag elimination,
-  erase ORA A when preceding ALU already set Z flag)
-- **`Z80LateOptimization` loop counter** (llvm-z80) → O18 (5-instruction
-  loop counter → DCR r; JNZ, saving 20cc+4B per iteration)
-- **`Z80ExpandPseudo` inline arithmetic** (llvm-z80) → O19 (shift-add mul,
-  restoring div inline instead of library calls)
-
-**Passes enhancing existing V6C plans**:
-- **`Z80TargetTransformInfo`** — `areInlineCompatible()` restricts inlining
-  to ≤10 instructions or InlineHint-annotated functions (because with few
-  registers, inlining large functions causes massive spilling). Enhances O7.
-  `isLSRCostLess()` prioritizes instruction count over register pressure.
-  Enhances O7's TTI cost model.
-- **`Z80MachineLateOptimization` RegVal** (jacobly0) — extends O13 with
-  comprehensive per-register constant tracking, flag state awareness,
-  sub-register composition knowledge, and many more peephole patterns
-  (SLA A→ADD A,A, LD 0→SBC r,r when carry known, LD imm±1→INC/DEC).
-- **`Z80InstrCost`** + **`Z80ShiftRotateChain`** + **`Z80IndexIV`** — all
-  ported from llvm-mos, confirming the value of O11 (dual cost model).
-
-**Key architectural insight**: The Z80 is a strict superset of the 8080. Any
-Z80 optimization using only base 8080 instructions applies directly to V6C.
-The SM83 (Game Boy CPU) is an 8080 subset (no IX/IY, no relative jumps, no
-block instructions) — making the llvm-z80 SM83 code paths the most directly
-portable to V6C. The main Z80-only features (IX+d indexing, relative jumps,
-DJNZ, block I/O) require 8080-specific alternatives when porting.

@@ -1,5 +1,9 @@
 # Plan: Commutable ALU Operand Selection (O60)
 
+## Resolution
+Implemented, tested, shown no stable perf improvements, perf regression in some
+caces. Rejected.
+
 ## 1. Problem
 
 ### Current behavior

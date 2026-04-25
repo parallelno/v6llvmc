@@ -7,90 +7,72 @@ interleaved_add:                        ; @interleaved_add
 	;  arg2 = BC
 	;  arg3 = stack
 ; %bb.0:
-	;--- V6C_SPILL16 ---
 	PUSH	HL
-	LXI	HL, __v6c_ss.interleaved_add+2
-	MOV	M, C
-	INX	HL
-	MOV	M, B
+	MOV	L, C
+	MOV	H, B
+	SHLD	.LLo61_0+1
 	POP	HL
-	;--- V6C_SPILL16 ---
 	XCHG
-	SHLD	__v6c_ss.interleaved_add
+	SHLD	.LLo61_2+1
 	XCHG
-	;--- V6C_SPILL16 ---
-	SHLD	__v6c_ss.interleaved_add+7
+	SHLD	.LLo61_3+1
 	;--- V6C_LEA_FI ---
 	LXI	HL, 0
 	DAD	SP
+	MOV	B, H
+	MOV	C, L
 	;--- V6C_LOAD8_P ---
-	MOV	A, M
+	LDAX	BC
 	ORA	A
 	;--- V6C_BRCOND ---
 	JZ	.LBB0_3
 ; %bb.1:
 	MVI	L, 0
 	;--- V6C_BUILD_PAIR ---
-	MOV	B, L
-	MOV	C, A
-	;--- V6C_RELOAD16 ---
-	LHLD	__v6c_ss.interleaved_add+7
-	XCHG
+	MOV	D, L
+	MOV	E, A
+	LHLD	.LLo61_3+1
 .LBB0_2:                                ; =>This Inner Loop Header: Depth=1
-	;--- V6C_SPILL16 ---
-	MOV	L, C
-	MOV	H, B
-	PUSH	HL
-	;--- V6C_RELOAD16 ---
-	LHLD	__v6c_ss.interleaved_add
-	;--- V6C_LOAD8_P ---
-	MOV	A, M
-	;--- V6C_SPILL8 ---
-	STA	__v6c_ss.interleaved_add+6
-	;--- V6C_RELOAD16 ---
-	PUSH	HL
-	LXI	HL, __v6c_ss.interleaved_add+2
-	MOV	C, M
-	INX	HL
-	MOV	B, M
-	POP	HL
+	XCHG
+	SHLD	.LLo61_1+1
+	XCHG
+.LLo61_0:
+	LXI	BC, 0
 	;--- V6C_LOAD8_P ---
 	LDAX	BC
-	;--- V6C_RELOAD8 ---
-	PUSH	DE
-	MOV	D, H
-	LXI	HL, __v6c_ss.interleaved_add+6
-	MOV	L, M
-	MOV	H, D
-	POP	DE
-	ADD	L
+.LLo61_2:
+	LXI	DE, 0
+	;--- V6C_ADD_M_P ---
+	XCHG
+	ADD	M
+	XCHG
 	;--- V6C_STORE8_P ---
-	STAX	DE
-	;--- V6C_INX16 ---
-	INX	HL
-	;--- V6C_SPILL16 ---
-	SHLD	__v6c_ss.interleaved_add
-	;--- V6C_INX16 ---
-	INX	BC
-	;--- V6C_SPILL16 ---
-	MOV	L, C
-	MOV	H, B
-	SHLD	__v6c_ss.interleaved_add+2
-	;--- V6C_RELOAD16 ---
-	POP	HL
-	MOV	C, L
-	MOV	B, H
+	MOV	M, A
 	;--- V6C_INX16 ---
 	INX	DE
+	XCHG
+	SHLD	.LLo61_2+1
+	XCHG
+.LLo61_1:
+	LXI	DE, 0
+	;--- V6C_INX16 ---
+	INX	BC
+	PUSH	HL
+	MOV	L, C
+	MOV	H, B
+	SHLD	.LLo61_0+1
+	POP	HL
+	;--- V6C_INX16 ---
+	INX	HL
 	;--- V6C_DCX16 ---
-	DCX	BC
+	DCX	DE
 	;--- V6C_BR_CC16_IMM ---
-	MOV	A, B
-	ORA	C
+	MOV	A, D
+	ORA	E
 	JNZ	.LBB0_2
 .LBB0_3:
-	;--- V6C_RELOAD16 ---
-	LHLD	__v6c_ss.interleaved_add+7
+.LLo61_3:
+	LXI	HL, 0
 	;--- V6C_LOAD8_P ---
 	MOV	A, M
 	JMP	use8
@@ -102,11 +84,16 @@ multi_live:                             ; @multi_live
 	;  arg1 = E
 	;  arg2 = C
 ; %bb.0:
-	MOV	L, A
+	LXI	HL, .LLo61_4+1
+	MOV	M, E
+	STA	.LLo61_5+1
 	MOV	A, C
-	OUT	0xde
-	MOV	A, L
-	ADD	E
+	CALL	use8
+.LLo61_5:
+	MVI	A, 0
+.LLo61_4:
+	MVI	L, 0
+	ADD	L
 	ADI	3
 	RET
                                         ; -- End function
@@ -125,18 +112,14 @@ sum:                                    ; @sum
 main:                                   ; @main
 	;=== int main(void) ===
 ; %bb.0:
-	LXI	HL, 0xffee
+	LXI	HL, 0xffff
 	DAD	SP
 	SPHL
 	;--- V6C_LEA_FI ---
-	LXI	BC, 0xe
-	DAD	SP
-	;--- V6C_SPILL16 ---
-	LXI	HL, 3
-	DAD	SP
-	MOV	M, C
-	INX	HL
-	MOV	M, B
+	LXI	BC, __v6c_ss.main
+	MOV	L, C
+	MOV	H, B
+	SHLD	.LLo61_6+1
 	MOV	H, B
 	MOV	L, C
 	;--- V6C_INX16 ---
@@ -154,8 +137,10 @@ main:                                   ; @main
 	INX	HL
 	MOV	M, D
 	;--- V6C_LEA_FI ---
-	LXI	DE, 0xa
-	DAD	SP
+	LXI	DE, __v6c_ss.main+4
+	XCHG
+	SHLD	.LLo61_7+1
+	XCHG
 	MOV	H, D
 	MOV	L, E
 	;--- V6C_INX16 ---
@@ -168,22 +153,15 @@ main:                                   ; @main
 	MOV	M, B
 	LXI	HL, 0x140a
 	;--- V6C_STORE16_P ---
-	PUSH	DE
 	MOV	A, L
 	STAX	DE
 	INX	DE
 	MOV	A, H
 	STAX	DE
-	POP	DE
 	;--- V6C_LEA_FI ---
-	LXI	BC, 6
-	DAD	SP
-	;--- V6C_SPILL16 ---
-	LXI	HL, 1
-	DAD	SP
-	MOV	M, C
-	INX	HL
-	MOV	M, B
+	LXI	DE, __v6c_ss.main+8
+	MOV	B, D
+	MOV	C, E
 	;--- V6C_INX16 ---
 	INX	BC
 	INX	BC
@@ -195,14 +173,8 @@ main:                                   ; @main
 	MOV	A, H
 	STAX	BC
 	LXI	HL, 0x201
-	;--- V6C_RELOAD16 ---
-	PUSH	HL
-	LXI	HL, 3
-	DAD	SP
-	MOV	C, M
-	INX	HL
-	MOV	B, M
-	POP	HL
+	MOV	B, D
+	MOV	C, E
 	;--- V6C_STORE16_P ---
 	PUSH	BC
 	MOV	A, L
@@ -213,38 +185,28 @@ main:                                   ; @main
 	POP	BC
 	LXI	HL, 0
 	DAD	SP
-	MVI	A, 4
-	;--- V6C_STORE8_P ---
-	MOV	M, A
-	;--- V6C_RELOAD16 ---
-	PUSH	DE
-	LXI	HL, 5
-	DAD	SP
-	MOV	E, M
-	INX	HL
-	MOV	D, M
-	XCHG
-	POP	DE
+	;--- V6C_STORE8_IMM_P ---
+	MVI	M, 4
+.LLo61_6:
+	LXI	HL, 0
+.LLo61_7:
+	LXI	DE, 0
 	CALL	interleaved_add
-	;--- V6C_RELOAD16 ---
-	LXI	HL, 3
-	DAD	SP
-	MOV	E, M
-	INX	HL
-	MOV	D, M
-	XCHG
+	LHLD	.LLo61_6+1
 	;--- V6C_LOAD8_P ---
 	MOV	A, M
 	;--- V6C_LEA_FI ---
-	LXI	HL, 5
-	DAD	SP
+	LXI	DE, __v6c_ss.main+12
+	XCHG
+	SHLD	.LLo61_6+1
+	XCHG
 	;--- V6C_STORE8_P ---
-	MOV	M, A
+	STAX	DE
 	MVI	A, 3
-	OUT	0xde
-	MVI	A, 6
-	;--- V6C_STORE8_P ---
-	MOV	M, A
+	CALL	use8
+	LHLD	.LLo61_6+1
+	;--- V6C_STORE8_IMM_P ---
+	MVI	M, 6
 	;--- V6C_LOAD8_P ---
 	MOV	A, M
 	MVI	L, 0
@@ -252,12 +214,12 @@ main:                                   ; @main
 	MOV	H, L
 	MOV	L, A
 	XCHG
-	LXI	HL, 0x12
+	LXI	HL, 1
 	DAD	SP
 	SPHL
 	XCHG
 	RET
                                         ; -- End function
-	.local	__v6c_ss.interleaved_add        ; @__v6c_ss.interleaved_add
-	.comm	__v6c_ss.interleaved_add,9,1
+	.local	__v6c_ss.main                   ; @__v6c_ss.main
+	.comm	__v6c_ss.main,13,1
 	.addrsig

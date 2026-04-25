@@ -109,3 +109,7 @@ is dead after the reload and skip the save/restore pair entirely.
 - O10 (static stack) — patterns are most visible with static stack slots.
 - O20 (honest store/load defs) — correct HL defs make liveness analysis
   more precise.
+
+## Resolution
+
+Rejected because O47 was superseded by O61.

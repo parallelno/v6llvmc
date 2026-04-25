@@ -61,3 +61,22 @@ back-edges and entry block boundaries.
 ## Risk
 
 Low. Only rewrites when provably cheaper and not clobbered along any path.
+
+## Conclusion
+
+After eight C variants and four hand-written `.ll` variants, **no test
+case produced a redundant cross-BB MVI/MOV that would benefit from O12**.
+Every "obvious" pattern was already collapsed by either LLVM's stock
+SSA + regalloc + branch-folder + sink, or by an existing V6C pass.
+
+The original O12 plan (drafted before O11/O17/O27/O28/O29/O36/O17 etc.
+were implemented) cited "very high frequency" of cross-BB copy chains.
+That assessment was based on llvm-mos's pre-existing pipeline, which
+lacks several of the passes V6C now has. On the current V6C pipeline,
+the residual opportunity is empirically near zero.
+
+**Recommendation:** Move `O12_global_copy_optimization.md` to
+`design/rejected/` with a note explaining that the optimization was
+made redundant by the cumulative effect of O1, O11, O17, O29, O36, and
+LLVM's stock `branch-folder` / `tail-duplication` / `MachineSink`
+passes. If a future workload exposes a real instance, revisit then.

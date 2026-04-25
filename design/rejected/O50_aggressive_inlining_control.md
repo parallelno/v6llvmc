@@ -71,3 +71,10 @@ hatches. The threshold can be tuned or made into a `-mllvm` flag.
 ## Dependencies
 
 None. Independent of all other optimizations.
+
+## Resolution
+
+Rejected because inlining can be opt out with
+```c
+__attribute__((noinline))
+```

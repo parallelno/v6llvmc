@@ -24,7 +24,7 @@ void interleaved_add(unsigned char *dst, const unsigned char *src1,
 unsigned char multi_live(unsigned char a, unsigned char b, unsigned char c) {
     unsigned char x = a + 1;
     unsigned char y = b + 2;
-    use8(0xde, c);
+    use8(c);
     return x + y;
 }
 
