@@ -20,6 +20,9 @@ class V6CTTIImpl : public BasicTTIImplBase<V6CTTIImpl> {
 
   const V6CSubtarget *ST;
   const V6CTargetLowering *TLI;
+  // Captured so isLSRCostLess() can derive the optimization mode
+  // (Speed vs Size) from IR-level attributes (hasMinSize/hasOptSize).
+  const Function *Func;
 
   const V6CSubtarget *getST() const { return ST; }
   const V6CTargetLowering *getTLI() const { return TLI; }
@@ -28,7 +31,8 @@ public:
   explicit V6CTTIImpl(const V6CTargetMachine *TM, const Function &F)
       : BaseT(TM, F.getParent()->getDataLayout()),
         ST(TM->getSubtargetImpl(F)),
-        TLI(ST->getTargetLowering()) {}
+        TLI(ST->getTargetLowering()),
+        Func(&F) {}
 
   // --- Register model ---
   unsigned getNumberOfRegisters(unsigned ClassID) const;

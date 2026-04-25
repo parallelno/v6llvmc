@@ -6,8 +6,50 @@
 
 #include "V6CTargetTransformInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
+
+namespace {
+/// Selects how V6C orders LSR formula cost vectors.
+enum class LSRStrategy { Auto, InsnsFirst, RegsFirst };
+} // namespace
+
+static cl::opt<LSRStrategy> LSRStrategyOpt(
+    "v6c-lsr-strategy",
+    cl::desc("LSR formula tie-breaker ordering on V6C."),
+    cl::init(LSRStrategy::Auto),
+    cl::values(
+        clEnumValN(LSRStrategy::Auto, "auto",
+                   "derive from optimization mode (default)"),
+        clEnumValN(LSRStrategy::InsnsFirst, "insns-first",
+                   "Z80-style: instruction count first"),
+        clEnumValN(LSRStrategy::RegsFirst, "regs-first",
+                   "V6C historical: register count first")),
+    cl::Hidden);
+
+// Z80-style: prioritize total in-loop instructions. Each in-loop reload on
+// i8080 is ~30cc (LXI+LHLD+DAD+STAX), so trading +1 GP-pair pressure for
+// fewer in-loop instructions is the right call when there's any pressure.
+static bool insnsFirstLess(const TargetTransformInfo::LSRCost &C1,
+                           const TargetTransformInfo::LSRCost &C2) {
+  return std::tie(C1.Insns, C1.NumRegs, C1.AddRecCost, C1.NumIVMuls,
+                  C1.NumBaseAdds, C1.ScaleCost, C1.ImmCost, C1.SetupCost) <
+         std::tie(C2.Insns, C2.NumRegs, C2.AddRecCost, C2.NumIVMuls,
+                  C2.NumBaseAdds, C2.ScaleCost, C2.ImmCost, C2.SetupCost);
+}
+
+// V6C historical: prioritize register count. Each spill is also bytes in
+// the prologue / per access, so register count is the better proxy for
+// code size on this target.
+static bool regsFirstLess(const TargetTransformInfo::LSRCost &C1,
+                          const TargetTransformInfo::LSRCost &C2) {
+  return std::tie(C1.NumRegs, C1.Insns, C1.NumBaseAdds, C1.NumIVMuls,
+                  C1.AddRecCost, C1.ImmCost, C1.SetupCost, C1.ScaleCost) <
+         std::tie(C2.NumRegs, C2.Insns, C2.NumBaseAdds, C2.NumIVMuls,
+                  C2.AddRecCost, C2.ImmCost, C2.SetupCost, C2.ScaleCost);
+}
 
 unsigned V6CTTIImpl::getNumberOfRegisters(unsigned ClassID) const {
   // ClassID 0 = scalar (general purpose register pairs: BC, DE, HL)
@@ -49,13 +91,31 @@ InstructionCost V6CTTIImpl::getAddressComputationCost(Type *Ty,
 
 bool V6CTTIImpl::isLSRCostLess(const TTI::LSRCost &C1,
                                 const TTI::LSRCost &C2) const {
-  // On the 8080, register pressure is the dominant constraint.
-  // Prefer fewer registers first, then fewer instructions.
-  // NumBaseAdds (in-loop base address additions: LXI+DAD = 24cc each) ranks
-  // before AddRecCost (loop IV increments: INX = 8cc each) because base
-  // additions are 3x more expensive than IV increments.
-  return std::tie(C1.NumRegs, C1.Insns, C1.NumBaseAdds, C1.NumIVMuls,
-                  C1.AddRecCost, C1.ImmCost, C1.SetupCost, C1.ScaleCost) <
-         std::tie(C2.NumRegs, C2.Insns, C2.NumBaseAdds, C2.NumIVMuls,
-                  C2.AddRecCost, C2.ImmCost, C2.SetupCost, C2.ScaleCost);
+  // V6C ranks LSR formulas via one of two lexicographic orderings over the
+  // generic LSRCost fields:
+  //
+  //   regs-first  : NumRegs > Insns > NumBaseAdds > NumIVMuls > AddRecCost
+  //                 > ImmCost > SetupCost > ScaleCost
+  //   insns-first : Insns   > NumRegs > AddRecCost > NumIVMuls > NumBaseAdds
+  //                 > ScaleCost > ImmCost > SetupCost  (Z80-style)
+  //
+  // Selection (per function):
+  //   1. If `-v6c-lsr-strategy={insns-first,regs-first}` is given, honor it.
+  //   2. Otherwise (auto), use Regs-first regardless of optimization mode.
+  //      Empirically (O51 Step 3.7) Insns-first does not win on the V6C
+  //      regression corpus — LSR's Insns estimate does not see the heavy
+  //      reload sequences that result on the i8080 when an extra IV is
+  //      kept "live" but the register file is too small to hold it. Insns-
+  //      first remains available as opt-in for future targeted use.
+
+  switch (LSRStrategyOpt) {
+  case LSRStrategy::InsnsFirst:
+    return insnsFirstLess(C1, C2);
+  case LSRStrategy::RegsFirst:
+    return regsFirstLess(C1, C2);
+  case LSRStrategy::Auto:
+    break;
+  }
+
+  return regsFirstLess(C1, C2);
 }

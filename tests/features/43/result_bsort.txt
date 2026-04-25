@@ -1,0 +1,187 @@
+================================================================
+O51 — LSR Cost Tuning: bubble-sort A/B microbenchmark
+================================================================
+
+Source:    tests/features/43/v6llvmc_bsort.c
+Generated: clang 18.1.0rc, target i8080-unknown-v6c
+
+Goal: complement the axpy3 A/B (see result.txt) with a second loop
+shape — a classic bubble sort — to test whether the regs-first vs
+insns-first ordering picked in O51 generalises across loop kinds.
+
+
+----------------------------------------------------------------
+1. Test functions
+----------------------------------------------------------------
+
+`bsort(int *arr, int n)`
+    Classic ascending bubble sort. Inner-loop IVs:
+      - j (i16 counter)
+      - &arr[j], &arr[j+1] (two i16 pointers)
+    -> 3 IV-shaped values, fits the 3 GP-pair budget exactly.
+
+`bsort_two(int *arr, int *out_lo, int *out_hi, int n)`
+    Same swap kernel, but also writes lo/hi to two output streams.
+    Inner-loop IVs:
+      - j (i16 counter)
+      - &arr[j], &arr[j+1], &out_lo[j], &out_hi[j] (4 pointers)
+    -> 5 IV-shaped values, exceeds the 3 GP-pair budget.
+
+`main(int, char **)`
+    Calls both sorters once over a 16-element global array.
+
+
+----------------------------------------------------------------
+2. Build commands
+----------------------------------------------------------------
+
+    llvm-build\bin\clang -target i8080-unknown-v6c -O2 -S \
+        tests\features\43\v6llvmc_bsort.c \
+        -o tests\features\43\v6llvmc_bsort_regs.asm \
+        -mllvm -v6c-lsr-strategy=regs-first
+
+    llvm-build\bin\clang -target i8080-unknown-v6c -O2 -S \
+        tests\features\43\v6llvmc_bsort.c \
+        -o tests\features\43\v6llvmc_bsort_insns.asm \
+        -mllvm -v6c-lsr-strategy=insns-first
+
+    llvm-build\bin\clang -target i8080-unknown-v6c -Os -S \
+        tests\features\43\v6llvmc_bsort.c \
+        -o tests\features\43\v6llvmc_bsort_os.asm
+
+`-O2` with no `-mllvm -v6c-lsr-strategy=...` flag uses the default
+Auto = regs-first (post-rollback decision from result.txt) and is
+byte-identical to the explicit regs-first run.
+
+
+----------------------------------------------------------------
+3. Aggregate sizes
+----------------------------------------------------------------
+
+    file                          bytes      vs. regs
+    --------------------------- --------    ----------
+    v6llvmc_bsort_regs.asm        10315     baseline
+    v6llvmc_bsort_insns.asm        9843     -472 B  (-4.6 %)
+    v6llvmc_bsort_os.asm           7957     -2358 B (Os, see note)
+
+Note: the Os column is included only as a reference for the
+size-mode pipeline; it is not directly comparable because Os
+disables additional optimisations beyond LSR (constant rematerial-
+isation, range-checking elision, hoist suppression, etc.).
+
+
+----------------------------------------------------------------
+4. Per-function breakdown (range between successive labels)
+----------------------------------------------------------------
+
+    function    regs lines   insns lines   delta
+    ---------   ----------   -----------   -----
+    bsort           131         131         0       (byte-identical)
+    bsort_two       218         179         -39
+    main            ~30         ~30         ~0
+
+Conclusion: 100 % of the size delta comes from `bsort_two`. The
+2-pointer kernel `bsort` is unaffected because both orderings
+produce the same formula when the IV count fits in 3 pairs.
+
+
+----------------------------------------------------------------
+5. Why insns-first wins on bsort_two but lost on axpy3
+----------------------------------------------------------------
+
+axpy3 (result.txt):  4 stream pointers + counter.
+                     insns-first picked formulas with MORE pointer
+                     IVs, blowing past 3 pairs and emitting heavy
+                     LXI / LHLD / SHLD reload chains in the inner
+                     body. Net: +12.7 % instructions on the body.
+
+bsort_two:           4 stream pointers + counter.
+                     Same nominal IV count, but the per-iteration
+                     work (compare + 4 stores) dominates the loop;
+                     regs-first folds two pointers to a common base
+                     and pays an in-loop ADD/INX chain to recover
+                     each stream. insns-first picks four separate
+                     pointer IVs and walks them with INX rp, which
+                     is what bsort_two actually wants because each
+                     iteration touches all four. Net: -39 lines on
+                     the inner cluster (-21 lines on LBB1_10 alone,
+                     the swap-and-store fall-through).
+
+The two cases agree on the underlying mechanism — LSR's `Insns`
+field counts pre-RA instructions and cannot see post-RA reload
+sequences — but disagree on the sign of the result. Which way it
+points depends on whether a "fused" (regs-first) IV recovery
+needs an ADD or just one INX, and on how many of the streams are
+hit per iteration.
+
+
+----------------------------------------------------------------
+6. Inner-loop sketch (.LBB1_10 in bsort_two)
+----------------------------------------------------------------
+
+regs-first   (67 lines):
+    ; pointer-fold path
+    LXI   HL, __v6c_ss.bsort_two+N    ; reload base
+    MOV   C, M / INX HL / MOV B, M    ; -> BC = stream pointer
+    PUSH/POP shuffles to recover HL
+    STAX  BC / INX BC / STAX BC       ; store hi byte
+    SHLD  __v6c_ss.bsort_two+M        ; spill back
+    ... repeat for each output stream ...
+
+insns-first  (46 lines):
+    ; separate-IV path
+    INX   BC          ; counter
+    INX   BC
+    INX   DE          ; out_lo IV
+    INX   DE
+    INX   HL          ; out_hi IV
+    INX   HL
+    PUSH  HL
+    LHLD  __v6c_ss.bsort_two          ; reload &arr[j+1] (1 spill)
+    INX   HL
+    INX   HL
+    SHLD  __v6c_ss.bsort_two
+    POP   HL
+    MOV   M, ... / MOV M, ...
+
+Where the regs-first version pays N×(LXI+MOV+INX+MOV+SHLD) per
+iteration (one per stream that needs to be recovered), the
+insns-first version pays one LHLD/SHLD pair plus straight-line
+INX rp for every other stream.
+
+
+----------------------------------------------------------------
+7. Recommendation
+----------------------------------------------------------------
+
+This counter-example does NOT change the O51 default. The default
+(`auto = regs-first`) was chosen on the strength of the corpus-wide
+A/B (42 tests, 0 wins, 3 regressions for insns-first; see
+result.txt §7), and bsort is not in the regression corpus.
+
+What this test DOES tell us is that a per-function or
+per-loop-shape heuristic for the Auto bucket is worth pursuing
+(plan §7 "Future Enhancements"). Loops with N>3 streams that all
+get touched every iteration look like good insns-first candidates;
+loops with N>3 streams where only 1-2 are touched per iteration
+(axpy3-like reductions) prefer regs-first.
+
+For now, users who suspect their loop is in the bsort_two
+category can opt in explicitly with:
+
+    -mllvm -v6c-lsr-strategy=insns-first
+
+and verify with the same A/B procedure used here.
+
+
+----------------------------------------------------------------
+8. Files in this comparison
+----------------------------------------------------------------
+
+    tests/features/43/v6llvmc_bsort.c             source
+    tests/features/43/v6llvmc_bsort_regs.asm      -O2 regs-first
+    tests/features/43/v6llvmc_bsort_insns.asm     -O2 insns-first
+    tests/features/43/v6llvmc_bsort_os.asm        -Os reference
+
+    tests/features/43/result.txt                  axpy3 A/B (this
+                                                  file's companion)

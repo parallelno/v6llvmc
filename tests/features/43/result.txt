@@ -1,0 +1,121 @@
+O51 -- LSR Cost Tuning (isLSRCostLess Insns-First Ordering) -- feature test 43
+==============================================================================
+
+Adds a target hook flag `-v6c-lsr-strategy={auto,insns-first,regs-first}`
+in V6CTargetTransformInfo that selects how `V6CTTIImpl::isLSRCostLess`
+breaks ties between LSR formulas. Two lexicographic orderings over the
+same generic `LSRCost` fields are wired up:
+
+  regs-first   NumRegs > Insns > NumBaseAdds > NumIVMuls > AddRecCost
+               > ImmCost > SetupCost > ScaleCost
+  insns-first  Insns   > NumRegs > AddRecCost > NumIVMuls > NumBaseAdds
+               > ScaleCost > ImmCost > SetupCost              (Z80-style)
+
+`auto` (the default) selects regs-first regardless of optimization mode.
+The plan originally hypothesized that `-O2`/`-O3` should default to
+insns-first (trading +1 GP-pair pressure for fewer in-loop reloads),
+but the empirical A/B over all 42 regression tests at -O2 (Step 3.7)
+shows insns-first **does not win** on this corpus, so it was demoted to
+opt-in only. See "Decision" below.
+
+Implementation: `LSRStrategyOpt` cl::opt + `insnsFirstLess` and
+`regsFirstLess` static helpers in V6CTargetTransformInfo.cpp. The TTI
+constructor captures `const Function *Func` so future per-function
+auto-dispatch (e.g. attribute-driven) can reuse the same plumbing.
+
+
+## C source (tests/features/43/v6llvmc.c -- c8080.c is the same shape)
+
+    #define N 8
+    int OUT[N], A[N], B[N], C[N], D1[N], D2[N];
+    long g_dot;
+
+    /* axpy3 -- 4 input/output pointers + counter, exceeds 3 GP pairs. */
+    void axpy3(int *out, const int *a, const int *b, const int *c, int n);
+
+    /* scale_copy -- 2 pointers + counter, fits in 3 pairs (control). */
+    void scale_copy(int *out, const int *src, int n);
+
+    /* dot -- 2 pointers + counter + accumulator. */
+    int dot(const int *a, const int *b, int n);
+
+    int main(int argc, char **argv) {
+        (void)argc; (void)argv;
+        seed();
+        axpy3(OUT, A, B, C, N);
+        scale_copy(D1, A, N);
+        scale_copy(D2, B, N);
+        g_dot = dot(A, B, N);
+        return 0;
+    }
+
+
+## Assembly outputs
+
+  v6llvmc_old.asm          baseline before O51 (regs-first, current default)
+  v6llvmc_new01.asm        -O2, auto-dispatch (regs-first)        -- byte-identical to old.asm
+  v6llvmc_new02.asm        -Os, auto-dispatch (regs-first)
+  v6llvmc_new03.asm        -O2 -mllvm -v6c-lsr-strategy=insns-first  (opt-in)
+
+
+## Sizes
+
+  v6llvmc_old.asm   6078 B
+  v6llvmc_new01.asm 6078 B   <-- identical to old (auto=regs-first preserves baseline)
+  v6llvmc_new02.asm 8783 B   <-- Os has unrelated size-mode codegen differences
+  v6llvmc_new03.asm 6131 B   <-- +53 B vs new01 (extra spill slot at __v6c_ss.axpy3+10)
+
+
+## Inner-loop shape difference (axpy3, regs-first vs insns-first)
+
+  regs-first  static spill area: __v6c_ss.axpy3 = 10 B  (slots +0,+2,+4,+6,+8)
+              inner loop body:  ~71 instr      DAD  DE     used as second addend
+
+  insns-first static spill area: __v6c_ss.axpy3 = 12 B  (adds slot +10)
+              inner loop body:  ~80 instr      DAD  BC + extra LXI/MOV reload
+                                               sequence to swap an IV through +10.
+
+LSR's `Insns` cost field counts pre-RA instructions, not the post-RA spill
+sequences i8080 emits when the formula's IV count exceeds the 3 GP pairs.
+The "fewer Insns" formula therefore actually grows the loop body once the
+backend is forced to materialize an additional pointer through the static
+stack on every iteration.
+
+
+## Decision (Step 3.7)
+
+A/B measurement across all `tests/features/*/v6llvmc.c` at -O2:
+
+    auto vs insns vs regs (sizes in bytes; counts: 0 wins for insns-first;
+    3 regressions where insns-first is 53-315 B larger; 39 ties)
+
+    test 20:  insns 2535 B vs regs 2300 B   (+235 B)
+    test 29:  insns 1658 B vs regs 1343 B   (+315 B)
+    test 43:  insns 6131 B vs regs 6078 B   (+53 B)
+    other 39 tests: insns == regs (no LSR pressure to tie-break on)
+
+`auto` was therefore set to **regs-first** unconditionally (preserving
+the historical default and the 6078-byte baseline byte-for-byte). The
+`-v6c-lsr-strategy=insns-first` override stays available for future
+targeted use (e.g. if loop-shape heuristics later identify a class of
+loops that benefit, or to A/B re-test on a different corpus).
+
+
+## Verification
+
+  - Lit suite:    91/91 PASS  (incl. lsr-strategy-speed.ll, lsr-strategy-size.ll)
+  - Golden tests: PASS
+  - Full regression (tests/run_all.py): 2/2 suites PASS
+  - Auto-default produces byte-identical output to the pre-O51 baseline
+    on all 42 feature tests at -O2.
+
+
+## Files added/modified
+
+  llvm-project/llvm/lib/Target/V6C/V6CTargetTransformInfo.h       (Func member)
+  llvm-project/llvm/lib/Target/V6C/V6CTargetTransformInfo.cpp     (cl::opt + helpers)
+  llvm-project/llvm/test/CodeGen/V6C/lsr-strategy-speed.ll        (opt-in path)
+  llvm-project/llvm/test/CodeGen/V6C/lsr-strategy-size.ll         (auto path)
+  tests/features/43/                                              (this dir)
+  scripts/o51_ab_measure.py                                       (A/B harness)
+  design/plan_O51_lsr_cost_tuning.md                              (this plan)

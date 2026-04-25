@@ -49,7 +49,7 @@
 | O45 | Adjacent POP/PUSH Cancellation Peephole | [O45_pop_push_cancellation.md](O45_pop_push_cancellation.md) | V6C |
 | O46 | MVI M, imm8 Immediate Store Peephole (superseded by O49) | [O46_mvi_m_immediate_store.md](O46_mvi_m_immediate_store.md) | V6C |
 | O49 | Direct Memory ALU/Store ISel (All M-Operand Instructions) ✅ | [O49_direct_memory_alu_isel.md](O49_direct_memory_alu_isel.md) | V6C |
-| O51 | LSR Cost Tuning (isLSRCostLess Enhancement) | [O51_lsr_cost_tuning.md](O51_lsr_cost_tuning.md) | llvm-z80 |
+| O51 | LSR Cost Tuning (isLSRCostLess Enhancement) ✅ | [O51_lsr_cost_tuning.md](O51_lsr_cost_tuning.md) | llvm-z80 |
 | O52 | Index IV Rewriting (8-bit Loop Indices) | [O52_index_iv_rewriting.md](O52_index_iv_rewriting.md) | llvm-mos |
 | O53 | Enhanced Value Tracking (Full RegVal) | [O53_enhanced_value_tracking.md](O53_enhanced_value_tracking.md) | llvm-z80 |
 | O54 | Optimal Stack Adjustment Strategy | [O54_optimal_stack_adjustment.md](O54_optimal_stack_adjustment.md) | llvm-z80 |
@@ -114,7 +114,7 @@
 | O45 | Adjacent POP/PUSH Cancellation | V6C | 24cc, 2B per pair | High | Very Low | Very Low | O42 done | [ ] |
 | O46 | MVI M, imm8 Immediate Store (superseded by O49) | V6C | 4cc, 1B per instance | Low-Med | Very Low | Very Low | None | [ ] |
 | O49 | Direct Memory ALU/Store ISel (M-ops) | V6C | 4-8cc, 1-2B per instance | High | Low-Med | Very Low | O48 helps, supersedes O4+O46 | [x] |
-| O51 | LSR Cost Tuning (isLSRCostLess) | llvm-z80 | indirect (better LSR formulas) | High | Very Low | Very Low | O7 done | [ ] |
+| O51 | LSR Cost Tuning (isLSRCostLess) | llvm-z80 | indirect (better LSR formulas) | High | Very Low | Very Low | O7 done | [x] |
 | O52 | Index IV Rewriting (8-bit indices) | llvm-mos | 14cc/iter | High | Low | Low | Complements O7 | [ ] |
 | O53 | Enhanced Value Tracking (RegVal) | llvm-z80 | 1-2B, 4-8cc per pattern | Very high | Medium | Low-Med | O13 done | [ ] |
 | O54 | Optimal Stack Adjustment | llvm-z80 | 3-7B, 8-20cc per frame | Medium | Low | Low | None | [ ] |

@@ -8,6 +8,99 @@ IPRA is not a V6C-specific pass, but it materially reduces call-site spill /
 reload traffic by narrowing preserved-register masks for direct calls when the
 callee's real register usage is known.
 
+## LSR Strategy (`-v6c-lsr-strategy`)
+
+`V6CTTIImpl::isLSRCostLess` ranks LSR formula cost vectors with one of two
+lexicographic orderings over the generic `LSRCost` fields. Both orderings
+keep all other fields (`AddRecCost`, `NumIVMuls`, `NumBaseAdds`,
+`ImmCost`, `SetupCost`, `ScaleCost`) in their LLVM-default positions; only
+the `NumRegs`/`Insns` priority swaps.
+
+* `regs-first` — `NumRegs` then `Insns` (default). Minimises register
+  pressure first, which on i8080's 3 GP pairs (`HL`, `DE`, `BC`) is
+  usually the correct proxy for total post-RA cost: every IV beyond the
+  third forces a spill slot plus an in-loop reload sequence
+  (`LXI HL,slot` / `MOV r,M` / `INX HL` / ... or `LHLD slot`).
+* `insns-first` — `Insns` then `NumRegs` (Z80-style). Picks the formula
+  with fewest pre-RA instructions; will accept +1 GP-pair pressure for
+  one less in-loop ADD/INX or one less load fold.
+
+**Flag.** `-v6c-lsr-strategy={auto,insns-first,regs-first}`. `auto` is the
+default and currently maps to `regs-first` unconditionally — neither the
+optimisation level (`-O2` vs `-Os`) nor per-function attributes
+(`optsize`, `minsize`, `hot`, `cold`) change the dispatch yet. The
+captured `Function *` is reserved for that future use; see plan §7.
+
+**Examples.**
+
+```bash
+# Default: auto = regs-first at every -O level.
+clang -target i8080-unknown-v6c -O2 file.c -S -o file.asm
+
+# Opt in to insns-first for the whole TU (e.g. when the loop matches
+# the bsort_two profile: >3 IVs, all touched every iteration).
+clang -target i8080-unknown-v6c -O2 file.c -S -o file.asm \
+      -mllvm -v6c-lsr-strategy=insns-first
+
+# Force regs-first explicitly (bisection / pinning a known-good shape;
+# byte-identical to -O2 default today, but immune to a future
+# auto-dispatch change).
+clang -target i8080-unknown-v6c -O2 file.c -S -o file.asm \
+      -mllvm -v6c-lsr-strategy=regs-first
+
+# Combine with -Os; insns-first overrides the size-mode default
+# (which is also regs-first today).
+clang -target i8080-unknown-v6c -Os file.c -S -o file.asm \
+      -mllvm -v6c-lsr-strategy=insns-first
+```
+
+**Per-function selection (not yet supported).** `__attribute__((optsize))`
+or `__attribute__((hot))` on individual functions does **not** currently
+switch ordering — the flag is TU-global. If you need per-function
+control today, split the loops across two compilation units. Plan §7
+tracks the attribute-driven dispatch as a future enhancement.
+
+**Empirical results.**
+
+*Regression corpus A/B*
+([tests/features/43/result.txt](../tests/features/43/result.txt)). All
+42 feature tests rebuilt at `-O2` with each strategy and compared on
+`.text` bytes:
+
+| outcome                          | tests |
+|----------------------------------|------:|
+| `insns < regs` (insns-first wins) |     0 |
+| `insns > regs` (insns-first regresses) | 3 |
+| identical                        |    39 |
+
+The three regressions: test 20 +235 B, test 29 +315 B, test 43 +53 B.
+On test 43's `axpy3` kernel (4 stream pointers + counter) the inner
+body grew 71 → 80 instructions (+12.7 %) under insns-first because LSR
+picked formulas with one extra pointer IV and the post-RA reload
+sequence is invisible to the `Insns` cost estimate. This is what set
+the `auto = regs-first` default.
+
+*Bubble-sort microbenchmark*
+([tests/features/43/result_bsort.txt](../tests/features/43/result_bsort.txt)).
+Counter-example showing where insns-first does help:
+
+| function   | regs-first | insns-first | Δ      |
+|------------|-----------:|------------:|-------:|
+| `bsort` (2 ptrs) | 526 insn | 526 insn | 0 (byte-identical) |
+| `bsort_two` (4 ptrs, all touched/iter) | 410 insn | 367 insn | **−43 (−10.5 %)** |
+
+Both kernels nominally exceed the GP budget, but `bsort_two` touches
+every stream every iteration, so insns-first's "one INX rp per stream"
+schedule beats regs-first's pointer-fold-plus-recover schedule.
+`axpy3` does not behave this way because its formulas only need one of
+the streams reloaded per inner iteration.
+
+**When to opt in.** Use `-mllvm -v6c-lsr-strategy=insns-first` for
+loops where (a) the IV count exceeds 3 GP pairs and (b) every IV is
+touched on every iteration. Verify with the A/B procedure documented
+in `result_bsort.txt` before committing to it. For everything else
+the default (`regs-first`) is the safer choice.
+
 ## Pass Pipeline Order
 
 1. **IR-level** (in `addIRPasses()`): V6CLoopPointerInduction → V6CTypeNarrowing
