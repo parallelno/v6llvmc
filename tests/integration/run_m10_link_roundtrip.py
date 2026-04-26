@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Emulator round-trip tests for M10 (multi-file linking).
 
-Compiles multiple LLVM IR files with llc, links them with v6c_link.py,
-and runs the resulting binary in v6emul to verify correct cross-file
-symbol resolution and execution.
+Compiles multiple LLVM IR files with llc, links them with ld.lld
+(to validate cross-object relocations), and runs the resulting binary in
+v6emul to verify correct cross-file symbol resolution and execution.
 
-Pipeline: LLVM IR → llc (obj) → v6c_link.py → v6emul → verify
+Because V6C has no MC AsmParser, the startup stub cannot be assembled to
+ELF and prepended via the linker. We use a hybrid path: ld.lld validates
+the .o files link cleanly, then the IR is recompiled to text asm, stripped
+of directives, prepended with a startup wrapper, and assembled with v6asm
+for execution in v6emul.
+
+Pipeline: LLVM IR → llc (obj) → ld.lld (validate) → v6asm hybrid → v6emul
 
 Usage:
     python run_m10_link_roundtrip.py [--llc PATH] [--v6emul PATH] [-v]
@@ -31,7 +37,8 @@ def find_project_root():
 ROOT = find_project_root()
 DEFAULT_LLC = ROOT / "llvm-build" / "bin" / "llc.exe"
 DEFAULT_V6EMUL = ROOT / "tools" / "v6emul" / "v6emul.exe"
-LINKER_SCRIPT = ROOT / "scripts" / "v6c_link.py"
+LD_LLD = ROOT / "llvm-build" / "bin" / "ld.lld.exe"
+LLVM_OBJCOPY = ROOT / "llvm-build" / "bin" / "llvm-objcopy.exe"
 
 
 def compile_ir_to_obj(llc, ir_text, out_path):
@@ -71,14 +78,23 @@ def compile_ir_to_asm(llc, ir_text):
         os.unlink(ir_path)
 
 
-def link_objects(obj_paths, out_path, base_addr=0):
-    """Link .o files with v6c_link.py."""
-    cmd = [sys.executable, str(LINKER_SCRIPT)] + [str(p) for p in obj_paths]
-    cmd += ["-o", str(out_path), "--base", f"0x{base_addr:04X}"]
+def link_objects(obj_paths, out_path, base_addr=0, entry="main"):
+    """Link .o files with ld.lld and convert to flat binary via llvm-objcopy."""
+    elf_path = str(out_path) + ".elf"
+    cmd = [str(LD_LLD), "-m", "elf32v6c",
+           f"-Ttext=0x{base_addr:04X}", "-e", entry,
+           "-o", elf_path] + [str(p) for p in obj_paths]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     if result.returncode != 0:
         raise RuntimeError(
-            f"Linker failed (rc={result.returncode}):\n"
+            f"ld.lld failed (rc={result.returncode}):\n"
+            f"stderr: {result.stderr}\nstdout: {result.stdout}"
+        )
+    cmd = [str(LLVM_OBJCOPY), "-O", "binary", elf_path, str(out_path)]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"llvm-objcopy failed (rc={result.returncode}):\n"
             f"stderr: {result.stderr}\nstdout: {result.stdout}"
         )
 
@@ -221,13 +237,21 @@ def run_tests(llc, v6emul, verbose=False):
                     compile_ir_to_obj(llc, full_ir, obj_path)
                     obj_paths.append(obj_path)
 
-                # Link at base 0 (startup is at address 0)
+                # Validate the .o files link cleanly via ld.lld at a
+                # representative base address. The execution path below
+                # uses the v6asm hybrid; this call exercises ld.lld
+                # cross-object relocations.
+                # Pick the entry symbol from the IR (first def is main/main16).
+                first_ir = ir_files[0]
+                if "@main16" in first_ir:
+                    entry = "main16"
+                elif "@main" in first_ir:
+                    entry = "main"
+                else:
+                    entry = "main"
                 linked_bin = os.path.join(tmpdir, "linked.bin")
-                link_objects(obj_paths, linked_bin, base_addr=0)
-
-                # Read linked binary
-                with open(linked_bin, "rb") as f:
-                    code_data = f.read()
+                link_objects(obj_paths, linked_bin,
+                             base_addr=0x0100, entry=entry)
 
                 # Now we need to prepend startup asm. The startup calls into
                 # the linked code, so we need the startup at address 0 and
@@ -329,7 +353,7 @@ def main():
     print(f"M10 Link Round-Trip Tests")
     print(f"  llc:    {args.llc}")
     print(f"  v6emul: {args.v6emul}")
-    print(f"  linker: {LINKER_SCRIPT}")
+    print(f"  linker: {LD_LLD}")
     print()
 
     passed, failed, errors = run_tests(args.llc, args.v6emul, args.verbose)

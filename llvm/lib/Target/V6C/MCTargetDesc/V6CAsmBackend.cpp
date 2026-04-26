@@ -129,7 +129,7 @@ class V6CELFObjectWriter : public MCELFObjectTargetWriter {
 public:
   V6CELFObjectWriter()
       : MCELFObjectTargetWriter(/*Is64Bit=*/false, /*OSABI=*/0,
-                                /*EMachine=*/ELF::EM_NONE,
+                                /*EMachine=*/ELF::EM_V6C,
                                 /*HasRelocationAddend=*/true) {}
 
   unsigned getRelocType(MCContext &Ctx, const MCValue &Target,

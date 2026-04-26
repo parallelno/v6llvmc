@@ -1,4 +1,50 @@
 #!/usr/bin/env python3
+"""DEPRECATED: v6c_link.py — replaced by ld.lld.
+
+The Vector-06c LLVM toolchain now uses native LLVM `ld.lld` plus
+`llvm-objcopy` (driven automatically by clang). To produce a flat ROM:
+
+    clang -target i8080-unknown-v6c -O2 input.c -o output.rom
+
+To override the linker script, defsyms, or link multiple objects manually:
+
+    ld.lld -m elf32v6c \
+           -T clang/lib/Driver/ToolChains/V6C/v6c.ld \
+           foo.o bar.o -o out.elf
+    llvm-objcopy -O binary out.elf out.rom
+
+Pass `--legacy` to fall through to the original Python implementation
+(`scripts/v6c_link_legacy.py`). This is a temporary escape hatch and will
+be removed once all callers migrate.
+
+See design/plan_O_LLD_native_linker.md for migration details.
+"""
+
+import os
+import runpy
+import sys
+
+DEPRECATION_MESSAGE = (
+    "scripts/v6c_link.py is deprecated; use ld.lld via the clang driver.\n"
+    "Run with --legacy to use the legacy Python implementation, or see\n"
+    "design/plan_O_LLD_native_linker.md for the new flow."
+)
+
+
+def main():
+    if "--legacy" in sys.argv:
+        sys.argv = [a for a in sys.argv if a != "--legacy"]
+        legacy = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "v6c_link_legacy.py")
+        runpy.run_path(legacy, run_name="__main__")
+        return 0
+    sys.stderr.write(DEPRECATION_MESSAGE + "\n")
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+#!/usr/bin/env python3
 """V6C Linker — Link multiple V6C ELF .o files into a flat binary.
 
 Reads ELF32 little-endian relocatable objects (.o), resolves symbols,

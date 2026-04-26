@@ -32,6 +32,10 @@ Write-Host "  [OK] llvm/test/CodeGen/V6C/"
 robocopy "$root\tests\lit\MC\V6C" "$root\llvm-project\llvm\test\MC\V6C" /MIR /XD Output /NFL /NDL /NJH /NJS
 Write-Host "  [OK] llvm/test/MC/V6C/"
 
+# Linker tests (lld + V6C)
+robocopy "$root\tests\lit\Linker\V6C" "$root\llvm-project\llvm\test\Linker\V6C" /MIR /XD Output /NFL /NDL /NJH /NJS
+Write-Host "  [OK] llvm/test/Linker/V6C/"
+
 # Clang integration tests
 robocopy "$root\tests\lit\Clang\V6C" "$root\llvm-project\clang\test\CodeGen\V6C" /MIR /XD Output /NFL /NDL /NJH /NJS
 Write-Host "  [OK] clang/test/CodeGen/V6C/"
@@ -81,6 +85,11 @@ xcopy /Y /I "$root\llvm\include\llvm\IR\CMakeLists.txt" "$root\llvm-project\llvm
 # Function.cpp (IntrinsicsV6C.h include)
 xcopy /Y /I "$root\llvm\lib\IR\Function.cpp" "$root\llvm-project\llvm\lib\IR\" > $null
 Write-Host "  [OK] Intrinsics (IntrinsicsV6C.td, BuiltinsV6C.def, Function.cpp)"
+
+# O-LLD: V6C default linker script (data resource for the driver)
+if (-not (Test-Path "$root\llvm-project\clang\lib\Driver\ToolChains\V6C")) { New-Item -ItemType Directory -Path "$root\llvm-project\clang\lib\Driver\ToolChains\V6C" -Force > $null }
+xcopy /Y /I "$root\clang\lib\Driver\ToolChains\V6C\v6c.ld" "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\" > $null
+Write-Host "  [OK] V6C linker script (v6c.ld)"
 
 Write-Host ""
 Write-Host "Populate complete. llvm-project/ is ready to build."

@@ -24,21 +24,31 @@ e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8
 
 ## Default Memory Map
 
+The canonical layout is set by `clang/lib/Driver/ToolChains/V6C/v6c.ld`,
+which clang passes to `ld.lld` automatically. Sections are emitted in
+the order `.text`, `.rodata`, `.data`, `.bss`. The linker also defines
+the symbols `__bss_start`, `__bss_end`, and `__stack_top = 0x0000`.
+
 ```
-0x0000 ┌──────────────────┐
-       │  (reserved/ROM)  │
-0x0100 ├──────────────────┤  ← Default start address
+0x0000 ┌──────────────────┐  ← __stack_top (first PUSH wraps SP to 0xFFFE)
+       │  (reserved)      │
+0x0100 ├──────────────────┤  ← Default load address (`. = 0x0100;` in v6c.ld)
+       │  .text._start    │  ← crt0 / entry pinned by KEEP(*(.text._start))
        │  .text           │
        │  .rodata         │
        │  .data           │
-       │  .bss            │
+       │  .bss            │  ← __bss_start ... __bss_end (zero-initialized
+       │                  │     by crt0)
        │  (heap ↑)        │
        │       ...        │
-       │  (stack ↓)       │
-0x8000 ├──────────────────┤  ← Default stack init (grows downward)
+       │  (stack ↓)       │  ← grows downward from 0xFFFE
+0x8000 ├──────────────────┤
        │  Video RAM       │
 0xFFFF └──────────────────┘
 ```
+
+To relocate `.text` to a different base, override the script base via
+`-Wl,-Ttext=0xNNNN` or pass a custom script with `-Wl,-T,my.ld`.
 
 ## Supported Type Widths
 
@@ -80,7 +90,7 @@ The V6C runtime library (`compiler-rt/lib/builtins/v6c/`) provides functions for
 
 | File | Symbol | Description |
 |------|--------|-------------|
-| `crt0.s` | `_start` | Sets SP to 0xFFFF, zeros `.bss`, calls `_main`, then `HLT` |
+| `crt0.s` | `_start` | Sets `SP = __stack_top` (default `0x0000` → first PUSH wraps to `0xFFFE`), zeros `[__bss_start, __bss_end)`, calls `main`, then `HLT`. Placed in `.text._start` so the linker script (`v6c.ld`) pins it at `0x0100`. |
 
 ### Arithmetic
 
@@ -115,3 +125,44 @@ The V6C runtime library (`compiler-rt/lib/builtins/v6c/`) provides functions for
 - i8 variable shifts are promoted to i16 with appropriate zero/sign extension.
 - i16 variable shifts emit libcalls directly.
 - Constant shifts are unrolled inline (no libcall).
+
+## ELF Object Format
+
+V6C object files (`.o` produced by `clang -c` / `llc -filetype=obj`) and
+linked images use the standard ELF32 little-endian container with a private,
+unassigned `e_machine` value:
+
+| Field | Value |
+|-------|-------|
+| `e_ident[EI_CLASS]` | `ELFCLASS32` |
+| `e_ident[EI_DATA]`  | `ELFDATA2LSB` |
+| `e_ident[EI_OSABI]` | `ELFOSABI_STANDALONE` (no hosted runtime) |
+| `e_machine`         | `EM_V6C = 0x8080` |
+
+`EM_V6C = 0x8080` is **not** registered with the official ELF e_machine
+registry. The value was chosen to mirror the i8080 CPU number and is local to
+this toolchain. It is defined once in `llvm/include/llvm/BinaryFormat/ELF.h`
+and consumed by:
+
+- `llvm/lib/Target/V6C/MCTargetDesc/V6CAsmBackend.cpp` — emits objects with
+  this `e_machine`.
+- `lld/ELF/Arch/V6C.cpp` + `lld/ELF/Target.cpp` — `ld.lld` dispatches to the
+  V6C relocation backend on this `e_machine`.
+
+### Relocations
+
+V6C is purely absolute (no PC-relative addressing on the 8080). Four
+relocation types are defined; their numeric values are stable and shared
+between `V6CAsmBackend` (writer) and `lld` (consumer):
+
+| Type | Value | Width | Description |
+|------|-------|-------|-------------|
+| `R_V6C_NONE` | 0 | — | No relocation |
+| `R_V6C_8`    | 1 | 1 byte  | 8-bit absolute value |
+| `R_V6C_16`   | 2 | 2 bytes | 16-bit absolute address (little-endian) |
+| `R_V6C_LO8`  | 3 | 1 byte  | Low byte of a 16-bit absolute (`lo8(expr)`) |
+| `R_V6C_HI8`  | 4 | 1 byte  | High byte of a 16-bit absolute (`hi8(expr)`) |
+
+`R_V6C_8` and `R_V6C_16` perform overflow checks (the value must fit in a
+signed or unsigned 8/16-bit field). `R_V6C_LO8` / `R_V6C_HI8` are byte
+extractions and never overflow.

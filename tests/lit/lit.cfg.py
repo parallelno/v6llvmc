@@ -3,7 +3,7 @@ import os
 
 config.name = "V6C"
 config.test_format = lit.formats.ShTest(False)
-config.suffixes = ['.ll', '.c']
+config.suffixes = ['.ll', '.c', '.test']
 config.test_source_root = os.path.dirname(__file__)
 
 # Find workspace root (contains llvm-build/) by walking upward

@@ -31,7 +31,8 @@ enum Fixups {
 };
 
 /// V6C ELF relocation types.
-/// Since we use EM_NONE, these are private to the V6C toolchain.
+/// Used by both V6CELFObjectWriter (emitter) and lld/ELF/Arch/V6C.cpp
+/// (consumer). The e_machine value is ELF::EM_V6C (0x8080).
 enum RelocType {
   R_V6C_NONE = 0,
   R_V6C_8    = 1,   ///< 8-bit absolute value

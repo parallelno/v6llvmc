@@ -29,12 +29,11 @@ ninja -C llvm-build clang llc
 # C → assembly
 llvm-build/bin/clang -target i8080-unknown-v6c -S hello.c -o hello.s
 
-# C → ELF object → flat binary
-llvm-build/bin/clang -target i8080-unknown-v6c -c hello.c -o hello.o
-python scripts/elf2bin.py hello.o -o hello.bin --base 0x0100
+# C → flat binary (ROM) — clang drives ld.lld + llvm-objcopy automatically
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 hello.c -o hello.rom
 
 # Run in emulator
-tools/v6emul/v6emul.exe --rom hello.bin --load-addr 0x0100 --halt-exit --dump-cpu
+tools/v6emul/v6emul.exe --rom hello.rom --load-addr 0x0100 --halt-exit --dump-cpu
 ```
 
 ### Run Tests
@@ -50,7 +49,7 @@ python tests/run_golden_tests.py # Emulator trust baseline (15 tests)
 - **Operations**: All integer arithmetic, bitwise, shifts, comparisons, control flow
 - **Functions**: Full calling convention with register + stack argument passing
 - **Globals**: Initialized and uninitialized data, `const` → `.rodata`
-- **Multi-file**: Cross-file linking via `scripts/v6c_link.py`
+- **Multi-file**: Cross-file linking via native `ld.lld` (driven by clang)
 - **Intrinsics**: `__builtin_v6c_in`, `__builtin_v6c_out`, `__builtin_v6c_di`, `__builtin_v6c_ei`, `__builtin_v6c_hlt`, `__builtin_v6c_nop`
 - **Inline assembly**: `asm volatile("NOP")` (IR-level constraints)
 

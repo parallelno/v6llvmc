@@ -1,0 +1,27 @@
+O-LLD Multi-File End-to-End Test
+=================================
+
+Verifies that the V6C clang driver can compile and link multiple C
+translation units in a single invocation using native ld.lld.
+
+## Build
+
+    llvm-build/bin/clang -target i8080-unknown-v6c -O2 \
+        -nostartfiles -nodefaultlibs "-Wl,--defsym=_start=main" \
+        main.c math.c io.c -o out.rom
+
+## Run
+
+    tools/v6emul/v6emul.exe --rom out.rom --load-addr 0x0100 \
+        --halt-exit --dump-cpu
+
+## Expected port-0xED stream
+
+    17 42 FF
+
+  - 0x10 + 0x07 = 0x17 (add_u8 in math.c reached from main.c)
+  - 0x40 + 0x02 = 0x42
+  - 0xF0 + 0x0F = 0xFF
+
+Each call traverses two cross-object R_V6C_16 relocations (main -> add_u8,
+main -> emit_u8). emit_u8 itself wraps the OUT 0xED debug-port intrinsic.

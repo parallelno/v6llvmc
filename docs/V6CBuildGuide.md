@@ -25,10 +25,15 @@
 cmake -G Ninja -S llvm-project\llvm -B llvm-build ^
   -DCMAKE_BUILD_TYPE=Release ^
   -DLLVM_TARGETS_TO_BUILD=X86 ^
-  -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=V6C
+  -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=V6C ^
+  -DLLVM_ENABLE_PROJECTS=clang;lld
 
-ninja -C llvm-build llc llvm-tblgen
+ninja -C llvm-build llc clang ld.lld lld llvm-objcopy llvm-tblgen
 ```
+
+The `lld` project provides `ld.lld`, the native ELF linker used by the V6C
+toolchain (replaces the legacy Python `scripts/v6c_link.py`, now stubbed).
+See plan [design/plan_O_LLD_native_linker.md](../design/plan_O_LLD_native_linker.md).
 
 Verify the target is registered:
 
@@ -114,34 +119,52 @@ empty:
 
 ## Binary Emission
 
-`llc` can emit ELF object files which are then converted to flat binary:
+The clang driver runs `ld.lld` and `llvm-objcopy` automatically. The
+output extension determines the format: `.elf` keeps the linked ELF;
+anything else (e.g. `.rom`, `.bin`) is converted to a flat binary via
+`llvm-objcopy -O binary`.
 
 ```bash
-# Step 1: Compile to ELF object
-llvm-build/bin/llc -march=v6c -mtriple=i8080-unknown-v6c -filetype=obj input.ll -o output.o
+# C source -> flat binary ROM (single command)
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 input.c -o output.rom
 
-# Step 2: Convert to flat binary (base address 0x0100)
-python scripts/elf2bin.py output.o -o output.bin --base 0x0100
+# C source -> ELF (no objcopy step)
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 input.c -o output.elf
+```
 
-# Step 2b: Also produce Intel HEX alongside binary
-python scripts/elf2bin.py output.o -o output.bin --base 0x0100 --hex
+For lower-level control (e.g. linking multiple objects with a custom
+linker script):
+
+```bash
+# Step 1: Compile each translation unit to ELF object
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 -c a.c -o a.o
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 -c b.c -o b.o
+
+# Step 2: Link with ld.lld using the V6C linker script
+llvm-build/bin/ld.lld -m elf32v6c \
+    -T clang/lib/Driver/ToolChains/V6C/v6c.ld \
+    a.o b.o -o out.elf
+
+# Step 3: Convert to flat binary
+llvm-build/bin/llvm-objcopy -O binary out.elf out.rom
 ```
 
 ### Start Address
 
-The binary start address (default `0x0100`) is configured in two places:
+The default load address is `0x0100`, set by the `v6c.ld` linker script
+(`. = 0x0100;` at the start of `.text`). To override, either:
 
-1. **`-mv6c-start-address=<addr>`** — LLVM target option affecting code generation:
+1. **Pass a custom linker script** via `-Wl,-T,my-script.ld` to clang, or
+2. **Use `-Wl,-Ttext=0xNNNN`** to override the text base while keeping
+   the rest of the layout. Example:
    ```bash
-   llvm-build/bin/llc -march=v6c -mtriple=i8080-unknown-v6c -mv6c-start-address=0x8000 ...
+   llvm-build/bin/clang -target i8080-unknown-v6c -O2 \
+       -Wl,-Ttext=0x8000 input.c -o output.rom
    ```
 
-2. **`--base <addr>`** — elf2bin.py parameter for relocation base:
-   ```bash
-   python scripts/elf2bin.py output.o -o output.bin --base 0x8000
-   ```
-
-Both must match. The accepted range is `0x0000`–`0xFFFF`.
+Note: when relocating to a non-default base, the V6C runtime
+(`__stack_top = 0x0000`) and crt0 entry stay the same; only the code/data
+addresses change. The legal range is `0x0000`–`0xFFFF`.
 
 ### Intel HEX Format
 
@@ -167,9 +190,9 @@ cmake -G Ninja -S llvm-project\llvm -B llvm-build ^
   -DCMAKE_BUILD_TYPE=Release ^
   -DLLVM_TARGETS_TO_BUILD=X86 ^
   -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=V6C ^
-  -DLLVM_ENABLE_PROJECTS=clang
+  -DLLVM_ENABLE_PROJECTS=clang;lld
 
-ninja -C llvm-build clang llc
+ninja -C llvm-build clang llc ld.lld llvm-objcopy
 ```
 
 ### Compiling C Code

@@ -1,4 +1,48 @@
 #!/usr/bin/env python3
+"""DEPRECATED: elf2bin.py — replaced by `llvm-objcopy -O binary`.
+
+The Vector-06c LLVM toolchain now uses native `llvm-objcopy` to convert
+ELF to flat binary. The clang driver runs this automatically when the
+output extension is anything other than `.elf` or `.o`:
+
+    clang -target i8080-unknown-v6c -O2 input.c -o output.rom
+
+For manual conversion:
+
+    llvm-objcopy -O binary input.elf output.rom
+
+Pass `--legacy` to fall through to the original Python implementation
+(`scripts/elf2bin_legacy.py`). This is a temporary escape hatch and will
+be removed once all callers migrate.
+
+See design/plan_O_LLD_native_linker.md for migration details.
+"""
+
+import os
+import runpy
+import sys
+
+DEPRECATION_MESSAGE = (
+    "scripts/elf2bin.py is deprecated; use 'llvm-objcopy -O binary' instead.\n"
+    "Run with --legacy to use the legacy Python implementation, or see\n"
+    "design/plan_O_LLD_native_linker.md for the new flow."
+)
+
+
+def main():
+    if "--legacy" in sys.argv:
+        sys.argv = [a for a in sys.argv if a != "--legacy"]
+        legacy = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "elf2bin_legacy.py")
+        runpy.run_path(legacy, run_name="__main__")
+        return 0
+    sys.stderr.write(DEPRECATION_MESSAGE + "\n")
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+#!/usr/bin/env python3
 """Convert a V6C ELF object (.o) to a flat binary (.bin).
 
 Reads ELF32 little-endian, extracts PROGBITS sections (.text, .rodata, .data),

@@ -1,11 +1,11 @@
 ; RUN: llc -mtriple=i8080-unknown-v6c -filetype=obj -o %t.o %s
-; RUN: python %scripts/v6c_link.py %t.o -o %t.bin --base 0x0100 --map %t.map
+; RUN: ld.lld -m elf32v6c -Ttext=0x0100 -e main -Map=%t.map -o %t.elf %t.o
+; RUN: llvm-objcopy -O binary %t.elf %t.bin
 ; RUN: FileCheck %s < %t.map
 
 ; Test: Memory map output and section ordering.
-; Sections must appear in order: .text, .rodata, .data, .bss
+; ld.lld emits a per-section map; .text must appear before .data.
 
-; CHECK: Sections:
 ; CHECK: .text
 ; CHECK: .data
 

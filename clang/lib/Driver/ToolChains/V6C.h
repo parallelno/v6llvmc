@@ -19,7 +19,7 @@ namespace v6c {
 
 class LLVM_LIBRARY_VISIBILITY Linker final : public Tool {
 public:
-  Linker(const ToolChain &TC) : Tool("v6c::Linker", "v6c-ld", TC) {}
+  Linker(const ToolChain &TC) : Tool("v6c::Linker", "ld.lld", TC) {}
   bool isLinkJob() const override { return true; }
   bool hasIntegratedCPP() const override { return false; }
   void ConstructJob(Compilation &C, const JobAction &JA,

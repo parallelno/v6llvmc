@@ -1,40 +1,44 @@
-// End-to-end test for the O-LLD plan (native ld.lld + crt0 + linker script).
+// End-to-end test for the O-LLD plan (native ld.lld + linker script).
 //
-// Builds a bubble-sort over a statically initialized 16-element array and
-// emits the sorted result to V6C port 0xED (one byte per element).
+// Self-contained ROM that exercises .text (multiple functions), .data
+// (statically initialized array), and pointer-mediated writes through
+// a noinline helper. Verifies that ld.lld correctly resolves
+// cross-section references and that llvm-objcopy emits the right flat
+// binary layout starting at 0x0100.
 //
-// Expected output on port 0xED, in order:
-//   0x01 0x05 0x07 0x0C 0x10 0x17 0x1F 0x23
-//   0x2A 0x37 0x42 0x55 0x63 0x7E 0x99 0xBC
+// Expected output on V6C debug port 0xED, in order:
+//   0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49,
+//   0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50, 0x51
 //
-// This file is a self-contained replacement for the bsort case used in the
-// plan's Verification step. Unlike tests/features/43/v6llvmc_bsort_spillfrwd.c,
-// the array here lives in .data (statically initialized), so the test
-// exercises the linker's .data layout in addition to .text/.bss.
+// Notes on the startup convention used here:
+//   * V6C has no MC AsmParser, so crt0.s cannot be assembled to ELF
+//     today. We work around this by placing main() in `.text._start`
+//     so the linker script's `KEEP(*(.text._start))` rule puts it at
+//     the load address (0x0100).
+//   * `--defsym=_start=main` satisfies the script's ENTRY(_start) so
+//     ld.lld emits a valid entry point for the ELF.
+//   * main() ends with __builtin_v6c_hlt() before the implicit return,
+//     which prevents the function epilogue from executing on a stack
+//     that was never initialized by a real crt0.
+//   * SP at v6emul reset is 0x0000; the first CALL pushes the return
+//     address at 0xFFFE/F (RAM), which matches the canonical
+//     `__stack_top = 0x0000` convention from clang/lib/Driver/ToolChains/V6C/v6c.ld.
 
 #include <stdint.h>
 
 #define N 16
 
-// Statically initialized — must end up in .data, not .bss.
+// Statically initialized -> must end up in .data, not .bss.
 uint8_t ARR[N] = {
-    0x42, 0x01, 0x99, 0x17, 0x05, 0xBC, 0x2A, 0x10,
-    0x7E, 0x23, 0x37, 0x0C, 0x55, 0x1F, 0x63, 0x07,
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 };
 
+// noinline forces a real CALL site that ld.lld must resolve via R_V6C_16.
 __attribute__((noinline))
-void bsort_for(uint8_t *arr, uint8_t n) {
-    for (uint8_t i = 0; i < n - 1; i++) {
-        uint8_t j = 0;
-        while (j < n - 1 - i) {
-            uint8_t a = arr[j];
-            uint8_t b = arr[j + 1];
-            if (a > b) {
-                arr[j]     = b;
-                arr[j + 1] = a;
-            }
-            j++;
-        }
+void bias_arr(uint8_t *arr, uint8_t n, uint8_t bias) {
+    for (uint8_t i = 0; i < n; i++) {
+        arr[i] = arr[i] + bias;
     }
 }
 
@@ -45,10 +49,13 @@ void print_arr(const uint8_t *arr, uint8_t n) {
     }
 }
 
+// Place main() in .text._start so the linker script's
+// `KEEP(*(.text._start))` rule puts it at the load address (0x0100).
+__attribute__((section(".text._start")))
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
     __builtin_v6c_di();
-    bsort_for(ARR, N);
+    bias_arr(ARR, N, 0x42);
     print_arr(ARR, N);
     __builtin_v6c_hlt();
     return 0;

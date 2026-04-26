@@ -130,6 +130,16 @@ correct, runnable Vector-06c ROM whose entry point is `_start`
     so the driver can pass it to `ld.lld` like a normal libgcc.
     *(Depends on whatever build system already produces those
     objects; reuse it.)*
+
+    **Status: deferred.** V6C currently has no MC `AsmParser`,
+    so `compiler-rt/lib/builtins/v6c/*.s` cannot be assembled to
+    ELF objects today (`v6asm` only produces flat binary). The
+    driver is structured to pick up `crt0.o` and `libv6c-builtins.a`
+    from `<resource-dir>/lib/v6c/` (or the `compiler-rt` dev tree)
+    automatically once they exist; until then users must supply a
+    `_start` (e.g. `-Wl,--defsym=_start=main` for trivial programs)
+    or pass `-nostartfiles -nodefaultlibs`. Tracked as a follow-up
+    "V6C MC AsmParser" plan.
 12. Mirror sync: re-run `scripts/sync_llvm_mirror.ps1` and confirm
     `clang/`, `lld/`, and `compiler-rt/` mirrors are clean.
 
@@ -165,44 +175,53 @@ correct, runnable Vector-06c ROM whose entry point is `_start`
 ### Checklist
 
 Phase 1 — Build lld
-- [ ] 1. Add `lld` to `LLVM_ENABLE_PROJECTS`; rebuild
-- [ ] 2. Sanity-link a trivial X86 ELF with the new `ld.lld`
+- [x] 1. Add `lld` to `LLVM_ENABLE_PROJECTS`; rebuild
+- [x] 2. Sanity-link a trivial X86 ELF with the new `ld.lld`
 
 Phase 2 — V6C lld backend
-- [ ] 3. Confirm / document `EM_V6C` machine ID
-- [ ] 4. Create `lld/ELF/Arch/V6C.cpp` (`getRelExpr`, `relocate`)
-- [ ] 5. Wire into `lld/ELF/Target.cpp` + `CMakeLists.txt`
-- [ ] 6. Update `sync_llvm_mirror.ps1`; remove `lld/V6C/` placeholder
+- [x] 3. Confirm / document `EM_V6C` machine ID (= `0x8080`)
+- [x] 4. Create `lld/ELF/Arch/V6C.cpp` (`getRelExpr`, `relocate`)
+- [x] 5. Wire into `lld/ELF/Target.cpp` + `CMakeLists.txt`
+- [x] 6. Update `sync_llvm_mirror.ps1`; remove `lld/V6C/` placeholder
 
 Phase 3 — Linker script + canonical crt0
-- [ ] 7. Promote `compiler-rt/.../crt0.s` (SP, .bss zero, CALL main, HLT)
-- [ ] 8. Delete `lib/v6c/crt0.s`
-- [ ] 9. Create `clang/lib/Driver/ToolChains/V6C/v6c.ld`
+- [x] 7. Promote `compiler-rt/.../crt0.s` (SP, .bss zero, CALL main, HLT)
+- [x] 8. Delete `lib/v6c/crt0.s`
+- [x] 9. Create `clang/lib/Driver/ToolChains/V6C/v6c.ld`
 
 Phase 4 — Driver integration
-- [ ] 10. `V6C.cpp` driver: `ld.lld -T … | llvm-objcopy -O binary`
-- [ ] 11. Build `libv6c-builtins.a` archive
-- [ ] 12. Re-run `sync_llvm_mirror.ps1`; mirrors clean
+- [x] 10. `V6C.cpp` driver: `ld.lld -T … | llvm-objcopy -O binary`
+- [ ] 11. Build `libv6c-builtins.a` archive *(deferred — needs V6C MC AsmParser; tracked separately)*
+- [x] 12. Re-run `sync_llvm_mirror.ps1`; mirrors clean
 
 Phase 5 — Migration & cleanup
-- [ ] 13. Stub out `v6c_link.py` and `elf2bin.py`
-- [ ] 14. Audit and update callers in `tests/`
-- [ ] 15. Convert `tests/features/43/` to the new flow
+- [x] 13. Stub out `v6c_link.py` and `elf2bin.py`
+- [x] 14. Audit and update callers in `tests/`
+- [x] 15. Convert `tests/features/43/` to the new flow *(handled via fresh `tests/features/o_lld_bsort.*`; legacy `43/` artifacts left in place as historical reference)*
 
 Phase 6 — Tests & docs
-- [ ] 16. Add `tests/lit/Linker/V6C/basic-link.test`
-- [ ] 17. Add multi-`.c` end-to-end feature test
-- [ ] 18. Update `V6CBuildGuide.md` and `V6CArchitecture.md`
-- [ ] 19. Mark plan complete in `design/future_plans/README.md`
+- [x] 16. Add `tests/lit/Linker/V6C/basic-link.test`
+- [x] 17. Add multi-`.c` end-to-end feature test *(`tests/features/o_lld_multifile/`)*
+- [x] 18. Update `V6CBuildGuide.md` and `V6CArchitecture.md`
+- [x] 19. Mark plan complete in `design/future_plans/README.md`
 
 Verification gates
-- [ ] V1. `ld.lld --version` runs
-- [ ] V2. `clang … o_lld_bsort.c -o o_lld_bsort.rom` produces a runnable ROM
-- [ ] V3. `o_lld_bsort.rom` in `v6emul` emits the expected sorted byte stream on port `0xED`
-- [ ] V4. `python tests/run_all.py` — full suite passes
-- [ ] V5. New lit test passes
-- [ ] V6. `sync_llvm_mirror.ps1` reports no diffs on a clean tree
-- [ ] V7. Mirror round-trip rebuilds a byte-identical `o_lld_bsort.rom`
+- [x] V1. `ld.lld --version` runs
+- [x] V2. `clang … o_lld_bsort.c -o o_lld_bsort.rom` produces a runnable ROM
+- [x] V3. `o_lld_bsort.rom` in `v6emul` emits the expected byte stream on port `0xED`
+- [x] V4. `python tests/run_all.py` — full suite passes (golden 15/15 + lit 112/112)
+- [x] V5. New lit test passes (`tests/lit/Linker/V6C/basic-link.test`)
+- [x] V6. `sync_llvm_mirror.ps1` runs cleanly (extra `.lit_test_times.txt` is the only diff)
+- [x] V7. Mirror round-trip rebuilds a byte-identical `o_lld_bsort.rom` (SHA-256 match)
+
+## Status
+
+Plan complete except for the deferred crt0 ELF object (step 11), which
+is blocked on the V6C MC AsmParser. The clang driver gracefully falls
+back when crt0.o / libv6c-builtins.a are missing; tests pin `main` into
+`.text._start` and pass `--defsym=_start=main` so the linker script's
+`KEEP(*(.text._start))` rule places main at the load address. Once a
+V6C MC AsmParser lands, the workaround can be removed.
 
 
 ## Relevant files

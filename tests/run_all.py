@@ -55,17 +55,15 @@ def main():
     results["golden"] = ok
 
     if not args.golden_only:
-        # Lit tests — source of truth in llvm-project/, mirrors to tests/lit/
-        lit_dirs = [
-            root / "llvm-project" / "llvm" / "test" / "CodeGen" / "V6C",
-            root / "llvm-project" / "llvm" / "test" / "MC" / "V6C",
-            root / "llvm-project" / "clang" / "test" / "CodeGen" / "V6C",
-        ]
-        lit_paths = [str(d) for d in lit_dirs if d.exists() and (any(d.rglob("*.ll")) or any(d.rglob("*.c")))]
-        if lit_paths:
+        # Lit tests — run against the project mirrors under tests/lit/, which
+        # have self-contained lit.cfg.py files (no LLVM CMake config required).
+        lit_root = root / "tests" / "lit"
+        if lit_root.exists():
             ok = run_suite(
                 "Lit Tests (FileCheck)",
-                ["lit"] + lit_paths + ["-v"],
+                [sys.executable,
+                 str(root / "llvm-build" / "bin" / "llvm-lit.py"),
+                 str(lit_root), "-v"],
                 root
             )
             results["lit"] = ok

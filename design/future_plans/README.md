@@ -63,6 +63,7 @@
 | O63 | Split Spill/Reload Pseudos — Drop False `Defs=[FLAGS]` on Static Stack | [O63_split_spill_pseudo_flags.md](O63_split_spill_pseudo_flags.md) | V6C |
 | O64 | Liveness-Aware i8 Spill/Reload Lowering (Static-Stack Shapes B & C) | [O64_liveness_aware_i8_spill_lowering.md](O64_liveness_aware_i8_spill_lowering.md) | V6C |
 | O65 | MOV r, M + ALU r Fold (Direct Memory ALU Peephole) | [O65_mov_alu_m_fold.md](O65_mov_alu_m_fold.md) | V6C |
+| O-LLD | Native ld.lld Linker (replaces Python `v6c_link.py`) ✅ | [../plan_O_LLD_native_linker.md](../plan_O_LLD_native_linker.md) | V6C |
 ---
 
 ## Summary Table
@@ -128,6 +129,7 @@
 | O63 | Split Spill Pseudos — drop false FLAGS def on static stack | V6C | 4-12cc, 1-3B per fold (indirect) | Medium | Low-Med | Low-Med | O10 done | [ ] |
 | O64 | Liveness-Aware i8 Spill/Reload (Shapes B & C) | V6C | 8-56cc, 0-2B per non-A i8 spill/reload | Very high | Low-Med | Low | O10 done, O42 done | [x] |
 | O65 | MOV r, M + ALU r Fold (peephole backstop to O49) | V6C | 4cc, 1B per fold | Med-High | Very Low | Very Low | None (composes with O49) | [x] |
+| O-LLD | Native ld.lld linker (replaces Python `v6c_link.py`) | V6C | toolchain hardening | One-shot | Med-High | Low | lld build wired in | [x] |
 
 ### Recommended order
 

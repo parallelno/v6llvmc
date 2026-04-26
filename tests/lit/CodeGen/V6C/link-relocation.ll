@@ -1,7 +1,9 @@
 ; RUN: llc -mtriple=i8080-unknown-v6c -filetype=obj -o %t_main.o %s
 ; RUN: llc -mtriple=i8080-unknown-v6c -filetype=obj -o %t_helper.o %S/Inputs/link-helper.ll
-; RUN: python %scripts/v6c_link.py %t_main.o %t_helper.o -o %t_0100.bin --base 0x0100
-; RUN: python %scripts/v6c_link.py %t_main.o %t_helper.o -o %t_8000.bin --base 0x8000
+; RUN: ld.lld -m elf32v6c -Ttext=0x0100 -e main -o %t_0100.elf %t_main.o %t_helper.o
+; RUN: ld.lld -m elf32v6c -Ttext=0x8000 -e main -o %t_8000.elf %t_main.o %t_helper.o
+; RUN: llvm-objcopy -O binary %t_0100.elf %t_0100.bin
+; RUN: llvm-objcopy -O binary %t_8000.elf %t_8000.bin
 ; RUN: python -c "import sys; open(sys.argv[2],'w').write(' '.join(f'{b:02X}' for b in open(sys.argv[1],'rb').read()))" %t_0100.bin %t_0100.hex
 ; RUN: python -c "import sys; open(sys.argv[2],'w').write(' '.join(f'{b:02X}' for b in open(sys.argv[1],'rb').read()))" %t_8000.bin %t_8000.hex
 ; RUN: not diff %t_0100.hex %t_8000.hex
