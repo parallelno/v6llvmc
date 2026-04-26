@@ -1,15 +1,21 @@
 	.text
 	.globl	bsort_for                       ; -- Begin function bsort_for
 bsort_for:                              ; @bsort_for
+	;=== void bsort_for(void* arg0, char arg1) ===
+	;  arg0 = HL
+	;  arg1 = E
 ; %bb.0:
 	MOV	A, E
 	SHLD	.LLo61_2+1
 	MVI	L, 0
+	;--- V6C_BUILD_PAIR ---
 	MOV	H, L
 	MOV	L, A
 	CPI	2
+	;--- V6C_BRCOND ---
 	RC
 .LBB0_1:
+	;--- V6C_DCX16 ---
 	DCX	HL
 	LXI	DE, 0
 	SHLD	.LLo61_5+1
@@ -18,6 +24,7 @@ bsort_for:                              ; @bsort_for
 	XCHG
 	SHLD	.LLo61_1+1
 	XCHG
+	;--- V6C_SUB16 ---
 	MOV	A, L
 	SUB	E
 	MOV	L, A
@@ -25,6 +32,7 @@ bsort_for:                              ; @bsort_for
 	SBB	D
 	MOV	H, A
 	SHLD	.LLo61_4+1
+	;--- V6C_BR_CC16_IMM ---
 	MOV	A, H
 	ORA	L
 	JNZ	.LBB0_7
@@ -41,6 +49,7 @@ bsort_for:                              ; @bsort_for
 	MVI	A, 0
 .LLo61_6:
 	MVI	E, 0
+	;--- V6C_BUILD_PAIR ---
 	MOV	B, A
 	MOV	C, E
 	PUSH	HL
@@ -58,6 +67,7 @@ bsort_for:                              ; @bsort_for
 	LXI	HL, 0
 .LLo61_0:
 	LXI	DE, 0
+	;--- V6C_BR_CC16 ---
 	MOV	A, E
 	SUB	L
 	MOV	A, D
@@ -67,9 +77,12 @@ bsort_for:                              ; @bsort_for
                                         ; =>  This Inner Loop Header: Depth=2
 .LLo61_3:
 	LXI	DE, 0
+	;--- V6C_LOAD8_P ---
 	LDAX	DE
 	MOV	L, A
+	;--- V6C_INX16 ---
 	INX	BC
+	;--- V6C_LOAD8_P ---
 	LDAX	BC
 	PUSH	PSW
 	MOV	A, L
@@ -78,20 +91,26 @@ bsort_for:                              ; @bsort_for
 	CMP	L
 	MOV	H, B
 	MOV	L, C
+	;--- V6C_BRCOND ---
 	JNC	.LBB0_6
 ; %bb.5:                                ;   in Loop: Header=BB0_4 Depth=2
+	;--- V6C_STORE8_P ---
 	STAX	DE
+	;--- V6C_INX16 ---
 	INX	DE
 .LLo61_7:
 	MVI	A, 0
+	;--- V6C_STORE8_P ---
 	STAX	DE
 	JMP	.LBB0_6
 .LBB0_7:                                ;   in Loop: Header=BB0_2 Depth=1
 .LLo61_1:
 	LXI	DE, 0
+	;--- V6C_INX16 ---
 	INX	DE
 .LLo61_5:
 	LXI	HL, 0
+	;--- V6C_BR_CC16 ---
 	MOV	A, E
 	CMP	L
 	JNZ	.LBB0_2
@@ -104,19 +123,28 @@ bsort_for:                              ; @bsort_for
                                         ; -- End function
 	.globl	print_arr                       ; -- Begin function print_arr
 print_arr:                              ; @print_arr
+	;=== void print_arr(void* arg0, char arg1) ===
+	;  arg0 = HL
+	;  arg1 = E
 ; %bb.0:
 	MOV	A, E
 	ORA	A
+	;--- V6C_BRCOND ---
 	RZ
 .LBB1_2:
 	MVI	E, 0
+	;--- V6C_BUILD_PAIR ---
 	MOV	D, E
 	MOV	E, A
 .LBB1_3:                                ; =>This Inner Loop Header: Depth=1
+	;--- V6C_LOAD8_P ---
 	MOV	A, M
 	OUT	0xed
+	;--- V6C_INX16 ---
 	INX	HL
+	;--- V6C_DCX16 ---
 	DCX	DE
+	;--- V6C_BR_CC16_IMM ---
 	MOV	A, D
 	ORA	E
 	JNZ	.LBB1_3
@@ -125,8 +153,12 @@ print_arr:                              ; @print_arr
                                         ; -- End function
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
+	;=== int main(int arg0, void* arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
 ; %bb.0:
 	DI
+	HLT
 	LXI	HL, ARR
 	MVI	E, 0x10
 	CALL	bsort_for

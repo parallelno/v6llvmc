@@ -109,8 +109,15 @@ def parse_symtab(sections, data):
 
 def elf_to_bin(input_path, output_path, base_addr=0):
     """Convert ELF .o to flat binary with relocations applied."""
-    with open(input_path, 'rb') as f:
-        data = f.read()
+    try:
+        with open(input_path, 'rb') as f:
+            data = f.read()
+    except FileNotFoundError:
+        print(f"error: input file not found: {input_path}", file=sys.stderr)
+        sys.exit(1)
+    except OSError as e:
+        print(f"error: cannot read {input_path}: {e}", file=sys.stderr)
+        sys.exit(1)
 
     sections, data = read_elf32(data)
     symbols = parse_symtab(sections, data)
