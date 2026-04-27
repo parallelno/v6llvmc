@@ -91,6 +91,10 @@ if (-not (Test-Path "$root\llvm-project\clang\lib\Driver\ToolChains\V6C")) { New
 xcopy /Y /I "$root\clang\lib\Driver\ToolChains\V6C\v6c.ld" "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\" > $null
 Write-Host "  [OK] V6C linker script (v6c.ld)"
 
+# V6C resource-dir headers (string.h, stdlib.h, v6c.h)
+robocopy "$root\clang\lib\Driver\ToolChains\V6C\include" "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\include" /MIR /NFL /NDL /NJH /NJS > $null
+Write-Host "  [OK] V6C resource-dir headers (string.h, stdlib.h, v6c.h)"
+
 Write-Host ""
 Write-Host "Populate complete. llvm-project/ is ready to build."
 Write-Host "Next: cmake + ninja (see docs/V6CBuildGuide.md)"

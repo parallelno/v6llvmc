@@ -71,5 +71,7 @@ xcopy /Y /I "$root\llvm-project\lld\ELF\CMakeLists.txt" "$root\lld\ELF\" > $null
 # V6C default linker script (data resource for the driver)
 if (-not (Test-Path "$root\clang\lib\Driver\ToolChains\V6C")) { New-Item -ItemType Directory -Path "$root\clang\lib\Driver\ToolChains\V6C" -Force > $null }
 xcopy /Y /I "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\v6c.ld" "$root\clang\lib\Driver\ToolChains\V6C\" > $null
+# V6C resource-dir headers (string.h, stdlib.h, v6c.h)
+robocopy "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\include" "$root\clang\lib\Driver\ToolChains\V6C\include" /MIR /NFL /NDL /NJH /NJS > $null
 
 Write-Host "Mirror sync complete."

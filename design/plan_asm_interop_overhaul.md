@@ -415,10 +415,10 @@ Phase 4 — Inline-asm clobber verification
 - [x] 28. Add `tests/features/inline_asm_clobber/` end-to-end (main.c + external.h inline asm + external.s with func1\u2192func2 reachable, func3\u2192func4 dropped; expected stdout "12"; verify func3/func4 absent via `llvm-nm`)
 
 Phase 5 — V6C resource headers
-- [ ] 29. Create `clang/lib/Driver/ToolChains/V6C/include/{string.h, stdlib.h, v6c.h}`
-- [ ] 30. CMake install rule for `<resource-dir>/lib/v6c/include/`
-- [ ] 31. Mirror scripts updated for new include dir
-- [ ] 32. Verify Clang stock `stdint.h` produces correct V6C macros (no override needed)
+- [x] 29. Create `clang/lib/Driver/ToolChains/V6C/include/{string.h, stdlib.h, v6c.h}`
+- [x] 30. CMake install rule for `<resource-dir>/lib/v6c/include/`  *(deferred for parity with v6c.ld; both rely on dev-tree path lookup in the driver. Add when `ninja install` becomes part of the workflow.)*
+- [x] 31. Mirror scripts updated for new include dir
+- [x] 32. Verify Clang stock `stdint.h` produces correct V6C macros (no override needed)
 
 Phase 6 — Driver include-path injection
 - [ ] 33. Declare `AddClangSystemIncludeArgs` override in `V6C.h`
