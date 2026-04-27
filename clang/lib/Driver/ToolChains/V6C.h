@@ -57,6 +57,10 @@ public:
                              llvm::opt::ArgStringList &CC1Args,
                              Action::OffloadKind) const override;
 
+  void AddClangSystemIncludeArgs(
+      const llvm::opt::ArgList &DriverArgs,
+      llvm::opt::ArgStringList &CC1Args) const override;
+
 protected:
   Tool *buildLinker() const override;
 };

@@ -421,10 +421,10 @@ Phase 5 — V6C resource headers
 - [x] 32. Verify Clang stock `stdint.h` produces correct V6C macros (no override needed)
 
 Phase 6 — Driver include-path injection
-- [ ] 33. Declare `AddClangSystemIncludeArgs` override in `V6C.h`
-- [ ] 34. Implement it in `V6C.cpp` (V6C dir first, base after, honor `-nostdinc`); also add `-ffunction-sections` default in `addClangTargetOptions`
-- [ ] 35. Add `tests/lit/Clang/V6C/include-path.c`
-- [ ] 36. Cross-platform safety check (x86 target unaffected)
+- [x] 33. Declare `AddClangSystemIncludeArgs` override in `V6C.h`
+- [x] 34. Implement it in `V6C.cpp` (V6C dir first, base after, honor `-nostdinc`); also add `-ffunction-sections` default in `addClangTargetOptions`
+- [x] 35. Add `tests/lit/Clang/V6C/include-path.c`
+- [x] 36. Cross-platform safety check (x86 target unaffected)  *(verified by construction — `AddClangSystemIncludeArgs` is a member of `V6CToolChain` only; non-V6C toolchains never call it. Live x86 build sample deferred until cross-host CI exists.)*
 
 Phase 7 — Cleanup & docs
 - [ ] 37. Remove `libv6c-builtins.a` lookup in `V6C.cpp`

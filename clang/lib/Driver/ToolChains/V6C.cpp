@@ -178,6 +178,60 @@ void V6CToolChain::addClangTargetOptions(
     Action::OffloadKind) const {
   // Force freestanding mode — no hosted C library.
   CC1Args.push_back("-ffreestanding");
+
+  // Per-function ELF sections so ld.lld --gc-sections can prune
+  // unreachable helpers transitively. User-passed -fno-function-sections
+  // overrides.
+  if (DriverArgs.hasFlag(options::OPT_ffunction_sections,
+                         options::OPT_fno_function_sections,
+                         /*Default=*/true))
+    CC1Args.push_back("-ffunction-sections");
+}
+
+/// Locate the V6C resource-dir include directory that ships
+/// `<string.h>`, `<stdlib.h>`, `<v6c.h>`. Search order mirrors
+/// findV6CDriverFile / findV6CRuntimeFile.
+static std::string findV6CIncludeDir(const ToolChain &TC) {
+  StringRef Dir = TC.getDriver().Dir;
+  llvm::SmallString<256> Installed(TC.getDriver().ResourceDir);
+  llvm::sys::path::append(Installed, "lib", "v6c", "include");
+
+  llvm::SmallString<256> DevTree(Dir);
+  llvm::sys::path::append(DevTree, "..", "..", "clang", "lib");
+  llvm::sys::path::append(DevTree, "Driver", "ToolChains", "V6C", "include");
+
+  llvm::SmallString<256> MirrorTree(Dir);
+  llvm::sys::path::append(MirrorTree, "..", "..", "llvm-project", "clang");
+  llvm::sys::path::append(MirrorTree, "lib", "Driver", "ToolChains", "V6C");
+  llvm::sys::path::append(MirrorTree, "include");
+
+  return findFirstExisting({std::string(Installed), std::string(DevTree),
+                            std::string(MirrorTree)});
+}
+
+void V6CToolChain::AddClangSystemIncludeArgs(
+    const ArgList &DriverArgs, ArgStringList &CC1Args) const {
+  if (DriverArgs.hasArg(options::OPT_nostdinc))
+    return;
+
+  // V6C-specific resource headers come first so they can shadow nothing
+  // (Clang's stock freestanding directory has no <string.h>).
+  if (!DriverArgs.hasArg(options::OPT_nostdlibinc)) {
+    std::string IncDir = findV6CIncludeDir(*this);
+    if (!IncDir.empty()) {
+      CC1Args.push_back("-internal-isystem");
+      CC1Args.push_back(DriverArgs.MakeArgString(IncDir));
+    }
+  }
+
+  // Standard freestanding headers (stdint.h, stddef.h, ...) under the
+  // resource directory.
+  if (!DriverArgs.hasArg(options::OPT_nobuiltininc)) {
+    llvm::SmallString<128> Dir(getDriver().ResourceDir);
+    llvm::sys::path::append(Dir, "include");
+    CC1Args.push_back("-internal-isystem");
+    CC1Args.push_back(DriverArgs.MakeArgString(Dir));
+  }
 }
 
 Tool *V6CToolChain::buildLinker() const {
