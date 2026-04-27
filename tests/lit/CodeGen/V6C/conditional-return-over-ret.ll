@@ -1,7 +1,7 @@
 ; RUN: llc -mtriple=i8080-unknown-v6c -O2 < %s | FileCheck %s
 ; RUN: llc -mtriple=i8080-unknown-v6c -O2 -v6c-disable-branch-opt < %s | FileCheck %s --check-prefix=DISABLED
 
-; Test V6CBranchOpt: Jcc-over-RET → inverted Rcc (O35).
+; Test V6CBranchOpt: Jcc-over-RET ??? inverted Rcc (O35).
 ; When a conditional branch jumps over a fallthrough RET to the layout
 ; successor, replace Jcc+RET with the inverted conditional return.
 
@@ -15,14 +15,14 @@ declare i16 @bar(i16)
 ; The target block has XCHG+JMP (setup argument from DE to HL), so
 ; branch threading cannot reduce it.
 ; NOTE: O37 (constant sinking) moves LXI HL,0 past the branch, so the
-; Jcc-over-RET → Rcc (O35) pattern no longer fires. Instead we get a
+; Jcc-over-RET ??? Rcc (O35) pattern no longer fires. Instead we get a
 ; direct zero-test on HL with LXI deferred to the NZ fallthrough path.
 ;
 ; CHECK-LABEL: test_jcc_over_ret:
 ; CHECK:       MOV A, H
 ; CHECK-NEXT:  ORA L
 ; CHECK-NEXT:  JZ
-; CHECK:       LXI HL, 0
+; CHECK:       LXI H, 0
 ; CHECK-NEXT:  RET
 ; CHECK:       XCHG
 ; CHECK-NEXT:  JMP	bar
@@ -44,9 +44,9 @@ ret:
   ret i16 %rv
 }
 
-; Test 2: JMP-only target — O35 defers to threading (no RNZ from O35).
+; Test 2: JMP-only target ??? O35 defers to threading (no RNZ from O35).
 ; Pattern: if (x == 0) return bar(0); return 0;
-; Target block is just JMP bar → threading handles it better.
+; Target block is just JMP bar ??? threading handles it better.
 ; Result: JZ bar (threaded) + RET.
 define i16 @test_defer_to_threading(i16 %x) {
 ; CHECK-LABEL: test_defer_to_threading:

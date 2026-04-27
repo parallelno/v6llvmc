@@ -1,7 +1,7 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
 
 ; CHECK-LABEL: and_reg:
-; CHECK:       ANA E
+; CHECK:       ANA B
 ; CHECK-NEXT:  RET
 define i8 @and_reg(i8 %a, i8 %b) {
   %r = and i8 %a, %b

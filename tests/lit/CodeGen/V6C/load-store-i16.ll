@@ -20,7 +20,7 @@ define void @store_global(i16 %val) {
 
 ; CHECK-LABEL: load_ptr:
 ; CHECK:       MOV A, M
-; CHECK:       INX HL
+; CHECK:       INX H
 ; CHECK-NEXT:  MOV H, M
 ; CHECK-NEXT:  MOV L, A
 define i16 @load_ptr(ptr %p) {
@@ -30,10 +30,10 @@ define i16 @load_ptr(ptr %p) {
 
 ; CHECK-LABEL: store_ptr:
 ; CHECK:       MOV A, L
-; CHECK-NEXT:  STAX DE
-; CHECK-NEXT:  INX DE
+; CHECK-NEXT:  STAX D
+; CHECK-NEXT:  INX D
 ; CHECK-NEXT:  MOV A, H
-; CHECK-NEXT:  STAX DE
+; CHECK-NEXT:  STAX D
 ; CHECK-NEXT:  RET
 define void @store_ptr(i16 %val, ptr %p) {
   store i16 %val, ptr %p

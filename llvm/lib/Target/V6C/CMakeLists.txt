@@ -12,6 +12,7 @@ tablegen(LLVM V6CGenInstrInfo.inc      -gen-instr-info)
 tablegen(LLVM V6CGenSubtargetInfo.inc  -gen-subtarget)
 tablegen(LLVM V6CGenDAGISel.inc        -gen-dag-isel)
 tablegen(LLVM V6CGenAsmWriter.inc      -gen-asm-writer)
+tablegen(LLVM V6CGenAsmMatcher.inc     -gen-asm-matcher)
 tablegen(LLVM V6CGenCallingConv.inc    -gen-callingconv)
 tablegen(LLVM V6CGenMCCodeEmitter.inc  -gen-emitter)
 
@@ -63,5 +64,6 @@ add_llvm_target(V6CCodeGen
     V6C
 )
 
+add_subdirectory(AsmParser)
 add_subdirectory(MCTargetDesc)
 add_subdirectory(TargetInfo)

@@ -4,9 +4,9 @@
 ; CHECK-LABEL: gep_i16:
 ; CHECK:       ADD
 ; CHECK:       ADC
-; CHECK:       DAD DE
+; CHECK:       DAD D
 ; CHECK:       MOV A, M
-; CHECK:       INX HL
+; CHECK:       INX H
 ; CHECK-NEXT:  MOV H, M
 ; CHECK-NEXT:  MOV L, A
 define i16 @gep_i16(ptr %base, i16 %idx) {

@@ -1,7 +1,7 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
 
 ; CHECK-LABEL: xor_reg:
-; CHECK:       XRA E
+; CHECK:       XRA B
 ; CHECK-NEXT:  RET
 define i8 @xor_reg(i8 %a, i8 %b) {
   %r = xor i8 %a, %b

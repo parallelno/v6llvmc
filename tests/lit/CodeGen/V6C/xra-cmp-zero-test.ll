@@ -11,12 +11,12 @@ declare dso_local i8 @bar(i8 noundef) local_unnamed_addr
 ;
 ; CHECK-LABEL: test_xra_cmp_jz:
 ; CHECK:       XRA A
-; CHECK-NEXT:  CMP E
+; CHECK-NEXT:  CMP B
 ; CHECK-NOT:   ORA A
 ; CHECK-NOT:   MVI A, 0
 ;
 ; DISABLED-LABEL: test_xra_cmp_jz:
-; DISABLED:       MOV A, E
+; DISABLED:       MOV A, B
 ; DISABLED-NEXT:  ORA A
 define dso_local i8 @test_xra_cmp_jz(i8 noundef %x, i8 noundef %y) local_unnamed_addr {
   %cmpx = icmp eq i8 %x, 0

@@ -1,7 +1,7 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
 
 ; CHECK-LABEL: add_reg:
-; CHECK:       ADD E
+; CHECK:       ADD B
 ; CHECK-NEXT:  RET
 define i8 @add_reg(i8 %a, i8 %b) {
   %r = add i8 %a, %b

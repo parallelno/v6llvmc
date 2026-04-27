@@ -5,7 +5,7 @@
 ;===----------------------------------------------------------------------===
 
 ; CHECK-LABEL: shl1_i16:
-; CHECK:       DAD HL
+; CHECK:       DAD H
 ; CHECK-NEXT:  RET
 define i16 @shl1_i16(i16 %a) {
   %r = shl i16 %a, 1
@@ -14,9 +14,9 @@ define i16 @shl1_i16(i16 %a) {
 
 ; shl by 3 = three repeated DAD HL sequences
 ; CHECK-LABEL: shl3_i16:
-; CHECK:       DAD HL
-; CHECK-NEXT:  DAD HL
-; CHECK-NEXT:  DAD HL
+; CHECK:       DAD H
+; CHECK-NEXT:  DAD H
+; CHECK-NEXT:  DAD H
 ; CHECK-NEXT:  RET
 define i16 @shl3_i16(i16 %a) {
   %r = shl i16 %a, 3

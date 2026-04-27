@@ -33,7 +33,13 @@ def V6CAsmWriter : AsmWriter {
   int Variant = 0;
 }
 
+def V6CAsmParser : AsmParser {
+  // Operands of the V6C asm dialect are space- or comma-separated; tokens
+  // such as "M" appear as literal mnemonic text in the .td asm strings.
+}
+
 def V6C : Target {
   let InstructionSet = V6CInstrInfo;
   let AssemblyWriters = [V6CAsmWriter];
+  let AssemblyParsers = [V6CAsmParser];
 }

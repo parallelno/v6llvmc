@@ -63,4 +63,6 @@ FunctionPass *createV6CSpillPatchedReloadPass();
 
 } // namespace llvm
 
+extern "C" void LLVMInitializeV6CAsmParser();
+
 #endif // LLVM_LIB_TARGET_V6C_V6C_H

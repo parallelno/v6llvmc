@@ -21,7 +21,7 @@ declare i16 @op2(i16)
 ; CHECK:         CALL    op1
 ; CHECK:         SHLD    .L[[SYM:Lo61_[0-9]+]]+1
 ; CHECK:       .L[[SYM]]:
-; CHECK-NEXT:    LXI     DE, 0
+; CHECK-NEXT:    LXI     D, 0
 define i16 @de_one_reload(i16 %x, i16 %y) norecurse {
 entry:
   %a = call i16 @op1(i16 %x)

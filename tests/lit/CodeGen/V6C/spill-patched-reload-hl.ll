@@ -20,7 +20,7 @@ declare i16 @op(i16)
 ; CHECK-LABEL: one_reload:
 ; CHECK:       SHLD    .L[[SYM:[^ ]+]]+1
 ; CHECK:     .L[[SYM]]:
-; CHECK-NEXT:  LXI     HL, 0
+; CHECK-NEXT:  LXI     H, 0
 ;
 ; DISABLED-LABEL: one_reload:
 ; DISABLED-NOT: .LLo61_

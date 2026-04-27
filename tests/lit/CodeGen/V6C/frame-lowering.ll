@@ -2,10 +2,10 @@
 
 ; Test prologue/epilogue for function with 1 byte of locals.
 ; CHECK-LABEL: one_local:
-; CHECK:       LXI HL, 0xffff
+; CHECK:       LXI H, 0xffff
 ; CHECK-NEXT:  DAD SP
 ; CHECK-NEXT:  SPHL
-; CHECK:       LXI HL, 1
+; CHECK:       LXI H, 1
 ; CHECK-NEXT:  DAD SP
 ; CHECK-NEXT:  SPHL
 ; CHECK-NEXT:  RET
@@ -18,10 +18,10 @@ define i8 @one_local(i8 %x) {
 
 ; Test prologue/epilogue for function with 4-byte array local.
 ; CHECK-LABEL: array_local:
-; CHECK:       LXI HL, 0xfffc
+; CHECK:       LXI H, 0xfffc
 ; CHECK-NEXT:  DAD SP
 ; CHECK-NEXT:  SPHL
-; CHECK:       LXI HL, 4
+; CHECK:       LXI H, 4
 ; CHECK-NEXT:  DAD SP
 ; CHECK-NEXT:  SPHL
 ; CHECK-NEXT:  RET

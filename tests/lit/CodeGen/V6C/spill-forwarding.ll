@@ -8,7 +8,7 @@
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
 target triple = "i8080-unknown-v6c"
 
-; Multi-pointer copy loop with i16 index — generates heavy register pressure.
+; Multi-pointer copy loop with i16 index ??? generates heavy register pressure.
 ; Two 16-bit base pointers survive across the loop, the loop counter is i16,
 ; and GEP (base + idx) forces pointer arithmetic in HL.
 ; With only 3 register pairs (BC, DE, HL), 4 live i16 values cause spills.
@@ -20,7 +20,7 @@ target triple = "i8080-unknown-v6c"
 ; The loop body performs indirect load from src (LDAX DE), store to dst
 ; (MOV M, A), and increments both pointers.
 ; CHECK:       .LBB0_2:
-; CHECK:       LDAX    DE
+; CHECK:       LDAX    D
 ; CHECK:       MOV     M, A
 ; CHECK:       JNZ .LBB0_2
 ;

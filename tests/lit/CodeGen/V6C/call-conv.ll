@@ -7,18 +7,18 @@ define i8 @pass_one_i8(i8 %x) {
   ret i8 %x
 }
 
-; Test two i8 args: first in A, second in E.
+; Test two i8 args: first in A, second in B.
 ; CHECK-LABEL: add_two_i8:
-; CHECK:       ADD E
+; CHECK:       ADD B
 ; CHECK-NEXT:  RET
 define i8 @add_two_i8(i8 %a, i8 %b) {
   %r = add i8 %a, %b
   ret i8 %r
 }
 
-; Test three i8 args: A, E, C.
+; Test three i8 args: A, B, C.
 ; CHECK-LABEL: add_three_i8:
-; CHECK:       ADD E
+; CHECK:       ADD B
 ; CHECK:       ADD C
 ; CHECK:       RET
 define i8 @add_three_i8(i8 %a, i8 %b, i8 %c) {

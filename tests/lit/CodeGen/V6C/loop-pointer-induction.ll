@@ -9,10 +9,10 @@
 
 ; CHECK-LABEL: copy_loop:
 ; The src pointer should be loaded into DE and kept in a register.
-; CHECK:       LXI DE, src
+; CHECK:       LXI D, src
 ; The loop body should use indirect loads/stores, not base+counter DAD.
 ; CHECK:       .LBB0_1:
-; CHECK:       LDAX DE
+; CHECK:       LDAX D
 ; CHECK:       MOV M, A
 ; The exit comparison should be against src+100 (pointer end address).
 ; CHECK:       src+100

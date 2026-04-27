@@ -22,7 +22,7 @@ declare i16 @op2(i16)
 ; CHECK:         CALL    op1
 ; CHECK:         SHLD    .L[[SYM:Lo61_[0-9]+]]+1
 ; CHECK:       .L[[SYM]]:
-; CHECK-NEXT:    LXI     DE, 0
+; CHECK-NEXT:    LXI     D, 0
 define i16 @multi_source(i16 %x, i16 %y, i16 %z) norecurse {
 entry:
   %a1 = call i16 @op1(i16 %x)

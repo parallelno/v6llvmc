@@ -1,7 +1,7 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
 
 ; CHECK-LABEL: or_reg:
-; CHECK:       ORA E
+; CHECK:       ORA B
 ; CHECK-NEXT:  RET
 define i8 @or_reg(i8 %a, i8 %b) {
   %r = or i8 %a, %b

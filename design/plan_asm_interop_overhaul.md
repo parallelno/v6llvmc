@@ -396,17 +396,17 @@ Phase 2 — CC free-list
 - [x] 13. Verify M11 libcalls (memcpy / __divhi3) map identically (113/113 lit + 15/15 golden PASS)
 
 Phase 3 — `V6CAsmParser`
-- [ ] 14. Add `AsmParser/CMakeLists.txt`
-- [ ] 15. Implement `V6CAsmParser.cpp` (~500-700 LOC)
-- [ ] 16. Add `-gen-asm-matcher` tablegen rule
-- [ ] 17. Add `V6CAsmParser` def to `V6C.td`
-- [ ] 18. Declare `LLVMInitializeV6CAsmParser` in `V6C.h`
-- [ ] 19. Register in `V6CTargetInfo.cpp`
-- [ ] 20. `add_subdirectory(AsmParser)` in V6C `CMakeLists.txt`
-- [ ] 21. Mirror scripts updated for AsmParser/
-- [ ] 22. Add `tests/lit/MC/V6C/AsmParser/` suite
-- [ ] 23. Mirror tests
-- [ ] 24. Smoke: `clang -c crt0.s` + `clang -c memory.s` produce valid ELF
+- [x] 14. Add `AsmParser/CMakeLists.txt`
+- [x] 15. Implement `V6CAsmParser.cpp` (~500-700 LOC)
+- [x] 16. Add `-gen-asm-matcher` tablegen rule
+- [x] 17. Add `V6CAsmParser` def to `V6C.td`
+- [x] 18. Declare `LLVMInitializeV6CAsmParser` in `V6C.h`
+- [x] 19. Register in `V6CTargetInfo.cpp`
+- [x] 20. `add_subdirectory(AsmParser)` in V6C `CMakeLists.txt`
+- [x] 21. Mirror scripts updated for AsmParser/
+- [x] 22. Add `tests/lit/MC/V6C/AsmParser/` suite
+- [x] 23. Mirror tests
+- [x] 24. Smoke: `clang -c crt0.s` + `clang -c memory.s` produce valid ELF
 
 Phase 4 — Inline-asm clobber verification
 - [ ] 25. Confirm no custom INLINEASM lowering exists
@@ -439,7 +439,7 @@ Verification gates
 - [ ] V2. Phase 1 leaves all golden ROM SHA-256 hashes byte-identical (encoding unchanged)
 - [ ] V3. `call-conv-overlap.ll` matches the four worked examples exactly
 - [ ] V4. M11 libcall tests still pass (memcpy / __divhi3 / shifts) under new CC
-- [ ] V5. `clang -c crt0.s -o crt0.o` produces ELF with `_start` global symbol; `llvm-readelf -s` shows correct relocs
+- [x] V5. `clang -c crt0.s -o crt0.o` produces ELF with `_start` global symbol; `llvm-readelf -s` shows correct relocs
 - [ ] V6. End-to-end: `clang -target i8080-unknown-v6c -O2 main.c crt0.s -o out.rom` builds and runs correctly in v6emul WITHOUT the `--defsym=_start=main` workaround
 - [ ] V7. Inline-asm clobber lit tests show exact expected spill counts (no over-spill on narrow clobbers)
 - [ ] V8. `#include <string.h>` works on V6C; same source compiled for x86 still uses MSVC's header

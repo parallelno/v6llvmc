@@ -17,7 +17,7 @@ define i16 @test_cond_zero_return_zero(i16 %x) {
 ; CHECK:       MOV A, H
 ; CHECK-NEXT:  ORA L
 ; CHECK-NEXT:  JZ bar
-; CHECK:       LXI HL, 0
+; CHECK:       LXI H, 0
 ; CHECK-NEXT:  RET
 entry:
   %cmp = icmp eq i16 %x, 0
@@ -35,10 +35,10 @@ join:
   ret i16 %ret
 }
 
-; Negative test: constant used locally before branch — should NOT be sunk.
+; Negative test: constant used locally before branch ??? should NOT be sunk.
 define i16 @test_const_used_locally(i16 %x) {
 ; CHECK-LABEL: test_const_used_locally:
-; CHECK:       LXI HL, 0
+; CHECK:       LXI H, 0
 ; CHECK:       CALL bar
 entry:
   %r = call i16 @bar(i16 0)
@@ -52,13 +52,13 @@ else:
   ret i16 0
 }
 
-; Test: only one path uses zero — should still sink.
+; Test: only one path uses zero ??? should still sink.
 define i16 @test_one_path_zero(i16 %x) {
 ; CHECK-LABEL: test_one_path_zero:
 ; CHECK:       MOV A, H
 ; CHECK-NEXT:  ORA L
 ; CHECK-NEXT:  JZ bar
-; CHECK-NOT:   LXI HL, 0
+; CHECK-NOT:   LXI H, 0
 ; CHECK:       RET
 entry:
   %cmp = icmp eq i16 %x, 0
@@ -77,7 +77,7 @@ join:
 ; RUN: llc -march=v6c -O2 -v6c-disable-constant-sinking < %s | FileCheck %s --check-prefix=DISABLED
 
 ; DISABLED-LABEL: test_cond_zero_return_zero:
-; DISABLED:       LXI HL, 0
+; DISABLED:       LXI H, 0
 ; DISABLED:       JZ bar
 
 declare i16 @bar(i16)

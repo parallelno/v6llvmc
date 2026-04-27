@@ -2,12 +2,12 @@
 
 ; Test that a function with local variables generates stack access patterns
 ; (spill/reload through LXI+DAD SP and either MOV M,_ or STAX BC/DE).
-; Either store form is valid — the concrete choice depends on which pair
+; Either store form is valid ??? the concrete choice depends on which pair
 ; the register allocator picks for the V6C_LEA_FI result.
 ; CHECK-LABEL: stack_access:
-; CHECK:       LXI HL,
+; CHECK:       LXI H,
 ; CHECK:       DAD SP
-; CHECK:       {{MOV[[:space:]]+M,|STAX[[:space:]]+(BC|DE)}}
+; CHECK:       {{MOV[[:space:]]+M,|STAX[[:space:]]+(B|D)}}
 ; CHECK:       RET
 define i8 @stack_access(i8 %a, i8 %b) {
   %p = alloca i8

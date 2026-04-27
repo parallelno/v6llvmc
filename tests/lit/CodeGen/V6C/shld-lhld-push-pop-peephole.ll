@@ -15,13 +15,13 @@ target triple = "i8080-unknown-v6c"
 ; CHECK-LABEL: sumarray:
 ; The loop body: first spill/reload pair at __v6c_ss.sumarray+0 converted to PUSH/POP.
 ; CHECK:       .LBB0_1:
-; CHECK:       PUSH	HL
+; CHECK:       PUSH	H
 ; The +2 slot: SHLD stays (long range with PUSH/POP between SHLD and LHLD).
 ; CHECK:       SHLD	__v6c_ss.sumarray+2
-; CHECK:       POP	HL
+; CHECK:       POP	H
 ; Second converted pair:
-; CHECK:       PUSH	HL
-; CHECK:       POP	HL
+; CHECK:       PUSH	H
+; CHECK:       POP	H
 ; The +2 slot reload stays:
 ; CHECK:       LHLD	__v6c_ss.sumarray+2
 define dso_local i16 @sumarray() local_unnamed_addr #0 {

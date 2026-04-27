@@ -24,11 +24,11 @@ declare void @use3(i16, i16, i16)
 ; BC-source spill of arg2 (HL live at function entry). Expect the
 ; PUSH H; MOV L,C; MOV H,B; SHLD <Sym+1>; POP H ladder with the
 ; SHLD carrying the .Lo61_<N>+1 operand.
-; CHECK:         PUSH    HL
+; CHECK:         PUSH    H
 ; CHECK-NEXT:    MOV     L, C
 ; CHECK-NEXT:    MOV     H, B
 ; CHECK-NEXT:    SHLD    .LLo61_{{[0-9]+}}+1
-; CHECK-NEXT:    POP     HL
+; CHECK-NEXT:    POP     H
 ;
 ; DE-source spill of arg1. Trailing XCHG is required because arg0 (HL)
 ; is still live across this spill.
@@ -58,7 +58,7 @@ entry:
 ; CHECK-NEXT:    XCHG
 ; CHECK:         CALL    op1
 ; CHECK:       .L[[SYM]]:
-; CHECK-NEXT:    LXI     {{HL|DE}}, 0
+; CHECK-NEXT:    LXI     {{H|D}}, 0
 define i16 @de_src_spill(i16 %x, i16 %y) norecurse {
 entry:
   %a = call i16 @op1(i16 %x)

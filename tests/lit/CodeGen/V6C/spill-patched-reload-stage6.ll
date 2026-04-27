@@ -9,8 +9,8 @@
 ; unchanged from Stage 4.
 ;
 ; K-cap rules:
-;   * A-source i8 spill: K ≤ 2 (Stage 4, unchanged).
-;   * non-A i8 spill:    K ≤ 1 (Stage 6 hard-cap).
+;   * A-source i8 spill: K ??? 2 (Stage 4, unchanged).
+;   * non-A i8 spill:    K ??? 1 (Stage 6 hard-cap).
 
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
 target triple = "i8080-unknown-v6c"
@@ -30,17 +30,17 @@ declare void @use3(i8, i8, i8)
 ; The A spill of %a uses the Stage 4 fast path (STA .LLo61_*+1).
 ;
 ; CHECK-LABEL: three_i8:
-; CHECK:       LXI     HL, .L[[S1:Lo61_[0-9]+]]+1
-; CHECK-NEXT:  MOV     M, {{[CE]}}
-; CHECK:       LXI     HL, .L[[S2:Lo61_[0-9]+]]+1
-; CHECK-NEXT:  MOV     M, {{[CE]}}
+; CHECK:       LXI     H, .L[[S1:Lo61_[0-9]+]]+1
+; CHECK-NEXT:  MOV     M, {{[BCE]}}
+; CHECK:       LXI     H, .L[[S2:Lo61_[0-9]+]]+1
+; CHECK-NEXT:  MOV     M, {{[BCE]}}
 ; CHECK:       CALL    op1
 ; CHECK-NEXT:  STA     .L[[S3:Lo61_[0-9]+]]+1
 ;
 ; With the flag off, Stage 5's O64 ladder uses the BSS slot.
 ; DISABLED-LABEL: three_i8:
 ; DISABLED-NOT: .LLo61_
-; DISABLED:    LXI     HL, __v6c_ss.three_i8
+; DISABLED:    LXI     H, __v6c_ss.three_i8
 ; DISABLED:    STA     __v6c_ss.three_i8
 define i8 @three_i8(i8 %x, i8 %y, i8 %z) norecurse {
 entry:

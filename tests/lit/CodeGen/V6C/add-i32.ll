@@ -2,8 +2,8 @@
 
 ; i32 constant: returns low in HL, high in DE
 ; CHECK-LABEL: const_i32:
-; CHECK:       LXI HL, 0x5678
-; CHECK-NEXT:  LXI DE, 0x1234
+; CHECK:       LXI H, 0x5678
+; CHECK-NEXT:  LXI D, 0x1234
 ; CHECK-NEXT:  RET
 define i32 @const_i32() {
   ret i32 305419896

@@ -1,14 +1,14 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
 
 ; Test O41: Pre-RA INX/DCX pseudos for small-constant i16 arithmetic.
-; Constants ±1..±3 should use INX/DCX instead of LXI+ADD16/DAD.
+; Constants ??1..??3 should use INX/DCX instead of LXI+ADD16/DAD.
 
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
 target triple = "i8080-unknown-v6c"
 
-; add i16 %x, 1 → INX (general context, not pointer).
+; add i16 %x, 1 ??? INX (general context, not pointer).
 ; CHECK-LABEL: add1:
-; CHECK:       INX HL
+; CHECK:       INX H
 ; CHECK-NOT:   LXI
 ; CHECK-NOT:   ADD
 ; CHECK:       RET
@@ -17,11 +17,11 @@ define i16 @add1(i16 %x) {
   ret i16 %r
 }
 
-; add i16 %x, 3 → 3×INX.
+; add i16 %x, 3 ??? 3??INX.
 ; CHECK-LABEL: add3:
-; CHECK:       INX HL
-; CHECK-NEXT:  INX HL
-; CHECK-NEXT:  INX HL
+; CHECK:       INX H
+; CHECK-NEXT:  INX H
+; CHECK-NEXT:  INX H
 ; CHECK-NOT:   LXI
 ; CHECK:       RET
 define i16 @add3(i16 %x) {
@@ -29,9 +29,9 @@ define i16 @add3(i16 %x) {
   ret i16 %r
 }
 
-; sub i16 %x, 1 → DCX.
+; sub i16 %x, 1 ??? DCX.
 ; CHECK-LABEL: sub1:
-; CHECK:       DCX HL
+; CHECK:       DCX H
 ; CHECK-NOT:   LXI
 ; CHECK-NOT:   SUB
 ; CHECK:       RET
@@ -40,10 +40,10 @@ define i16 @sub1(i16 %x) {
   ret i16 %r
 }
 
-; sub i16 %x, 2 → 2×DCX.
+; sub i16 %x, 2 ??? 2??DCX.
 ; CHECK-LABEL: sub2:
-; CHECK:       DCX HL
-; CHECK-NEXT:  DCX HL
+; CHECK:       DCX H
+; CHECK-NEXT:  DCX H
 ; CHECK-NOT:   LXI
 ; CHECK:       RET
 define i16 @sub2(i16 %x) {
@@ -51,9 +51,9 @@ define i16 @sub2(i16 %x) {
   ret i16 %r
 }
 
-; GEP ptr, 1 (pointer context) → INX.
+; GEP ptr, 1 (pointer context) ??? INX.
 ; CHECK-LABEL: gep1:
-; CHECK:       INX HL
+; CHECK:       INX H
 ; CHECK-NOT:   DAD
 ; CHECK:       MOV A, M
 ; CHECK:       RET
@@ -63,7 +63,7 @@ define i8 @gep1(ptr %p) {
   ret i8 %v
 }
 
-; add i16 %x, 4 → NOT INX (should fall through to ADD16 or DAD).
+; add i16 %x, 4 ??? NOT INX (should fall through to ADD16 or DAD).
 ; CHECK-LABEL: add4:
 ; CHECK-NOT:   INX
 ; CHECK:       RET
@@ -72,9 +72,9 @@ define i16 @add4(i16 %x) {
   ret i16 %r
 }
 
-; add i16 %x, -1 (i.e. 0xFFFF) → DCX.
+; add i16 %x, -1 (i.e. 0xFFFF) ??? DCX.
 ; CHECK-LABEL: add_neg1:
-; CHECK:       DCX HL
+; CHECK:       DCX H
 ; CHECK-NOT:   LXI
 ; CHECK:       RET
 define i16 @add_neg1(i16 %x) {
@@ -84,7 +84,7 @@ define i16 @add_neg1(i16 %x) {
 
 @buf = global [100 x i8] zeroinitializer
 
-; Loop store with pointer increment → INX inside loop, no LXI for constant.
+; Loop store with pointer increment ??? INX inside loop, no LXI for constant.
 ; CHECK-LABEL: fill_loop:
 ; CHECK-NOT:   LXI{{.*}}1
 ; CHECK:       .LBB{{[0-9]+}}_{{[0-9]+}}:

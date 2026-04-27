@@ -10,7 +10,7 @@ define i8 @ret_i8() {
 
 ; Return i16 in HL.
 ; CHECK-LABEL: ret_i16:
-; CHECK:       LXI HL, 0x1234
+; CHECK:       LXI H, 0x1234
 ; CHECK:       RET
 define i16 @ret_i16() {
   ret i16 4660

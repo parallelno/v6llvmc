@@ -1,22 +1,21 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
 ;
-; O20: Honest Store/Load Pseudo Defs — verify HL-preserving expansion.
+; O20: Honest Store/Load Pseudo Defs ??? verify HL-preserving expansion.
 
 @arr = global [100 x i8] zeroinitializer
 
-; Simple store through pointer — addr arrives in DE (second arg),
-; val in A (first arg). Should use STAX DE, no HL touch.
+; Simple store through pointer — val in A (first arg), addr in HL
+; (first i16 arg under free-list CC). Should use MOV M,A directly.
 ; CHECK-LABEL: store_byte:
-; CHECK:       STAX    DE
+; CHECK:       MOV     M, A
 ; CHECK-NOT:   PUSH
-; CHECK-NOT:   MOV     H
 ; CHECK:       RET
 define void @store_byte(i8 %val, ptr %p) {
   store i8 %val, ptr %p
   ret void
 }
 
-; Simple load through pointer — addr arrives in HL (first arg).
+; Simple load through pointer ??? addr arrives in HL (first arg).
 ; Should use MOV A, M directly, no copy.
 ; CHECK-LABEL: load_byte:
 ; CHECK:       MOV     A, M
@@ -27,14 +26,14 @@ define i8 @load_byte(ptr %p) {
   ret i8 %v
 }
 
-; Single-pointer store loop — the key O20 pattern.
+; Single-pointer store loop ??? the key O20 pattern.
 ; With argument in A occupying L, RA places pointer in DE and uses STAX.
-; No DE→HL copy per iteration.
+; No DE???HL copy per iteration.
 ; CHECK-LABEL: fill_array:
 ; CHECK-NOT:   MOV     H, D
 ; CHECK-NOT:   MOV     L, E
-; CHECK:       STAX    DE
-; CHECK:       INX     DE
+; CHECK:       STAX    D
+; CHECK:       INX     D
 define void @fill_array(i8 %start) {
 entry:
   br label %loop

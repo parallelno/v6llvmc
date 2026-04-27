@@ -21,7 +21,7 @@ define i8 @leaf_identity(i8 %x) {
 ; Leaf function with trivial computation — no locals, no stack frame.
 ; CHECK-LABEL: leaf_add:
 ; CHECK-NOT:   SPHL
-; CHECK:       ADD E
+; CHECK:       ADD B
 ; CHECK-NEXT:  RET
 define i8 @leaf_add(i8 %a, i8 %b) {
   %r = add i8 %a, %b

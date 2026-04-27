@@ -4,7 +4,7 @@
 ; (strongly connected component) while still narrowing the mask for a
 ; simple leaf callee.
 ;
-; ping ↔ pong form a mutual-recursion SCC.  IPRA cannot compute a
+; ping ??? pong form a mutual-recursion SCC.  IPRA cannot compute a
 ; fixed-point clobber set for the cycle, so calls into the SCC must
 ; remain fully conservative (spill around the call).  A leaf callee
 ; that is NOT part of the SCC should still benefit from IPRA.
@@ -14,7 +14,7 @@ target triple = "i8080-unknown-v6c"
 
 @sink = global i16 0, align 1
 
-; --- SCC members: ping ↔ pong ------------------------------------------
+; --- SCC members: ping ??? pong ------------------------------------------
 
 define void @pong(i16 %n) {
 entry:
@@ -45,14 +45,14 @@ done:
 ; --- Callers ------------------------------------------------------------
 
 ; Caller with a value live across a call into the SCC.
-; IPRA must NOT narrow the mask → spill frame expected.
+; IPRA must NOT narrow the mask ??? spill frame expected.
 define i16 @caller_scc(i16 %x) {
 entry:
   call void @ping(i16 %x)
   ret i16 %x
 }
 
-; Leaf outside the SCC — IPRA should narrow the mask, no spill needed.
+; Leaf outside the SCC ??? IPRA should narrow the mask, no spill needed.
 define void @leaf() {
 entry:
   store volatile i16 99, ptr @sink, align 1
@@ -66,7 +66,7 @@ entry:
 }
 
 ; CHECK-LABEL: caller_scc:
-; CHECK:       LXI HL, 0xfffe
+; CHECK:       LXI H, 0xfffe
 ; CHECK:       CALL ping
 ;
 ; CHECK-LABEL: caller_leaf:
@@ -75,4 +75,4 @@ entry:
 ; CHECK-NEXT:  CALL leaf
 ; CHECK-NEXT:  XCHG
 ; CHECK-NEXT:  RET
-; CHECK-NOT:   LXI HL, 0xfffe
+; CHECK-NOT:   LXI H, 0xfffe

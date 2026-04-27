@@ -2,7 +2,7 @@
 
 ; Test conditional branch (eq) — CMP then Jcc
 ; CHECK-LABEL: branch_eq:
-; CHECK:       CMP E
+; CHECK:       CMP B
 ; CHECK-NEXT:  J{{NZ|Z}}
 define i8 @branch_eq(i8 %a, i8 %b) {
 entry:
@@ -16,7 +16,7 @@ else:
 
 ; Test conditional branch (unsigned less than) — CMP then Jcc
 ; CHECK-LABEL: branch_ult:
-; CHECK:       CMP E
+; CHECK:       CMP B
 ; CHECK-NEXT:  J{{NC|C}}
 define i8 @branch_ult(i8 %a, i8 %b) {
 entry:
@@ -30,7 +30,7 @@ else:
 
 ; Test conditional branch (signed less than) — CMP then Jcc
 ; CHECK-LABEL: branch_slt:
-; CHECK:       CMP E
+; CHECK:       CMP B
 ; CHECK-NEXT:  J{{P|M}}
 define i8 @branch_slt(i8 %a, i8 %b) {
 entry:

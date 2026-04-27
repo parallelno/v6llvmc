@@ -4,7 +4,7 @@
 @buf = global [64 x i8] zeroinitializer
 
 ; CHECK-LABEL: clear_buf:
-; CHECK:       INX DE
+; CHECK:       INX D
 define void @clear_buf() {
 entry:
   br label %loop

@@ -2,7 +2,7 @@
 
 ; Test that i16 add-by-1 becomes INX instead of 8-bit chain.
 ; CHECK-LABEL: inc16:
-; CHECK:       INX HL
+; CHECK:       INX H
 ; CHECK-NOT:   ADC
 ; CHECK:       RET
 define i16 @inc16(i16 %x) {
@@ -12,7 +12,7 @@ define i16 @inc16(i16 %x) {
 
 ; Test that i16 sub-by-1 becomes DCX.
 ; CHECK-LABEL: dec16:
-; CHECK:       DCX HL
+; CHECK:       DCX H
 ; CHECK-NOT:   SBB
 ; CHECK:       RET
 define i16 @dec16(i16 %x) {
@@ -22,8 +22,8 @@ define i16 @dec16(i16 %x) {
 
 ; Test that add-by-2 becomes an INX chain (2x INX).
 ; CHECK-LABEL: add_two:
-; CHECK:       INX HL
-; CHECK-NEXT:  INX HL
+; CHECK:       INX H
+; CHECK-NEXT:  INX H
 ; CHECK-NOT:   ADC
 ; CHECK:       RET
 define i16 @add_two(i16 %x) {
@@ -33,8 +33,8 @@ define i16 @add_two(i16 %x) {
 
 ; Test that sub-by-2 becomes a DCX chain (2x DCX).
 ; CHECK-LABEL: sub_two:
-; CHECK:       DCX HL
-; CHECK-NEXT:  DCX HL
+; CHECK:       DCX H
+; CHECK-NEXT:  DCX H
 ; CHECK-NOT:   SBB
 ; CHECK:       RET
 define i16 @sub_two(i16 %x) {
@@ -44,9 +44,9 @@ define i16 @sub_two(i16 %x) {
 
 ; Test that add-by-3 becomes an INX chain (3x INX).
 ; CHECK-LABEL: add_three:
-; CHECK:       INX HL
-; CHECK-NEXT:  INX HL
-; CHECK-NEXT:  INX HL
+; CHECK:       INX H
+; CHECK-NEXT:  INX H
+; CHECK-NEXT:  INX H
 ; CHECK-NOT:   ADC
 ; CHECK:       RET
 define i16 @add_three(i16 %x) {
@@ -56,9 +56,9 @@ define i16 @add_three(i16 %x) {
 
 ; Test that sub-by-3 becomes a DCX chain (3x DCX).
 ; CHECK-LABEL: sub_three:
-; CHECK:       DCX HL
-; CHECK-NEXT:  DCX HL
-; CHECK-NEXT:  DCX HL
+; CHECK:       DCX H
+; CHECK-NEXT:  DCX H
+; CHECK-NEXT:  DCX H
 ; CHECK-NOT:   SBB
 ; CHECK:       RET
 define i16 @sub_three(i16 %x) {
