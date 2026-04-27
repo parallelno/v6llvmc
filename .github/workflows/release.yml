@@ -26,8 +26,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 0
+
+      - name: Cache llvm-project (upstream clone)
+        uses: actions/cache@v4
+        with:
+          path: llvm-project
+          key: llvm-project-llvmorg-18.1.0
+
+      - name: Clone llvm-project (llvmorg-18.1.0)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path llvm-project/llvm/CMakeLists.txt)) {
+            git clone --depth 1 --branch llvmorg-18.1.0 `
+              https://github.com/llvm/llvm-project.git llvm-project
+          } else {
+            Write-Host 'llvm-project already present (cache hit).'
+          }
+
+      - name: Cache llvm-build
+        uses: actions/cache@v4
+        with:
+          path: llvm-build
+          key: llvm-build-${{ runner.os }}-${{ hashFiles('llvm/lib/Target/V6C/**', 'clang/lib/**', 'lld/ELF/**', 'compiler-rt/lib/builtins/v6c/**', 'llvm/include/llvm/TargetParser/Triple.h', 'llvm/lib/TargetParser/Triple.cpp') }}
+          restore-keys: |
+            llvm-build-${{ runner.os }}-
+
+      - name: Populate llvm-project from V6C mirrors
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/populate_llvm_project.ps1
+          # robocopy exits 0-7 on success (with copies/extras); only >=8 is failure.
+          if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE }
+          $global:LASTEXITCODE = 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -57,18 +88,6 @@ jobs:
           }
           Write-Host "version=$v"
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-      - name: Cache llvm-build
-        uses: actions/cache@v4
-        with:
-          path: llvm-build
-          key: llvm-build-${{ runner.os }}-${{ hashFiles('llvm/lib/Target/V6C/**', 'clang/lib/**', 'lld/ELF/**', 'compiler-rt/lib/builtins/v6c/**', 'llvm/include/llvm/TargetParser/Triple.h', 'llvm/lib/TargetParser/Triple.cpp') }}
-          restore-keys: |
-            llvm-build-${{ runner.os }}-
-
-      - name: Sync llvm-project mirror
-        shell: pwsh
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sync_llvm_mirror.ps1
 
       - name: CMake configure
         shell: pwsh
