@@ -1112,7 +1112,13 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     // When comparing against immediate 0, use the 8080 idiom:
     //   MOV A, Hi; ORA Lo → Z flag set iff (Hi|Lo)==0, i.e. pair==0
     // This avoids the MBB split and saves 10B+24cc per instance.
-    if (RhsOp.isImm() && RhsOp.getImm() == 0) {
+    // IMPORTANT: ORA only sets Z meaningfully — the C flag is cleared and
+    // the S flag reflects bit 7 of the OR result, not the sign of $lhs.
+    // So this fast path is only valid for EQ/NE (Z/NZ). For ordering
+    // conditions (C/NC/M/P) against 0 we must fall through to the
+    // MVI+SUB/SBB sequence below, which produces correct flags.
+    if (RhsOp.isImm() && RhsOp.getImm() == 0 &&
+        (CC == V6CCC::COND_Z || CC == V6CCC::COND_NZ)) {
       unsigned JccOpc = (CC == V6CCC::COND_Z) ? V6C::JZ : V6C::JNZ;
       BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(LhsHi);
       BuildMI(MBB, MI, DL, get(V6C::ORAr), V6C::A)

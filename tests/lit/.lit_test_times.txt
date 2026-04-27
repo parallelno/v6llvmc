@@ -105,4 +105,4 @@
 1.575384e-01 CodeGen/V6C/pre-ra-inx-dcx.ll
 1.405344e-01 CodeGen/V6C/xchg-cancel-peephole.ll
 1.215360e-01 CodeGen/V6C/shld-lhld-push-pop-peephole.ll
-1.099593e+00 Linker/V6C/basic-link.test
+1.034783e+00 Linker/V6C/basic-link.test
