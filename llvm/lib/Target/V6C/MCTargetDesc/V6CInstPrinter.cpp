@@ -31,7 +31,7 @@ void V6CInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
   const MCOperand &Op = MI->getOperand(OpNo);
 
   if (Op.isReg()) {
-    O << getRegisterName(Op.getReg());
+    O << getRegisterName(Op.getReg(), V6C::NoRegAltName);
   } else if (Op.isImm()) {
     // Print immediates as hex with 0x prefix for v6asm compatibility.
     // Mask to 16 bits — the widest immediate the 8080 supports.
@@ -70,4 +70,16 @@ void V6CInstPrinter::printBrTarget(const MCInst *MI, unsigned OpNo,
   } else if (Op.isExpr()) {
     Op.getExpr()->print(O, &MAI);
   }
+}
+
+// Print a register operand using the i8080-canonical pair-form spelling
+// (BC->"B", DE->"D", HL->"H", SP->"SP", PSW->"PSW"). Used by every
+// instruction that takes a register-pair operand.
+void V6CInstPrinter::printRegPair8080(const MCInst *MI, unsigned OpNo,
+                                       raw_ostream &O) {
+  const MCOperand &Op = MI->getOperand(OpNo);
+  if (Op.isReg())
+    O << getRegisterName(Op.getReg(), V6C::Pair8080);
+  else
+    printOperand(MI, OpNo, O);
 }

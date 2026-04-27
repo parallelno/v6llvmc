@@ -17,6 +17,15 @@ let Namespace = "V6C" in {
 }
 
 //===----------------------------------------------------------------------===//
+// Register alternate-name indices
+//===----------------------------------------------------------------------===//
+
+// Pair8080 — i8080-canonical pair-form mnemonics used by every instruction
+// that takes a register-pair operand (PUSH, POP, INX, DCX, DAD, LXI, LDAX,
+// STAX). Maps BC->"B", DE->"D", HL->"H", SP->"SP", PSW->"PSW".
+def Pair8080 : RegAltNameIndex;
+
+//===----------------------------------------------------------------------===//
 // 8-bit Registers
 //===----------------------------------------------------------------------===//
 
@@ -53,13 +62,16 @@ class V6CRegPair<bits<16> Enc, string n, list<Register> subregs>
 }
 
 // Note: subregs = [lo, hi] following LLVM convention
-def BC  : V6CRegPair<0, "BC",  [C, B]>;
-def DE  : V6CRegPair<1, "DE",  [E, D]>;
-def HL  : V6CRegPair<2, "HL",  [L, H]>;
-def PSW : V6CRegPair<3, "PSW", [FLAGS, A]>;
+let RegAltNameIndices = [Pair8080] in {
+  def BC  : V6CRegPair<0, "BC",  [C, B]>     { let AltNames = ["B"];   }
+  def DE  : V6CRegPair<1, "DE",  [E, D]>     { let AltNames = ["D"];   }
+  def HL  : V6CRegPair<2, "HL",  [L, H]>     { let AltNames = ["H"];   }
+  def PSW : V6CRegPair<3, "PSW", [FLAGS, A]> { let AltNames = ["PSW"]; }
+}
 
 // SP is a standalone 16-bit register (not a sub-register pair).
-def SP : V6CReg<3, "SP">;
+let RegAltNameIndices = [Pair8080] in
+def SP : V6CReg<3, "SP"> { let AltNames = ["SP"]; }
 
 // PC is implicit, not modeled as allocatable.
 

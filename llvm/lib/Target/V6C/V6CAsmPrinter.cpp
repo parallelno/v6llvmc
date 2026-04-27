@@ -135,7 +135,7 @@ bool V6CAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
   const MachineOperand &MO = MI->getOperand(OpNum);
   switch (MO.getType()) {
   case MachineOperand::MO_Register:
-    O << V6CInstPrinter::getRegisterName(MO.getReg());
+    O << V6CInstPrinter::getRegisterName(MO.getReg(), V6C::NoRegAltName);
     return false;
   case MachineOperand::MO_Immediate:
     O << MO.getImm();

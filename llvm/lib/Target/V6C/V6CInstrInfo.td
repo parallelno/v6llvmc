@@ -29,6 +29,13 @@ def brtarget : Operand<OtherVT> {
   let PrintMethod = "printBrTarget";
 }
 
+// Register-pair operand wrappers that print the i8080-canonical single-letter
+// pair name (BC->"B", DE->"D", HL->"H", SP->"SP", PSW->"PSW"). Encoding and
+// register-class matching are inherited from the underlying class — only the
+// printed mnemonic changes.
+def GR16AllPair : RegisterOperand<GR16All, "printRegPair8080">;
+def GR16IdxPair : RegisterOperand<GR16Idx, "printRegPair8080">;
+
 //===----------------------------------------------------------------------===//
 // 8080 Condition codes (3-bit encoding for Jcc/Ccc/Rcc)
 //===----------------------------------------------------------------------===//
@@ -168,13 +175,13 @@ def STA : V6CInstImm16Opc<0x32,
 // LDAX rp — 00_RP_1010 (rp = BC or DE)
 let mayLoad = 1 in
 def LDAX : V6CInstRegPair<0b00, 0b1010,
-    (outs Acc:$dst), (ins GR16Idx:$rp),
+    (outs Acc:$dst), (ins GR16IdxPair:$rp),
     "LDAX\t$rp", []>;
 
 // STAX rp — 00_RP_0010 (rp = BC or DE)
 let mayStore = 1 in
 def STAX : V6CInstRegPair<0b00, 0b0010,
-    (outs), (ins Acc:$src, GR16Idx:$rp),
+    (outs), (ins Acc:$src, GR16IdxPair:$rp),
     "STAX\t$rp", []>;
 
 // LHLD addr — 0x2A [lo] [hi]
@@ -198,7 +205,7 @@ def SHLD : V6CInstImm16Opc<0x22,
 // LXI rp,d16 — 00_RP_0001 [lo] [hi]
 let isReMaterializable = 1, isAsCheapAsAMove = 1 in
 def LXI : V6CInstImm16Pair<
-    (outs GR16All:$rp), (ins imm16:$imm),
+    (outs GR16AllPair:$rp), (ins imm16:$imm),
     "LXI\t$rp, $imm", []>;
 
 //===----------------------------------------------------------------------===//
@@ -218,13 +225,13 @@ def XCHG : V6CInstImplied<0xEB,
 // PUSH rp — 11_RP_0101 (rp: BC=00, DE=01, HL=10, PSW=11)
 let Uses = [SP], Defs = [SP], mayStore = 1 in
 def PUSH : V6CInstRegPair<0b11, 0b0101,
-    (outs), (ins GR16All:$rp),
+    (outs), (ins GR16AllPair:$rp),
     "PUSH\t$rp", []>;
 
 // POP rp — 11_RP_0001 (rp: BC=00, DE=01, HL=10, PSW=11)
 let Uses = [SP], Defs = [SP], mayLoad = 1 in
 def POP : V6CInstRegPair<0b11, 0b0001,
-    (outs GR16All:$rp), (ins),
+    (outs GR16AllPair:$rp), (ins),
     "POP\t$rp", []>;
 
 // SPHL — 0xF9 — Load SP from HL
@@ -345,19 +352,19 @@ let Defs = [FLAGS] in {
 // DAD rp — 00_RP_1001 — Add rp to HL
 let Defs = [HL, FLAGS], Uses = [HL] in
 def DAD : V6CInstRegPair<0b00, 0b1001,
-    (outs), (ins GR16All:$rp),
+    (outs), (ins GR16AllPair:$rp),
     "DAD\t$rp", []>;
 
 // INX rp — 00_RP_0011 — Increment register pair
 let Constraints = "$rp = $src" in
 def INX : V6CInstRegPair<0b00, 0b0011,
-    (outs GR16All:$rp), (ins GR16All:$src),
+    (outs GR16AllPair:$rp), (ins GR16AllPair:$src),
     "INX\t$rp", []>;
 
 // DCX rp — 00_RP_1011 — Decrement register pair
 let Constraints = "$rp = $src" in
 def DCX : V6CInstRegPair<0b00, 0b1011,
-    (outs GR16All:$rp), (ins GR16All:$src),
+    (outs GR16AllPair:$rp), (ins GR16AllPair:$src),
     "DCX\t$rp", []>;
 
 //===----------------------------------------------------------------------===//
