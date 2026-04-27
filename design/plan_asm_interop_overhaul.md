@@ -409,10 +409,10 @@ Phase 3 — `V6CAsmParser`
 - [x] 24. Smoke: `clang -c crt0.s` + `clang -c memory.s` produce valid ELF
 
 Phase 4 — Inline-asm clobber verification
-- [ ] 25. Confirm no custom INLINEASM lowering exists
-- [ ] 26. Add 3 clobber lit tests (Style A / Style B / empty)
-- [ ] 27. If needed, extend `getGCCRegNames` with pair names
-- [ ] 28. Add `tests/features/inline_asm_clobber/` end-to-end (main.c + external.h inline asm + external.s with func1\u2192func2 reachable, func3\u2192func4 dropped; expected stdout "12"; verify func3/func4 absent via `llvm-nm`)
+- [x] 25. Confirm no custom INLINEASM lowering exists
+- [x] 26. Add 3 clobber lit tests (Style A / Style B / empty)
+- [x] 27. If needed, extend `getGCCRegNames` with pair names
+- [x] 28. Add `tests/features/inline_asm_clobber/` end-to-end (main.c + external.h inline asm + external.s with func1\u2192func2 reachable, func3\u2192func4 dropped; expected stdout "12"; verify func3/func4 absent via `llvm-nm`)
 
 Phase 5 — V6C resource headers
 - [ ] 29. Create `clang/lib/Driver/ToolChains/V6C/include/{string.h, stdlib.h, v6c.h}`
@@ -441,7 +441,7 @@ Verification gates
 - [ ] V4. M11 libcall tests still pass (memcpy / __divhi3 / shifts) under new CC
 - [x] V5. `clang -c crt0.s -o crt0.o` produces ELF with `_start` global symbol; `llvm-readelf -s` shows correct relocs
 - [ ] V6. End-to-end: `clang -target i8080-unknown-v6c -O2 main.c crt0.s -o out.rom` builds and runs correctly in v6emul WITHOUT the `--defsym=_start=main` workaround
-- [ ] V7. Inline-asm clobber lit tests show exact expected spill counts (no over-spill on narrow clobbers)
+- [x] V7. Inline-asm clobber lit tests show exact expected spill counts (no over-spill on narrow clobbers)
 - [ ] V8. `#include <string.h>` works on V6C; same source compiled for x86 still uses MSVC's header
 - [ ] V9. `sync_llvm_mirror.ps1` reports zero diffs after both halves of every change are touched
 - [ ] V10. Mirror round-trip rebuilds byte-identical V6C ROMs
