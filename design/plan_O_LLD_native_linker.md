@@ -220,12 +220,16 @@ Verification gates
 
 ## Status
 
-Plan complete except for the deferred crt0 ELF object (step 11), which
-is blocked on the V6C MC AsmParser. The clang driver gracefully falls
-back when crt0.o / libv6c-builtins.a are missing; tests pin `main` into
-`.text._start` and pass `--defsym=_start=main` so the linker script's
-`KEEP(*(.text._start))` rule places main at the load address. Once a
-V6C MC AsmParser lands, the workaround can be removed.
+**Complete.** Step 11 (crt0 ELF + builtins archive) was originally
+deferred behind the missing V6C MC AsmParser; resolved by
+`design/plan_asm_interop_overhaul.md` Phase 3 (AsmParser landed) and
+Phase 7 (libv6c-builtins.a retired in favor of header-only inline-asm
+wrappers). Automatic crt0.o linkage now ships through the standard
+clang driver path: `clang -target i8080-unknown-v6c -O2 file.c -o
+file.rom` produces a runnable ROM with no `--defsym=_start=main` /
+`-nostartfiles` workarounds. Verified end-to-end by
+`scripts/validate_dist.ps1` against the staged release tree
+(SP=0xFFFE post-HALT confirms crt0 ran).
 
 
 ## Relevant files

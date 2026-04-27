@@ -23,6 +23,9 @@ build/
 # LLVM build directory
 llvm-build/
 
+# Release distributables
+dist/
+
 # LLVM monorepo (cloned separately, pinned to llvmorg-18.1.0)
 llvm-project/
 

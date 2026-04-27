@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version override (default: UTC date YYYY.MM.DD)'
+        required: false
+        type: string
+
+permissions:
+  contents: write   # needed to create GitHub releases
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 180
+
+    env:
+      CMAKE_BUILD_TYPE: Release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Setup MSVC dev shell (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Compute version
+        id: ver
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $manual = '${{ inputs.version }}'
+          if ($manual) {
+            $v = $manual
+          } elseif ($tag -match '^v(.+)$') {
+            $v = $Matches[1]
+          } else {
+            $v = (Get-Date).ToUniversalTime().ToString('yyyy.MM.dd')
+          }
+          Write-Host "version=$v"
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Cache llvm-build
+        uses: actions/cache@v4
+        with:
+          path: llvm-build
+          key: llvm-build-${{ runner.os }}-${{ hashFiles('llvm/lib/Target/V6C/**', 'clang/lib/**', 'lld/ELF/**', 'compiler-rt/lib/builtins/v6c/**', 'llvm/include/llvm/TargetParser/Triple.h', 'llvm/lib/TargetParser/Triple.cpp') }}
+          restore-keys: |
+            llvm-build-${{ runner.os }}-
+
+      - name: Sync llvm-project mirror
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/sync_llvm_mirror.ps1
+
+      - name: CMake configure
+        shell: pwsh
+        run: |
+          cmake -G Ninja `
+            -S llvm-project/llvm `
+            -B llvm-build `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DLLVM_TARGETS_TO_BUILD=X86 `
+            -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=V6C `
+            "-DLLVM_ENABLE_PROJECTS=clang;lld"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          ninja -C llvm-build `
+            clang lld llc `
+            llvm-objcopy llvm-readelf llvm-objdump llvm-ar llvm-mc llvm-nm `
+            FileCheck not llvm-lit
+
+      - name: Run tests (release gate)
+        shell: pwsh
+        run: python tests/run_all.py
+
+      - name: Stage + package
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/make_dist.ps1 -Version ${{ steps.ver.outputs.version }}
+
+      - name: Smoke-test staged tree
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/validate_dist.ps1 -Stage "dist/v6c-${{ steps.ver.outputs.version }}-windows-x64"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: v6c-${{ steps.ver.outputs.version }}-windows-x64
+          path: dist/v6c-${{ steps.ver.outputs.version }}-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v6c ${{ steps.ver.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist/v6c-${{ steps.ver.outputs.version }}-windows-x64.zip
