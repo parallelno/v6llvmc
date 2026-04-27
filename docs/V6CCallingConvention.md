@@ -6,26 +6,54 @@ The V6C calling convention (`V6C_CConv`) is designed for the extreme register sc
 
 ## Argument Passing
 
-Arguments are assigned by position to fixed registers:
+Arguments are assigned through two parallel free-lists that are kept in sync.
+The lists hold the preferred order in which the next 8-bit or 16-bit
+argument should land:
 
-| Argument # | i8 Register | i16 Register | Notes |
-|------------|-------------|--------------|-------|
-| 1st | `A` | `HL` | Cheapest access |
-| 2nd | `E` | `DE` | Secondary pair |
-| 3rd | `C` | `BC` | Tertiary pair |
-| 4th+ | Stack | Stack | Right-to-left, caller cleans |
+```
+FreeI8  : { A, B, C, D, E, L, H }
+FreeI16 : { HL, DE, BC }
+```
 
-Stack arguments are pushed right-to-left (cdecl-style). The caller is responsible for cleaning up the stack after the call.
+Allocation rules:
+
+- **Take an i8.** Pick the head of `FreeI8`; remove it. If the picked register
+  belongs to a 16-bit pair, also remove that pair from `FreeI16`. Mapping:
+  `H,L → HL`, `D,E → DE`, `B,C → BC`. `A` is paired-free.
+- **Take an i16.** Pick the head of `FreeI16`; remove it, and remove both of
+  its 8-bit halves from `FreeI8`.
+- **Exhaustion.** When the relevant list is empty for a given argument, the
+  argument spills to the stack (right-to-left push, caller cleans).
+
+This lets i8 and i16 arguments interleave freely without ever assigning the
+same physical register to two values.
 
 ### Examples
+
+| Signature                          | Register assignment      |
+|-----------------------------------:|:-------------------------|
+| `(i8)`                             | A                        |
+| `(i8, i8)`                         | A, B                     |
+| `(i8, i8, i8)`                     | A, B, C                  |
+| `(i16)`                            | HL                       |
+| `(i16, i16, i16)`                  | HL, DE, BC               |
+| `(i8, i8, i8, i16, i16)`           | A, B, C, HL, DE          |
+| `(i16, i16, i8, i16)`              | HL, DE, A, BC            |
+| `(i8, i16, i8, i16)`               | A, HL, B, DE             |
+| `(i16, i16, i8, i8)`               | HL, DE, A, B             |
+| `(i8 × 8)`                         | A, B, C, D, E, L, H, stk |
 
 ```c
 void f(uint8_t a);           // a → A
 void g(uint16_t p);          // p → HL
-void h(uint8_t a, uint8_t b); // a → A, b → E
+void h(uint8_t a, uint8_t b); // a → A, b → B
 void k(uint16_t x, uint16_t y, uint16_t z); // x → HL, y → DE, z → BC
-void m(uint8_t a, uint8_t b, uint8_t c, uint8_t d); // a → A, b → E, c → C, d → stack
 ```
+
+The free-list order — `A, B, C, D, E, L, H` for i8 and `HL, DE, BC` for i16 —
+is chosen so that early arguments land on the cheapest hardware operands
+(A for ALU, HL for indirect addressing) before consuming the more
+expensive `BC` pair / `H,L` halves.
 
 ## Return Values
 
@@ -101,5 +129,5 @@ This high cost motivates aggressive register allocation, rematerialization (MVIr
 ## Implementation
 
 - Return value assignment: `V6CCallingConv.td` (`RetCC_V6C`)
-- Argument passing: `V6CISelLowering.cpp` (`LowerFormalArguments`, `LowerCall`) — implemented in C++ due to position-based complexity
+- Argument passing: `V6CISelLowering.cpp` (`V6CArgAllocator`, `LowerFormalArguments`, `LowerCall`) — implemented in C++ since the free-list allocator depends on per-call type ordering rather than fixed positions
 - Frame lowering: `V6CFrameLowering.cpp`

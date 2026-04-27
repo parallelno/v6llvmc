@@ -386,14 +386,14 @@ Phase 1 — InstPrinter mnemonics
 - [x] 5. Mirror; rebuild; golden ROMs byte-identical (15/15 golden + 112/112 lit PASS)
 
 Phase 2 — CC free-list
-- [ ] 6. Add `V6CArgAllocator` helper class
-- [ ] 7. Rewrite `LowerFormalArguments`
-- [ ] 8. Rewrite `LowerCall`
-- [ ] 9. Confirm `LowerReturn` untouched
-- [ ] 10. Add `call-conv-overlap.ll` covering 4 examples + exhaustion
-- [ ] 11. Update existing `call-conv*.ll` if needed
-- [ ] 12. Update `docs/V6CCallingConvention.md`
-- [ ] 13. Verify M11 libcalls (memcpy / __divhi3) map identically
+- [x] 6. Add `V6CArgAllocator` helper class
+- [x] 7. Rewrite `LowerFormalArguments`
+- [x] 8. Rewrite `LowerCall`
+- [x] 9. Confirm `LowerReturn` untouched
+- [x] 10. Add `call-conv-overlap.ll` covering 4 examples + exhaustion
+- [x] 11. Update existing `call-conv*.ll` if needed
+- [x] 12. Update `docs/V6CCallingConvention.md`
+- [x] 13. Verify M11 libcalls (memcpy / __divhi3) map identically (113/113 lit + 15/15 golden PASS)
 
 Phase 3 — `V6CAsmParser`
 - [ ] 14. Add `AsmParser/CMakeLists.txt`

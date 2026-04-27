@@ -801,17 +801,87 @@ SDValue V6CTargetLowering::LowerANY_EXTEND(SDValue Op,
 //===----------------------------------------------------------------------===//
 // LowerFormalArguments — copy arguments from physical regs to virtual regs
 //
-// V6C_CConv (design §6.1): position-based register assignment.
-//   Arg 1: i8 → A,   i16 → HL
-//   Arg 2: i8 → E,   i16 → DE
-//   Arg 3: i8 → C,   i16 → BC
-//   Arg 4+: stack (right-to-left push, left-to-right access from callee)
+// V6C_CConv (Asm-Interop Overhaul Phase 2): free-list-based assignment that
+// allows i8 and i16 arguments to share the same underlying registers in any
+// order.  Two parallel free-lists are maintained and kept consistent:
+//
+//   FreeI8  : { A, B, C, D, E, L, H }  (preferred order for 8-bit args)
+//   FreeI16 : { HL, DE, BC }           (preferred order for 16-bit args)
+//
+// When an i8 is taken, we remove the picked register from FreeI8 AND remove
+// any 16-bit pair containing it from FreeI16.  When an i16 is taken, we remove
+// the pair from FreeI16 AND remove both halves from FreeI8.  Once a list is
+// empty the corresponding type spills to the stack.
+//
+// Examples (same callee signature mapping in caller and callee):
+//   foo(i8, i8, i8, i16, i16)      → A, B, C, HL, DE
+//   foo(i16, i16, i8, i16)         → HL, DE, A, BC
+//   foo(i8, i16, i8, i16)          → A, HL, B, DE
+//   foo(i16, i16, i8, i8)          → HL, DE, A, B
 //===----------------------------------------------------------------------===//
 
-// Physical register assignment tables, indexed by argument position (0-based).
-static const MCPhysReg ArgRegsI8[]  = {V6C::A, V6C::E, V6C::C};
-static const MCPhysReg ArgRegsI16[] = {V6C::HL, V6C::DE, V6C::BC};
-static const unsigned NumRegArgs = 3;
+namespace {
+// Free-list register allocator used by both LowerFormalArguments and LowerCall
+// to assign physical registers to outgoing/incoming arguments.  Returns 0 when
+// the relevant list is exhausted (caller should spill to the stack).
+class V6CArgAllocator {
+  SmallVector<MCPhysReg, 7> FreeI8;
+  SmallVector<MCPhysReg, 3> FreeI16;
+
+  // Drop a register from a free-list if present; preserves order.
+  static void dropReg(SmallVectorImpl<MCPhysReg> &List, MCPhysReg R) {
+    auto It = std::find(List.begin(), List.end(), R);
+    if (It != List.end())
+      List.erase(It);
+  }
+
+  // Map an i16 pair to its two 8-bit halves.  Returns {0,0} for non-paired.
+  static std::pair<MCPhysReg, MCPhysReg> halves(MCPhysReg Pair) {
+    switch (Pair) {
+    case V6C::HL: return {V6C::H, V6C::L};
+    case V6C::DE: return {V6C::D, V6C::E};
+    case V6C::BC: return {V6C::B, V6C::C};
+    default:      return {MCRegister::NoRegister, MCRegister::NoRegister};
+    }
+  }
+
+  // Map an 8-bit half to its enclosing i16 pair.  Returns 0 when none.
+  static MCPhysReg pairOf(MCPhysReg Half) {
+    switch (Half) {
+    case V6C::H: case V6C::L: return V6C::HL;
+    case V6C::D: case V6C::E: return V6C::DE;
+    case V6C::B: case V6C::C: return V6C::BC;
+    default:                  return MCRegister::NoRegister;
+    }
+  }
+
+public:
+  V6CArgAllocator()
+      : FreeI8{V6C::A, V6C::B, V6C::C, V6C::D, V6C::E, V6C::L, V6C::H},
+        FreeI16{V6C::HL, V6C::DE, V6C::BC} {}
+
+  MCPhysReg takeI8() {
+    if (FreeI8.empty())
+      return MCRegister::NoRegister;
+    MCPhysReg R = FreeI8.front();
+    FreeI8.erase(FreeI8.begin());
+    if (MCPhysReg P = pairOf(R))
+      dropReg(FreeI16, P);
+    return R;
+  }
+
+  MCPhysReg takeI16() {
+    if (FreeI16.empty())
+      return MCRegister::NoRegister;
+    MCPhysReg P = FreeI16.front();
+    FreeI16.erase(FreeI16.begin());
+    auto Hs = halves(P);
+    dropReg(FreeI8, Hs.first);
+    dropReg(FreeI8, Hs.second);
+    return P;
+  }
+};
+} // end anonymous namespace
 
 SDValue V6CTargetLowering::LowerFormalArguments(
     SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
@@ -821,31 +891,30 @@ SDValue V6CTargetLowering::LowerFormalArguments(
   MachineFrameInfo &MFI = MF.getFrameInfo();
   MachineRegisterInfo &RegInfo = MF.getRegInfo();
 
-  unsigned ArgIdx = 0; // Tracks position in calling convention.
+  V6CArgAllocator Alloc;
 
   for (unsigned i = 0, e = Ins.size(); i != e; ++i) {
     MVT VT = Ins[i].VT;
 
-    if (ArgIdx < NumRegArgs) {
+    MCPhysReg PReg = MCRegister::NoRegister;
+    if (VT == MVT::i8)
+      PReg = Alloc.takeI8();
+    else if (VT == MVT::i16)
+      PReg = Alloc.takeI16();
+    else
+      report_fatal_error("V6C: unsupported argument type");
+
+    if (PReg) {
       // Register argument.
-      if (VT == MVT::i8) {
-        Register VReg = RegInfo.createVirtualRegister(&V6C::GR8RegClass);
-        RegInfo.addLiveIn(ArgRegsI8[ArgIdx], VReg);
-        SDValue ArgVal = DAG.getCopyFromReg(Chain, DL, VReg, MVT::i8);
-        InVals.push_back(ArgVal);
-      } else if (VT == MVT::i16) {
-        Register VReg = RegInfo.createVirtualRegister(&V6C::GR16RegClass);
-        RegInfo.addLiveIn(ArgRegsI16[ArgIdx], VReg);
-        SDValue ArgVal = DAG.getCopyFromReg(Chain, DL, VReg, MVT::i16);
-        InVals.push_back(ArgVal);
-      } else {
-        report_fatal_error("V6C: unsupported argument type");
-      }
-      ++ArgIdx;
+      const TargetRegisterClass *RC =
+          (VT == MVT::i8) ? &V6C::GR8RegClass : &V6C::GR16RegClass;
+      Register VReg = RegInfo.createVirtualRegister(RC);
+      RegInfo.addLiveIn(PReg, VReg);
+      SDValue ArgVal = DAG.getCopyFromReg(Chain, DL, VReg, VT);
+      InVals.push_back(ArgVal);
     } else {
       // Stack argument. Located above the return address (2 bytes).
-      // Stack offsets: arg4 at SP+2, arg5 at SP+2+sizeof(arg4), etc.
-      // The frame lowering will adjust these offsets once the frame is set up.
+      // The frame lowering will adjust offsets once the frame is set up.
       unsigned Size = VT.getSizeInBits() / 8;
       int FI = MFI.CreateFixedObject(Size,
                                       /*SPOffset=*/0, // Adjusted later.
@@ -854,7 +923,6 @@ SDValue V6CTargetLowering::LowerFormalArguments(
       SDValue ArgVal = DAG.getLoad(VT, DL, Chain, FIN,
                                    MachinePointerInfo::getFixedStack(MF, FI));
       InVals.push_back(ArgVal);
-      ++ArgIdx;
     }
   }
 
@@ -935,39 +1003,41 @@ SDValue V6CTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   SmallVector<SDValue, 8> MemOpChains;
   SDValue Glue;
 
-  // Compute total stack bytes needed for overflow arguments.
+  // Pre-pass: compute total stack bytes needed for overflow arguments using a
+  // simulated allocator that mirrors the assignment loop below.
   unsigned NumStackBytes = 0;
-  unsigned ArgIdx = 0;
-  for (unsigned i = 0, e = Outs.size(); i != e; ++i) {
-    MVT VT = Outs[i].VT;
-    if (ArgIdx >= NumRegArgs) {
-      unsigned Size = VT.getSizeInBits() / 8;
-      NumStackBytes += Size;
+  {
+    V6CArgAllocator SizeAlloc;
+    for (unsigned i = 0, e = Outs.size(); i != e; ++i) {
+      MVT VT = Outs[i].VT;
+      MCPhysReg PReg = (VT == MVT::i8)  ? SizeAlloc.takeI8()
+                       : (VT == MVT::i16) ? SizeAlloc.takeI16()
+                                          : MCRegister::NoRegister;
+      if (!PReg)
+        NumStackBytes += VT.getSizeInBits() / 8;
     }
-    ++ArgIdx;
   }
 
   // ADJCALLSTACKDOWN.
   Chain = DAG.getCALLSEQ_START(Chain, NumStackBytes, 0, DL);
 
   // Assign arguments: register args first, then stack.
-  ArgIdx = 0;
+  V6CArgAllocator Alloc;
   unsigned StackOffset = 0;
   for (unsigned i = 0, e = Outs.size(); i != e; ++i) {
     MVT VT = Outs[i].VT;
     SDValue Arg = OutVals[i];
 
-    if (ArgIdx < NumRegArgs) {
-      // Register argument.
-      MCPhysReg Reg;
-      if (VT == MVT::i8)
-        Reg = ArgRegsI8[ArgIdx];
-      else if (VT == MVT::i16)
-        Reg = ArgRegsI16[ArgIdx];
-      else
-        report_fatal_error("V6C: unsupported call argument type");
+    MCPhysReg PReg = MCRegister::NoRegister;
+    if (VT == MVT::i8)
+      PReg = Alloc.takeI8();
+    else if (VT == MVT::i16)
+      PReg = Alloc.takeI16();
+    else
+      report_fatal_error("V6C: unsupported call argument type");
 
-      RegsToPass.push_back(std::make_pair(Reg, Arg));
+    if (PReg) {
+      RegsToPass.push_back(std::make_pair(PReg, Arg));
     } else {
       // Stack argument. Push right-to-left (last arg at highest address).
       // We store to the outgoing argument area of the current frame.
@@ -980,7 +1050,6 @@ SDValue V6CTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       MemOpChains.push_back(Store);
       StackOffset += Size;
     }
-    ++ArgIdx;
   }
 
   // Emit all stores.
