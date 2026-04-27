@@ -55,7 +55,7 @@ static std::string findV6CDriverFile(const ToolChain &TC, StringRef Filename) {
                             std::string(MirrorTree)});
 }
 
-/// Locate a V6C runtime artifact (crt0.o, libv6c-builtins.a) by name.
+/// Locate a V6C runtime artifact (crt0.o) by name.
 /// Search order:
 ///   1. <ResourceDir>/lib/v6c/<filename>                    (installed)
 ///   2. <bin>/../../compiler-rt/lib/builtins/v6c/<filename> (workspace dev tree)
@@ -120,16 +120,11 @@ void v6c::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   }
 
   // User input objects and -l libraries.
+  // No default builtins archive: V6C ships header-only inline-asm wrappers
+  // (`<resource-dir>/lib/v6c/include/`) plus per-routine `.o` files picked
+  // up via the headers' `__asm__("CALL ...")` references and pruned by
+  // ld.lld `--gc-sections`. See design/plan_asm_interop_overhaul.md.
   AddLinkerInputs(TC, Inputs, Args, CmdArgs, JA);
-
-  // Default builtins archive (suppressed by -nodefaultlibs or -nostdlib).
-  bool UseDefaultLibs = !Args.hasArg(options::OPT_nodefaultlibs,
-                                     options::OPT_nostdlib, options::OPT_r);
-  if (UseDefaultLibs) {
-    std::string Lib = findV6CRuntimeFile(TC, "libv6c-builtins.a");
-    if (!Lib.empty())
-      CmdArgs.push_back(Args.MakeArgString(Lib));
-  }
 
   // Forward -Wl,... and -Xlinker ... (covers --defsym, --gc-sections, etc.).
   // AddAllArgValues splits "-Wl,a,b,c" into individual tokens "a", "b", "c".

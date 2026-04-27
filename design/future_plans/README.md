@@ -64,6 +64,7 @@
 | O64 | Liveness-Aware i8 Spill/Reload Lowering (Static-Stack Shapes B & C) | [O64_liveness_aware_i8_spill_lowering.md](O64_liveness_aware_i8_spill_lowering.md) | V6C |
 | O65 | MOV r, M + ALU r Fold (Direct Memory ALU Peephole) | [O65_mov_alu_m_fold.md](O65_mov_alu_m_fold.md) | V6C |
 | O-LLD | Native ld.lld Linker (replaces Python `v6c_link.py`) ✅ | [../plan_O_LLD_native_linker.md](../plan_O_LLD_native_linker.md) | V6C |
+| O-AsmInterop | Asm-Interop Overhaul (i8080 mnemonics, free-list CC, MC AsmParser, V6C resource headers, retire libv6c-builtins) ✅ | [../plan_asm_interop_overhaul.md](../plan_asm_interop_overhaul.md) | V6C |
 ---
 
 ## Summary Table

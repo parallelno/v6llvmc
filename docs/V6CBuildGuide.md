@@ -359,3 +359,108 @@ llvm-build/bin/clang -target i8080-unknown-v6c -O2 -S input.c -o output.s \
 | Option | Effect |
 |--------|--------|
 | `-mllvm -mv6c-annotate-pseudos` | Emits function header comments (C declaration + param→register map) and `;--- PSEUDO ---` comments before each pseudo expansion. Add `-fno-discard-value-names` to preserve original C parameter names. |
+
+
+## V6C Resource-Dir Headers
+
+The V6C driver auto-injects `<resource-dir>/lib/v6c/include/` ahead of
+Clang's stock freestanding directory, so the following headers resolve
+without any `-I` flag:
+
+| Header | Provides |
+|--------|----------|
+| `<string.h>` | `memcpy`, `memset`, `memmove`, `strlen`, `strcmp`, `strcpy` |
+| `<stdlib.h>` | `EXIT_SUCCESS` / `EXIT_FAILURE`, `abort()`, `exit(int)` (both `noreturn`, expand to `HLT` loop) |
+| `<v6c.h>` | `__v6c_in`, `__v6c_out`, `__v6c_di`, `__v6c_ei`, `__v6c_hlt`, `__v6c_nop` thin inline wrappers around the `__builtin_v6c_*` family |
+
+The headers are header-only inline-`__asm__` wrappers — there is no
+`libv6c-builtins.a` archive. Tiny constant-N cases inline directly;
+larger calls reference per-routine `.o` files (`memcpy.o` etc.) under
+`<resource-dir>/lib/v6c/` that the V6C driver picks up via
+`--gc-sections`.
+
+The driver also passes `-ffunction-sections` by default so per-function
+ELF sections are emitted. Pass `-Wl,--gc-sections` at the link step to
+prune unreferenced helper functions transitively. Override the
+per-function sections with `-fno-function-sections` if needed.
+
+The V6C include directory is injected only by the V6C toolchain;
+cross-host compiles for x86 and other targets are unaffected.
+
+## Inline Assembly Patterns
+
+Two idiomatic styles are supported by the V6C inline-asm flow:
+
+### Style A — Inlined Body (single instruction sequence)
+
+The compiler interleaves the asm with surrounding code. Use for short
+sequences where the cost of a `CALL` would dominate.
+
+```c
+static inline __attribute__((always_inline))
+void out_port(unsigned char port, unsigned char val) {
+    __asm__ volatile (
+        "MVI A, %1\n"
+        "OUT %0\n"
+        : : "i"(port), "r"(val)
+        : "A"
+    );
+}
+```
+
+The clobber list (`"A"` here) is honored exactly: only the accumulator
+is treated as live-out across the asm block. Pair registers `B`/`D`/`H`
+and pair halves `C`/`E`/`L` are not spilled unless explicitly listed.
+
+### Style B — CALL Extern (per-routine `.o`)
+
+The asm is a single `CALL helper` with a strict clobber list; the
+helper lives in a separately assembled `.s`/`.o` file. Pruning by
+`ld.lld --gc-sections` works transitively across the asm/C boundary
+because `CALL helper` emits a normal `R_V6C_16` relocation the
+linker can see.
+
+```c
+static inline __attribute__((always_inline))
+void external_helper(void) {
+    __asm__ volatile ("CALL helper" : : : "A", "memory");
+}
+```
+
+GCC register names used in clobber lists are case-sensitive: spell
+single regs uppercase (`"A"`, `"B"`, `"C"`, `"D"`, `"E"`, `"H"`, `"L"`).
+
+## Computed Jumps and `--gc-sections`
+
+`ld.lld --gc-sections` walks relocations in **all** reachable
+sections, including `.rodata` jump tables. Authors must encode
+addresses through the assembler's symbol machinery so a relocation is
+emitted; otherwise the target may be GC'd:
+
+| Form | Relocation | Status |
+|------|------------|--------|
+| `.word target` | `R_V6C_16` | Safe |
+| `.byte target@lo` / `.byte target@hi` | `R_V6C_8_LO` / `R_V6C_8_HI` | Safe |
+| Hand-computed `.byte 0xC3, 0x34, 0x12` literal | none | **Unsafe** — linker can't see the reference |
+
+Forced-live escapes when the relocation route is impractical:
+
+- `__attribute__((used))` on a C wrapper that references the target.
+- `KEEP(*(.text.func))` in the linker script.
+- Group all jump-table targets in a single `KEEP`'d section.
+
+## End-to-End Example
+
+```bash
+# Single-command build of a C program for V6C.
+# The driver finds crt0.o under <resource-dir>/lib/v6c/ (or the
+# compiler-rt dev tree), runs ld.lld with v6c.ld, and converts the
+# linked ELF to a flat ROM via llvm-objcopy.
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 \
+    main.c -Wl,--gc-sections -o out.rom
+```
+
+No `-nostartfiles`, `-nodefaultlibs`, or `-Wl,--defsym=_start=main`
+workaround is needed. `crt0.s` is assembled by the V6C MC AsmParser
+(Phase 3 of the asm-interop overhaul), and `_start` is the canonical
+entry point declared in `crt0.s`.

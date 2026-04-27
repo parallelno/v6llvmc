@@ -131,15 +131,19 @@ correct, runnable Vector-06c ROM whose entry point is `_start`
     *(Depends on whatever build system already produces those
     objects; reuse it.)*
 
-    **Status: deferred.** V6C currently has no MC `AsmParser`,
-    so `compiler-rt/lib/builtins/v6c/*.s` cannot be assembled to
-    ELF objects today (`v6asm` only produces flat binary). The
-    driver is structured to pick up `crt0.o` and `libv6c-builtins.a`
-    from `<resource-dir>/lib/v6c/` (or the `compiler-rt` dev tree)
-    automatically once they exist; until then users must supply a
-    `_start` (e.g. `-Wl,--defsym=_start=main` for trivial programs)
-    or pass `-nostartfiles -nodefaultlibs`. Tracked as a follow-up
-    "V6C MC AsmParser" plan.
+    **Status: superseded by `design/plan_asm_interop_overhaul.md`.**
+    Phase 3 of that plan implemented the V6C MC `AsmParser`, so
+    `compiler-rt/lib/builtins/v6c/*.s` (including `crt0.s`) now
+    assemble to proper ELF objects via `clang -c file.s -o file.o`.
+    Phase 7 of that plan retired `libv6c-builtins.a` entirely:
+    runtime helpers are now exposed as header-only inline-`__asm__`
+    wrappers under `<resource-dir>/lib/v6c/include/` (`<string.h>`,
+    `<stdlib.h>`, `<v6c.h>`), with per-routine `.o` files for
+    non-inlinable bodies, pruned by `ld.lld --gc-sections`. The
+    driver no longer searches for `libv6c-builtins.a`; only `crt0.o`
+    is picked up under `<resource-dir>/lib/v6c/` or the compiler-rt
+    dev tree. The `--defsym=_start=main` workaround is no longer
+    needed.
 12. Mirror sync: re-run `scripts/sync_llvm_mirror.ps1` and confirm
     `clang/`, `lld/`, and `compiler-rt/` mirrors are clean.
 
