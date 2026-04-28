@@ -46,6 +46,10 @@ xcopy /Y /I "$root\llvm\include\llvm\TargetParser\Triple.h" "$root\llvm-project\
 xcopy /Y /I "$root\llvm\lib\TargetParser\Triple.cpp" "$root\llvm-project\llvm\lib\TargetParser\" > $null
 Write-Host "  [OK] Triple.h, Triple.cpp"
 
+# EM_V6C machine ID in BinaryFormat/ELF.h
+xcopy /Y /I "$root\llvm\include\llvm\BinaryFormat\ELF.h" "$root\llvm-project\llvm\include\llvm\BinaryFormat\" > $null
+Write-Host "  [OK] BinaryFormat/ELF.h (EM_V6C)"
+
 # M9: Clang frontend integration
 # TargetInfo (Basic/Targets)
 xcopy /Y /I "$root\clang\lib\Basic\Targets\I8080.h" "$root\llvm-project\clang\lib\Basic\Targets\" > $null
@@ -90,6 +94,15 @@ Write-Host "  [OK] Intrinsics (IntrinsicsV6C.td, BuiltinsV6C.def, Function.cpp)"
 if (-not (Test-Path "$root\llvm-project\clang\lib\Driver\ToolChains\V6C")) { New-Item -ItemType Directory -Path "$root\llvm-project\clang\lib\Driver\ToolChains\V6C" -Force > $null }
 xcopy /Y /I "$root\clang\lib\Driver\ToolChains\V6C\v6c.ld" "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\" > $null
 Write-Host "  [OK] V6C linker script (v6c.ld)"
+
+# O-LLD: ld.lld native linker integration (V6C arch backend)
+if (-not (Test-Path "$root\llvm-project\lld\ELF\Arch")) { New-Item -ItemType Directory -Path "$root\llvm-project\lld\ELF\Arch" -Force > $null }
+xcopy /Y /I "$root\lld\ELF\Arch\V6C.cpp" "$root\llvm-project\lld\ELF\Arch\" > $null
+xcopy /Y /I "$root\lld\ELF\Target.cpp" "$root\llvm-project\lld\ELF\" > $null
+xcopy /Y /I "$root\lld\ELF\Target.h" "$root\llvm-project\lld\ELF\" > $null
+xcopy /Y /I "$root\lld\ELF\Driver.cpp" "$root\llvm-project\lld\ELF\" > $null
+xcopy /Y /I "$root\lld\ELF\CMakeLists.txt" "$root\llvm-project\lld\ELF\" > $null
+Write-Host "  [OK] lld/ELF V6C backend (V6C.cpp, Target.cpp/h, Driver.cpp, CMakeLists.txt)"
 
 # V6C resource-dir headers (string.h, stdlib.h, v6c.h)
 robocopy "$root\clang\lib\Driver\ToolChains\V6C\include" "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\include" /MIR /NFL /NDL /NJH /NJS > $null
