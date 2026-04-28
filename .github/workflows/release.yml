@@ -21,7 +21,8 @@ jobs:
 
     env:
       CMAKE_BUILD_TYPE: Release
-      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_DIR: ${{ github.workspace }}\.sccache
+      SCCACHE_CACHE_SIZE: "5G"
 
     steps:
       - name: Checkout
@@ -47,6 +48,14 @@ jobs:
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.5
+
+      - name: Cache sccache storage
+        uses: actions/cache@v4
+        with:
+          path: .sccache
+          key: sccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-
 
       - name: Populate llvm-project from V6C mirrors
         shell: pwsh
