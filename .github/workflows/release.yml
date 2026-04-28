@@ -106,7 +106,7 @@ jobs:
           ninja -C llvm-build `
             clang lld llc `
             llvm-objcopy llvm-readelf llvm-objdump llvm-ar llvm-mc llvm-nm `
-            FileCheck not
+            FileCheck not split-file
 
       - name: Run tests (release gate)
         shell: pwsh
