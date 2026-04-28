@@ -21,6 +21,7 @@ jobs:
 
     env:
       CMAKE_BUILD_TYPE: Release
+      SCCACHE_GHA_ENABLED: "true"
 
     steps:
       - name: Checkout
@@ -44,13 +45,8 @@ jobs:
             Write-Host 'llvm-project already present (cache hit).'
           }
 
-      - name: Cache llvm-build
-        uses: actions/cache@v4
-        with:
-          path: llvm-build
-          key: llvm-build-${{ runner.os }}-${{ hashFiles('llvm/lib/Target/V6C/**', 'clang/lib/**', 'lld/ELF/**', 'compiler-rt/lib/builtins/v6c/**', 'llvm/include/llvm/TargetParser/Triple.h', 'llvm/lib/TargetParser/Triple.cpp') }}
-          restore-keys: |
-            llvm-build-${{ runner.os }}-
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.5
 
       - name: Populate llvm-project from V6C mirrors
         shell: pwsh
@@ -96,6 +92,8 @@ jobs:
             -S llvm-project/llvm `
             -B llvm-build `
             -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
             -DLLVM_TARGETS_TO_BUILD=X86 `
             -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=V6C `
             "-DLLVM_ENABLE_PROJECTS=clang;lld"
@@ -107,6 +105,11 @@ jobs:
             clang lld llc `
             llvm-objcopy llvm-readelf llvm-objdump llvm-ar llvm-mc llvm-nm `
             FileCheck not split-file
+
+      - name: sccache stats
+        if: always()
+        shell: pwsh
+        run: sccache --show-stats
 
       - name: Run tests (release gate)
         shell: pwsh
