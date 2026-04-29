@@ -32,4 +32,3 @@ int main(int argc, char **argv) {
     bench_finish(sum);
     return 0;
 }
-

@@ -68,11 +68,65 @@ private:
 
   void analyzeInterruptReachability(Module &M);
   bool isFunctionEligible(const Function &F, const MachineFunction &MF) const;
+  bool hasNoCallbackEvidence(const Function &F) const;
 };
 
 } // end anonymous namespace
 
 char V6CStaticStackAlloc::ID = 0;
+
+/// Local check: F cannot be re-entered transitively through any of its
+/// callees, even though LLVM's SCC pass did not infer `norecurse`.
+///
+/// LLVM is conservative when inferring `norecurse`: any inline-asm callsite
+/// or any call to an intrinsic that lacks `nocallback` causes the SCC pass
+/// to give up and not mark callers as norecurse. That blocks every function
+/// that uses `__asm__ volatile(...)` or a target intrinsic from getting
+/// static-stack allocation, even when the callee provably cannot transfer
+/// control back into the caller.
+///
+/// We fill the gap with a local check: F is safe iff
+///   1. F does not directly call itself, AND
+///   2. every CallBase in F is one of:
+///        - an inline-asm call (the asm string cannot reference C symbols
+///          dynamically, so it cannot recursively re-enter F);
+///        - a call where the callee/callsite carries the `nocallback`
+///          attribute (intrinsics or normal functions).
+///
+/// Combined with the existing checks (no address taken, not reachable from
+/// any interrupt handler), this guarantees F cannot be re-entered while a
+/// previous activation is still live, which is the only correctness
+/// requirement for static-stack allocation.
+bool V6CStaticStackAlloc::hasNoCallbackEvidence(const Function &F) const {
+  for (const BasicBlock &BB : F) {
+    for (const Instruction &I : BB) {
+      const auto *CB = dyn_cast<CallBase>(&I);
+      if (!CB)
+        continue;
+
+      // Inline asm cannot dynamically dispatch back into the caller.
+      if (CB->isInlineAsm())
+        continue;
+
+      // Either the callsite or the callee must promise nocallback.
+      if (CB->hasFnAttr(Attribute::NoCallback))
+        continue;
+      const Function *Callee = CB->getCalledFunction();
+      if (!Callee)
+        return false; // indirect call — unknown target
+      if (Callee->hasFnAttribute(Attribute::NoCallback))
+        continue;
+
+      // Direct self-recursion would corrupt the static frame.
+      if (Callee == &F)
+        return false;
+
+      // Anything else: be conservative.
+      return false;
+    }
+  }
+  return true;
+}
 
 /// BFS from interrupt-attributed functions to find all transitively
 /// reachable functions.
@@ -110,8 +164,11 @@ void V6CStaticStackAlloc::analyzeInterruptReachability(Module &M) {
 
 bool V6CStaticStackAlloc::isFunctionEligible(
     const Function &F, const MachineFunction &MF) const {
-  // Must have norecurse attribute (inferred by PostOrderFunctionAttrs at -O2).
-  if (!F.hasFnAttribute(Attribute::NoRecurse))
+  // The function must be provably non-reentrant. Either LLVM inferred
+  // `norecurse` (preferred) or we can locally prove that no callsite in F
+  // can transfer control back into F (covers inline-asm and target
+  // intrinsics that block SCC norecurse inference).
+  if (!F.hasFnAttribute(Attribute::NoRecurse) && !hasNoCallbackEvidence(F))
     return false;
 
   // Must not be an interrupt handler itself.
