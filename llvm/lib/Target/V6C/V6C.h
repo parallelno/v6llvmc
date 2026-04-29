@@ -13,6 +13,7 @@ namespace llvm {
 
 class V6CTargetMachine;
 class FunctionPass;
+class ModulePass;
 
 FunctionPass *createV6CISelDag(V6CTargetMachine &TM,
                                 CodeGenOptLevel OptLevel);
@@ -54,6 +55,10 @@ FunctionPass *createV6CLoopPointerInductionPass();
 
 /// Post-RA pass: static stack allocation for non-reentrant functions (O10).
 FunctionPass *createV6CStaticStackAllocPass();
+
+/// IR-level pass: promote allocas of non-reentrant functions to per-function
+/// globals before SelectionDAG ISel (companion to V6CStaticStackAlloc).
+ModulePass *createV6CAllocaPromotePass();
 
 /// Post-RA pass: spill forwarding (O16).
 FunctionPass *createV6CSpillForwardingPass();

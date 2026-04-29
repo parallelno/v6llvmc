@@ -174,6 +174,11 @@ public:
     TargetPassConfig::addIRPasses();
     addPass(createV6CLoopPointerInductionPass());
     addPass(createV6CTypeNarrowingPass());
+    // Run last so it sees the final IR shape: alloca uses promoted from
+    // the optimized loops above turn into immediate `LXI HL, @gv+offset`
+    // forms in ISel, avoiding the V6CISD::DAD XCHG dance for stack-local
+    // pointer arithmetic.
+    addPass(createV6CAllocaPromotePass());
   }
 };
 

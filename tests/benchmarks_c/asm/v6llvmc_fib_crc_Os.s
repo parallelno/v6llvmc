@@ -3,23 +3,17 @@
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
 ; %bb.0:
-	LXI	D, __v6c_ss.main
-	XCHG
-	MVI	M, 0
-	XCHG
-	LXI	B, __v6c_ss.main+1
-	MOV	L, C
-	MOV	H, B
-	MVI	M, 1
-	LDAX	D
-	MVI	L, 0
-	MOV	D, L
+	MVI	A, 0
+	STA	__v6c_a.main
 	MOV	E, A
-	XCHG
-	SHLD	__v6c_ss.main+8
-	XCHG
-	LDAX	B
-	MOV	B, L
+	INR	A
+	STA	__v6c_a.main+1
+	LDA	__v6c_a.main
+	MOV	H, E
+	MOV	L, A
+	SHLD	__v6c_ss.main+6
+	LDA	__v6c_a.main+1
+	MOV	B, E
 	MOV	C, A
 	LXI	H, 0xffff
 	LXI	D, 0
@@ -27,16 +21,16 @@ main:                                   ; @main
                                         ;     Child Loop BB0_2 Depth 2
                                         ;     Child Loop BB0_6 Depth 2
 	XCHG
-	SHLD	__v6c_ss.main+4
+	SHLD	__v6c_ss.main+2
 	XCHG
 	PUSH	H
-	LXI	H, __v6c_ss.main+6
+	LXI	H, __v6c_ss.main+4
 	MOV	M, C
 	INX	H
 	MOV	M, B
 	POP	H
 	XCHG
-	LHLD	__v6c_ss.main+8
+	LHLD	__v6c_ss.main+6
 	XCHG
 	MOV	A, E
 	ADD	C
@@ -46,7 +40,7 @@ main:                                   ; @main
 	MOV	B, A
 	LXI	D, 0xff
 	PUSH	H
-	LXI	H, __v6c_ss.main+2
+	LXI	H, __v6c_ss.main
 	MOV	M, C
 	INX	H
 	MOV	M, B
@@ -98,7 +92,7 @@ main:                                   ; @main
 	JNZ	.LBB0_2
 ; %bb.5:                                ;   in Loop: Header=BB0_1 Depth=1
 	XCHG
-	LHLD	__v6c_ss.main+2
+	LHLD	__v6c_ss.main
 	XCHG
 	MOV	E, D
 	MOV	D, B
@@ -143,23 +137,23 @@ main:                                   ; @main
 	JNZ	.LBB0_6
 ; %bb.9:                                ;   in Loop: Header=BB0_1 Depth=1
 	XCHG
-	LHLD	__v6c_ss.main+4
+	LHLD	__v6c_ss.main+2
 	XCHG
 	INX	D
 	PUSH	H
-	LXI	H, __v6c_ss.main+6
+	LXI	H, __v6c_ss.main+4
 	MOV	C, M
 	INX	H
 	MOV	B, M
 	POP	H
 	PUSH	H
-	LXI	H, __v6c_ss.main+8
+	LXI	H, __v6c_ss.main+6
 	MOV	M, C
 	INX	H
 	MOV	M, B
 	POP	H
 	PUSH	H
-	LXI	H, __v6c_ss.main+2
+	LXI	H, __v6c_ss.main
 	MOV	C, M
 	INX	H
 	MOV	B, M
@@ -176,6 +170,9 @@ main:                                   ; @main
 	OUT	0xed
 	HLT
                                         ; -- End function
+	.local	__v6c_a.main                    ; @__v6c_a.main
+	.comm	__v6c_a.main,2,1
 	.local	__v6c_ss.main                   ; @__v6c_ss.main
-	.comm	__v6c_ss.main,10,1
+	.comm	__v6c_ss.main,8,1
 	.addrsig
+	.addrsig_sym __v6c_a.main

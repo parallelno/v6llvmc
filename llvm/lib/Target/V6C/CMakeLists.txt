@@ -40,6 +40,7 @@ add_llvm_target(V6CCodeGen
   V6CSpillForwarding.cpp
   V6CSpillPatchedReload.cpp
   V6CStaticStackAlloc.cpp
+  V6CAllocaPromote.cpp
   V6CSubtarget.cpp
   V6CTargetMachine.cpp
   V6CTargetTransformInfo.cpp
