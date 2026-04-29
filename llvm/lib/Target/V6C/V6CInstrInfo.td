@@ -102,6 +102,12 @@ def SDT_V6CInxDcx16 : SDTypeProfile<1, 2, [SDTCisVT<0, i16>,
 def V6Cinx16 : SDNode<"V6CISD::INX16", SDT_V6CInxDcx16>;
 def V6Cdcx16 : SDNode<"V6CISD::DCX16", SDT_V6CInxDcx16>;
 
+// O67: ROTL8/ROTR8 — 1-bit accumulator rotates (RLC/RRC). Custom
+// lowering of ISD::ROTL/ROTR i8 emits a chain of these.
+def SDT_V6CRot8 : SDTypeProfile<1, 1, [SDTCisVT<0, i8>, SDTCisVT<1, i8>]>;
+def V6Crotl8 : SDNode<"V6CISD::ROTL8", SDT_V6CRot8>;
+def V6Crotr8 : SDNode<"V6CISD::ROTR8", SDT_V6CRot8>;
+
 //===----------------------------------------------------------------------===//
 // V6C condition codes (used in BRCOND and SELECT_CC)
 //===----------------------------------------------------------------------===//
@@ -409,6 +415,10 @@ let Defs = [FLAGS] in {
     def RAR : V6CInstImplied<0x1F, (outs Acc:$dst), (ins Acc:$src), "RAR", []>;
   }
 }
+
+// O67: i8 rotate ISel — V6CISD::ROTL8/ROTR8 → RLC/RRC.
+def : Pat<(V6Crotl8 Acc:$src), (RLC Acc:$src)>;
+def : Pat<(V6Crotr8 Acc:$src), (RRC Acc:$src)>;
 
 //===----------------------------------------------------------------------===//
 // Branch — JMP, Jcc

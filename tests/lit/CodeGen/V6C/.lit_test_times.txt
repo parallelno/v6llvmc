@@ -92,3 +92,4 @@
 9.753966e-02 inline-asm/clobber-empty.ll
 1.045387e-01 inline-asm/clobber-style-a.ll
 7.853580e-02 inline-asm/clobber-style-b.ll
+1.607542e-01 rotate-i8.ll

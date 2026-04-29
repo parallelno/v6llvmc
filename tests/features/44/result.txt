@@ -1,0 +1,161 @@
+O67 -- i8 Rotate ISel via RLC/RRC -- feature test 44
+=====================================================
+
+Switches `ISD::ROTL` / `ISD::ROTR` for i8 from `Expand` to `Custom` and
+introduces two target ISD nodes -- `V6CISD::ROTL8` and `V6CISD::ROTR8`
+-- that map 1:1 to the 8080 `RLC` / `RRC` instructions via TableGen
+`Pat<>` matchers. Constant-amount rotates lower into a chain of these
+1-bit rotates, with the direction canonicalised to the shorter chain
+(rotl by N == rotr by 8-N; pick whichever produces fewer ops; tie at
+N=4 keeps the requested direction).
+
+Implementation:
+  V6CISelLowering.h      -- enum entries V6CISD::ROTL8, ROTR8;
+                            LowerROTL/LowerROTR declarations.
+  V6CISelLowering.cpp    -- ISD::ROTL/ROTR i8 -> Custom; LowerROTL,
+                            LowerROTR; getTargetNodeName cases;
+                            LowerOperation dispatch.
+  V6CInstrInfo.td        -- SDT_V6CRot8 profile; V6Crotl8 / V6Crotr8
+                            SDNodes; Pat<(V6Crotl8 Acc:$src), (RLC ...)>
+                            and the symmetric RRC matcher.
+
+Variable-amount rotates are vanishingly rare in real C; they fall back
+to an i16-promotion synthesis ((x<<8)|x then SHL/SRL by amt, low byte).
+No new runtime helper is needed.
+
+
+## C source (tests/features/44/v6llvmc.c -- c8080.c is the same shape)
+
+    typedef unsigned char u8;
+    u8 rotl1(u8 x) { return (u8)((x << 1) | (x >> 7)); }
+    u8 rotr1(u8 x) { return (u8)((x >> 1) | (x << 7)); }
+    u8 rotl3(u8 x) { return (u8)((x << 3) | (x >> 5)); }
+    u8 rotr3(u8 x) { return (u8)((x >> 3) | (x << 5)); }
+    u8 rotl7(u8 x) { return (u8)((x << 7) | (x >> 1)); }
+    u8 rotl4(u8 x) { return (u8)((x << 4) | (x >> 4)); }
+
+    volatile u8 g_in = 0x5A;
+    volatile u8 g_out;
+
+    int main(int argc, char **argv) {
+        (void)argc; (void)argv;
+        g_out = rotl1(g_in);
+        g_out = rotr1(g_in);
+        g_out = rotl3(g_in);
+        g_out = rotr3(g_in);
+        g_out = rotl7(g_in);
+        g_out = rotl4(g_in);
+        return 0;
+    }
+
+
+## Assembly outputs
+
+  v6llvmc_old.asm    baseline before O67 (ROTL/ROTR i8 = Expand path)
+  v6llvmc_new01.asm  O67 enabled (Custom lowering -> RLC/RRC chains)
+
+
+## File sizes
+
+  c8080.asm           3770 B   (199 lines)   -- reference
+  v6llvmc_old.asm     5395 B   (484 lines)
+  v6llvmc_new01.asm   2119 B    (95 lines)   -- 60% smaller, 80% fewer lines
+
+
+## c8080 reference (z80 mnemonics: rlca = RLC, rrca = RRC)
+
+    rotl1:  ld a, l       ; arg in L
+            rlca
+            ret
+    rotr1:  ld a, l
+            rrca
+            ret
+    rotl3:  ld a, l
+            rlca
+            rlca
+            rlca
+            ret
+    rotr3:  ld a, l
+            rrca
+            rrca
+            rrca
+            ret
+    rotl7:  ld a, l
+            rrca          ; canonicalised: rotl 7 == rotr 1
+            ret
+    rotl4:  ld a, l
+            rrca          ; c8080 picks rrca x 4 (equivalent to rlca x 4)
+            rrca
+            rrca
+            rrca
+            ret
+
+
+## v6llvmc -O2 + O67 (v6llvmc_new01.asm, post-lowering)
+
+    rotl1:  RLC                ; 1 B / 4cc
+            RET
+    rotr1:  RRC                ; 1 B / 4cc
+            RET
+    rotl3:  RLC                ; 3 B / 12cc
+            RLC
+            RLC
+            RET
+    rotr3:  RRC                ; 3 B / 12cc
+            RRC
+            RRC
+            RET
+    rotl7:  RRC                ; 1 B / 4cc (canonicalised: rotl 7 -> rotr 1)
+            RET
+    rotl4:  RLC                ; 4 B / 16cc (tie: requested direction kept)
+            RLC
+            RLC
+            RLC
+            RET
+
+
+## Stats (function body length / cycles, excluding entry MOV E,A and RET)
+
+  Function   c8080            v6llvmc OLD      v6llvmc NEW (O67)
+  ---------  ---------------  ---------------  -----------------
+  rotl1      1 B  / 4 cc      ~58 B / ~204 cc  1 B / 4 cc
+  rotr1      1 B  / 4 cc      ~25 B /  ~92 cc  1 B / 4 cc
+  rotl3      3 B  / 12 cc     ~52 B / ~188 cc  3 B / 12 cc
+  rotr3      3 B  / 12 cc     ~25 B /  ~92 cc  3 B / 12 cc
+  rotl7      1 B  / 4 cc      ~52 B / ~188 cc  1 B / 4 cc
+  rotl4      4 B  / 16 cc      4 B  /  16 cc   4 B / 16 cc
+
+`rotl4` is unchanged because the OLD path happens to canonicalise to
+the same ADD-A-self chain (4 left == 4 right). Worst case is `rotl1`:
+**~14x byte savings, ~14x cycle savings** on a single rotate.
+
+
+## Where the OLD blowup came from
+
+DAGCombine recognises `(x<<1)|(x>>7)` as `ISD::ROTL` and the generic
+`Expand` action turns it back into `SHL i8 1 | SRL i8 7`. The i8 SRL
+constant path zero-extends to i16 and runs the slow `V6C_SRL16`
+expansion -- 7 instructions per shift step (`MOV A,H; ORA A; RAR;
+MOV H,A; MOV A,L; RAR; MOV L,A`), times 7 steps for `>> 7`, plus the
+SHL chain and the OR-of-halves. ~50+ instructions for one rotate.
+
+
+## Verification
+
+- New lit test: `llvm-project/llvm/test/CodeGen/V6C/rotate-i8.ll` --
+  6 cases (rotl/rotr by 1/3, rotl by 4 and 7) all pass.
+- Full lit suite: 118/118 PASS.
+- Golden trust baseline + lit suite: 2/2 suites PASS via run_all.py.
+- Benchmarks (bsort, sieve, fib_crc): checksums unchanged.
+
+## Notes
+
+- We use RLC / RRC (circular rotates) rather than RAL / RAR (rotate
+  through carry) because a chain of RLC/RRC has well-defined behaviour
+  regardless of the previous CY value; RAL/RAR would require carry
+  preservation across the chain. RAL/RAR remain available for future
+  multi-byte shift work (e.g. an O68 follow-up that fixes i8 SRL/SRA
+  by constant amount, the other half of the same blowup).
+- No CLI flag: this is an unconditional ISel improvement -- the OLD
+  Expand path is strictly worse, so there is no debug case where
+  preserving it would be useful.

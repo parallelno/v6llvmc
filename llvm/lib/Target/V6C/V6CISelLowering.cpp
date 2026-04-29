@@ -73,9 +73,10 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
   setOperationAction(ISD::SRL,  MVT::i8, Custom);
   setOperationAction(ISD::SRA,  MVT::i8, Custom);
 
-  // Rotates: not directly matchable by generic rotl/rotr.
-  setOperationAction(ISD::ROTL, MVT::i8, Expand);
-  setOperationAction(ISD::ROTR, MVT::i8, Expand);
+  // Rotates: Custom — chain of V6CISD::ROTL8/ROTR8 (RLC/RRC) for constant
+  // amounts; promote to i16 fallback for variable amount (rare).
+  setOperationAction(ISD::ROTL, MVT::i8, Custom);
+  setOperationAction(ISD::ROTR, MVT::i8, Custom);
 
   // No hardware support for byte swap, ctlz, cttz, ctpop.
   setOperationAction(ISD::BSWAP,    MVT::i8, Expand);
@@ -217,6 +218,8 @@ const char *V6CTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case V6CISD::DAD:       return "V6CISD::DAD";
   case V6CISD::INX16:    return "V6CISD::INX16";
   case V6CISD::DCX16:    return "V6CISD::DCX16";
+  case V6CISD::ROTL8:    return "V6CISD::ROTL8";
+  case V6CISD::ROTR8:    return "V6CISD::ROTR8";
   }
   return nullptr;
 }
@@ -314,6 +317,8 @@ SDValue V6CTargetLowering::LowerOperation(SDValue Op,
   case ISD::SHL:            return LowerSHL(Op, DAG);
   case ISD::SRL:            return LowerSRL(Op, DAG);
   case ISD::SRA:            return LowerSRA(Op, DAG);
+  case ISD::ROTL:           return LowerROTL(Op, DAG);
+  case ISD::ROTR:           return LowerROTR(Op, DAG);
   case ISD::ZERO_EXTEND:    return LowerZERO_EXTEND(Op, DAG);
   case ISD::SIGN_EXTEND:    return LowerSIGN_EXTEND(Op, DAG);
   case ISD::ANY_EXTEND:     return LowerANY_EXTEND(Op, DAG);
@@ -692,6 +697,78 @@ SDValue V6CTargetLowering::LowerSRA(SDValue Op, SelectionDAG &DAG) const {
   SDValue ExtAmt = DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Amt);
   SDValue Shifted = DAG.getNode(ISD::SRA, DL, MVT::i16, ExtVal, ExtAmt);
   return DAG.getNode(ISD::TRUNCATE, DL, MVT::i8, Shifted);
+}
+
+//===----------------------------------------------------------------------===//
+// O67 — i8 rotate lowering: ISD::ROTL/ROTR → chain of V6CISD::ROTL8/ROTR8
+//===----------------------------------------------------------------------===//
+
+// Helper: emit a chain of N × 1-bit rotates (V6CISD::ROTL8 or ROTR8).
+static SDValue emitRotChain(SelectionDAG &DAG, const SDLoc &DL, SDValue Val,
+                            unsigned RotOpc, unsigned N) {
+  SDValue R = Val;
+  for (unsigned i = 0; i < N; ++i)
+    R = DAG.getNode(RotOpc, DL, MVT::i8, R);
+  return R;
+}
+
+SDValue V6CTargetLowering::LowerROTL(SDValue Op, SelectionDAG &DAG) const {
+  if (Op.getValueType() != MVT::i8)
+    return SDValue();
+
+  SDLoc DL(Op);
+  SDValue Val = Op.getOperand(0);
+  SDValue Amt = Op.getOperand(1);
+
+  if (auto *CA = dyn_cast<ConstantSDNode>(Amt)) {
+    unsigned N = CA->getZExtValue() & 7;
+    if (N == 0)
+      return Val;
+    // Canonicalise direction: ROTL by N == ROTR by (8-N). Pick the
+    // shorter chain. N == 4 ties (4 left == 4 right) — keep ROTL.
+    if (N > 4)
+      return emitRotChain(DAG, DL, Val, V6CISD::ROTR8, 8 - N);
+    return emitRotChain(DAG, DL, Val, V6CISD::ROTL8, N);
+  }
+
+  // Variable amount: synthesise via i16 promotion. Vanishingly rare in
+  // real i8 code; no dedicated runtime helper needed.
+  // ROTL(x, amt) = ((x<<8 | x) << amt) >> 8  (low byte of the result).
+  SDValue Ext = DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Val);
+  SDValue Eight = DAG.getConstant(8, DL, MVT::i16);
+  SDValue Hi = DAG.getNode(ISD::SHL, DL, MVT::i16, Ext, Eight);
+  SDValue Wide = DAG.getNode(ISD::OR, DL, MVT::i16, Hi, Ext);
+  SDValue Amt16 = DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Amt);
+  SDValue Sh = DAG.getNode(ISD::SHL, DL, MVT::i16, Wide, Amt16);
+  SDValue Shr = DAG.getNode(ISD::SRL, DL, MVT::i16, Sh, Eight);
+  return DAG.getNode(ISD::TRUNCATE, DL, MVT::i8, Shr);
+}
+
+SDValue V6CTargetLowering::LowerROTR(SDValue Op, SelectionDAG &DAG) const {
+  if (Op.getValueType() != MVT::i8)
+    return SDValue();
+
+  SDLoc DL(Op);
+  SDValue Val = Op.getOperand(0);
+  SDValue Amt = Op.getOperand(1);
+
+  if (auto *CA = dyn_cast<ConstantSDNode>(Amt)) {
+    unsigned N = CA->getZExtValue() & 7;
+    if (N == 0)
+      return Val;
+    if (N > 4)
+      return emitRotChain(DAG, DL, Val, V6CISD::ROTL8, 8 - N);
+    return emitRotChain(DAG, DL, Val, V6CISD::ROTR8, N);
+  }
+
+  // Variable amount: ROTR(x, amt) = ((x<<8 | x) >> amt) low byte.
+  SDValue Ext = DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Val);
+  SDValue Eight = DAG.getConstant(8, DL, MVT::i16);
+  SDValue Hi = DAG.getNode(ISD::SHL, DL, MVT::i16, Ext, Eight);
+  SDValue Wide = DAG.getNode(ISD::OR, DL, MVT::i16, Hi, Ext);
+  SDValue Amt16 = DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Amt);
+  SDValue Shr = DAG.getNode(ISD::SRL, DL, MVT::i16, Wide, Amt16);
+  return DAG.getNode(ISD::TRUNCATE, DL, MVT::i8, Shr);
 }
 
 //===----------------------------------------------------------------------===//

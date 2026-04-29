@@ -31,6 +31,8 @@ enum NodeType : unsigned {
   DAD,        // 16-bit add constrained to HL (maps to DAD rp).
   INX16,      // 16-bit increment by immediate count (1..3), no flag set.
   DCX16,      // 16-bit decrement by immediate count (1..3), no flag set.
+  ROTL8,      // 1-bit accumulator rotate left  (RLC).
+  ROTR8,      // 1-bit accumulator rotate right (RRC).
 };
 } // namespace V6CISD
 
@@ -92,6 +94,8 @@ private:
   SDValue LowerSHL_i16(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSRL_i16(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSRA_i16(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerROTL(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerROTR(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerZERO_EXTEND(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSIGN_EXTEND(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerANY_EXTEND(SDValue Op, SelectionDAG &DAG) const;

@@ -64,6 +64,7 @@
 | O64 | Liveness-Aware i8 Spill/Reload Lowering (Static-Stack Shapes B & C) | [O64_liveness_aware_i8_spill_lowering.md](O64_liveness_aware_i8_spill_lowering.md) | V6C |
 | O65 | MOV r, M + ALU r Fold (Direct Memory ALU Peephole) | [O65_mov_alu_m_fold.md](O65_mov_alu_m_fold.md) | V6C |
 | O66 | `switch` → Jump Table via `PCHL` (JMP-table layout) | [O66_switch_jump_table_pchl.md](O66_switch_jump_table_pchl.md) | V6C |
+| O67 | i8 Rotate ISel via RLC/RRC ✅ | [O67_i8_rotate_isel_via_rlc_rrc.md](O67_i8_rotate_isel_via_rlc_rrc.md) | V6C |
 | O-LLD | Native ld.lld Linker (replaces Python `v6c_link.py`) ✅ | [../plan_O_LLD_native_linker.md](../plan_O_LLD_native_linker.md) | V6C |
 | O-AsmInterop | Asm-Interop Overhaul (i8080 mnemonics, free-list CC, MC AsmParser, V6C resource headers, retire libv6c-builtins) ✅ | [../plan_asm_interop_overhaul.md](../plan_asm_interop_overhaul.md) | V6C |
 ---
@@ -132,6 +133,7 @@
 | O64 | Liveness-Aware i8 Spill/Reload (Shapes B & C) | V6C | 8-56cc, 0-2B per non-A i8 spill/reload | Very high | Low-Med | Low | O10 done, O42 done | [x] |
 | O65 | MOV r, M + ALU r Fold (peephole backstop to O49) | V6C | 4cc, 1B per fold | Med-High | Very Low | Very Low | None (composes with O49) | [x] |
 | O66 | `switch` → Jump Table via `PCHL` | V6C | 24-233cc per dispatch (≥5 cases) | Medium | Medium | Low-Med | O11 done | [ ] |
+| O67 | i8 Rotate ISel via RLC/RRC | V6C | ~14× size & speed on rotl/rotr by const | Low (CRC/hash/bit-perm code) | Low | Very Low | None | [x] |
 | O-LLD | Native ld.lld linker (replaces Python `v6c_link.py`) | V6C | toolchain hardening | One-shot | Med-High | Low | lld build wired in | [x] |
 
 ### Recommended order
@@ -173,6 +175,7 @@
 34. **O54** — optimal stack adjustment, POP/PUSH for small SP changes, ~30 lines
 35. ~~**O62** — efficient i16 shift-by-8/16 expansion, 16cc+1B per occurrence, ~60 lines~~ ✅
 36. ~~**O65** — MOV r, M + ALU r fold (peephole backstop to O49), 4cc+1B per fold, ~40–60 lines~~ ✅
+37. ~~**O67** — i8 rotate ISel via RLC/RRC, ~14× speedup/size on constant rotl/rotr, ~60 lines~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅
