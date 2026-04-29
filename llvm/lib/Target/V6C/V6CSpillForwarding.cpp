@@ -142,6 +142,8 @@ bool V6CSpillForwarding::processBlock(MachineBasicBlock &MBB) {
                   .addReg(DstHi, RegState::Define)
                   .addReg(SrcHi);
               MBB.erase(&*NextIt);
+              // MOVs clobber DstReg's prior contents — drop stale entries.
+              invalidateReg(DstReg);
             } else {
               // 8-bit cross-register: replace RELOAD with 1 MOV.
               DebugLoc DL = NextIt->getDebugLoc();
@@ -149,6 +151,7 @@ bool V6CSpillForwarding::processBlock(MachineBasicBlock &MBB) {
                   .addReg(DstReg, RegState::Define)
                   .addReg(SrcReg);
               MBB.erase(&*NextIt);
+              invalidateReg(DstReg);
             }
 
             Avail[FI] = SrcReg;
@@ -202,6 +205,9 @@ bool V6CSpillForwarding::processBlock(MachineBasicBlock &MBB) {
           MII = MBB.erase(&MI);
           Changed = true;
 
+          // Writing to DstReg invalidates any stale Avail entry that
+          // mapped some other slot to DstReg (or an overlapping reg).
+          invalidateReg(DstReg);
           // Now DstReg also holds the slot value.
           Avail[FI] = SrcReg; // keep original source as canonical
           continue;
@@ -214,11 +220,14 @@ bool V6CSpillForwarding::processBlock(MachineBasicBlock &MBB) {
             .addReg(SrcReg);
         MII = MBB.erase(&MI);
         Changed = true;
+        invalidateReg(DstReg);
         continue;
       }
 
       // No forwarding possible — the RELOAD stays, but now DstReg
-      // holds the slot value.
+      // holds the slot value. The original RELOAD writes DstReg, so
+      // any stale Avail entry tracking DstReg must be cleared first.
+      invalidateReg(DstReg);
       Avail[FI] = DstReg;
       ++MII;
       continue;
