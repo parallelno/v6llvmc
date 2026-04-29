@@ -4,7 +4,7 @@ Cycle counts and ROM sizes for three pure-C benchmarks compiled with each i8080-
 
 | Program | v6llvmc-O2 | v6llvmc-O1 | v6llvmc-Os | c8080 | z88dk |
 |---|---|---|---|---|---|
-| bsort | 261 B / 51,464 cc (1.00x) | 200 B / 50,384 cc (0.98x) | 209 B / 52,784 cc (1.03x) | 227 B / 47,900 cc (0.93x) | 1189 B / 92,212 cc (1.79x) |
+| bsort | 261 B / 51,464 cc (1.00x) | 201 B / 50,396 cc (0.98x) | 210 B / 52,796 cc (1.03x) | 227 B / 47,900 cc (0.93x) | 1183 B / 99,084 cc (1.93x) |
 | sieve | 303 B / 87,640 cc (1.00x) | 180 B / 89,460 cc (1.02x) | 180 B / 89,460 cc (1.02x) | 212 B / 148,184 cc (1.69x) | 1342 B / 195,472 cc (2.23x) |
 | fib_crc | 635 B / 68,528 cc (1.00x) | 257 B / 89,492 cc (1.31x) | 245 B / 86,588 cc (1.26x) | 308 B / 268,204 cc (3.91x) | 1155 B / 284,048 cc (4.14x) |
 

@@ -1,6 +1,4 @@
-/* bsort - bubble-sort 16 i8 values, OUT sum-of-sorted.
- * Array `a` is file-scope to keep stack-frame addressing out of the
- * inner-loop register pressure on i8080. */
+/* bsort - bubble-sort 16 i8 values, OUT sum-of-sorted. */
 #include "bench.h"
 
 static const u8 INIT[16] = {
@@ -8,10 +6,9 @@ static const u8 INIT[16] = {
     180, 17, 88, 33, 5, 222, 100, 155
 };
 
-static u8 a[16];
-
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
+    u8 a[16];
     u8 i, j, t;
 
     for (i = 0; i < 16; i++) a[i] = INIT[i];

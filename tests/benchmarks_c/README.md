@@ -100,8 +100,6 @@ Prerequisites:
 Workarounds applied while authoring the benchmarks. These also live in
 `/memories/repo/v6c-backend.md`:
 
-* Local-stack arrays can mis-codegen at -O1/-Os and tend to exhaust registers
-  at -O2 — file-scope `static` arrays are far more reliable.
 * `int` loop counters where the loop range fits in 8 bits push the i8080 GPR
   set hard. Prefer `u8` indices.
 * Helper functions that LLVM might inline back together can blow regalloc;

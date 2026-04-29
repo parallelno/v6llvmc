@@ -3,7 +3,7 @@
 ;
 ;	Reconstructed for z80 Module Assembler
 ;
-;	Module compile time: Wed Apr 29 00:12:05 2026
+;	Module compile time: Wed Apr 29 00:32:16 2026
 
 
 	C_LINE	0,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c"
@@ -34,8 +34,8 @@
 	ret
 
 
+	C_LINE	2,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::bench_finish::0::1"
 	C_LINE	4,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::bench_finish::0::1"
-	C_LINE	6,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::bench_finish::0::1"
 	SECTION	rodata_compiler
 ._INIT
 	defb	13
@@ -55,22 +55,22 @@
 	defb	100
 	defb	155
 	SECTION	code_compiler
-	C_LINE	11,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::bench_finish::0::1"
-	C_LINE	13,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::bench_finish::0::1"
+	C_LINE	9,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::bench_finish::0::1"
 
 ; Function main flags 0x00000000 __stdc 
 ; int main(int argc, char * * argv)
 ; parameter 'int argc' at 2 size(2)
 ; parameter 'char * * argv' at 4 size(2)
-	C_LINE	13,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::main::0::2"
+	C_LINE	9,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::main::0::2"
 ._main
 	pop	bc
 	pop	hl
 	push	hl
 	push	bc
 	call	l_gint4sp	;
-	push	bc
-	dec	sp
+	ld	hl,65517	;const
+	add	hl,sp
+	ld	sp,hl
 	ld	hl,2	;const
 	add	hl,sp
 	ld	(hl),0
@@ -85,7 +85,8 @@
 	ld	a,(hl)
 	sub	16
 	jp	nc,i_4	;
-	ld	hl,_a
+	ld	hl,3	;const
+	add	hl,sp
 	ex	de,hl
 	ld	hl,2	;const
 	add	hl,sp
@@ -145,20 +146,23 @@
 	ld	a,d
 	sbc	h
 	jp	nc,i_10	;
-	ld	hl,_a
-	ex	de,hl
-	pop	hl
+	ld	hl,3	;const
+	add	hl,sp
 	push	hl
-	ld	l,h
+	dec	hl
+	dec	hl
+	ld	l,(hl)
 	ld	h,0
+	pop	de
 	add	hl,de
 	ld	l,(hl)
 	ld	h,0
 	push	hl
-	ld	hl,_a
-	push	hl
 	ld	hl,5	;const
 	add	hl,sp
+	push	hl
+	dec	hl
+	dec	hl
 	ld	l,(hl)
 	ld	h,0
 	inc	hl
@@ -175,28 +179,33 @@
 	ld	hl,0	;const
 	add	hl,sp
 	push	hl
-	ld	hl,_a
-	ex	de,hl
-	ld	hl,3	;const
+	ld	hl,5	;const
 	add	hl,sp
+	push	hl
+	dec	hl
+	dec	hl
 	ld	l,(hl)
 	ld	h,0
+	pop	de
 	add	hl,de
 	ld	a,(hl)
 	pop	de
 	ld	(de),a
-	ld	hl,_a
-	ex	de,hl
-	pop	hl
+	ld	hl,3	;const
+	add	hl,sp
 	push	hl
-	ld	l,h
+	dec	hl
+	dec	hl
+	ld	l,(hl)
 	ld	h,0
+	pop	de
 	add	hl,de
-	push	hl
-	ld	hl,_a
 	push	hl
 	ld	hl,5	;const
 	add	hl,sp
+	push	hl
+	dec	hl
+	dec	hl
 	ld	l,(hl)
 	ld	h,0
 	inc	hl
@@ -205,10 +214,11 @@
 	ld	a,(hl)
 	pop	de
 	ld	(de),a
-	ld	hl,_a
-	push	hl
 	ld	hl,3	;const
 	add	hl,sp
+	push	hl
+	dec	hl
+	dec	hl
 	ld	l,(hl)
 	ld	h,0
 	inc	hl
@@ -245,7 +255,8 @@
 	ld	l,(hl)
 	ld	h,0
 	push	hl
-	ld	hl,_a
+	ld	hl,8	;const
+	add	hl,sp
 	ex	de,hl
 	ld	hl,7	;const
 	add	hl,sp
@@ -267,9 +278,11 @@
 	push	hl
 	call	_bench_finish
 	pop	bc
-	ld	hl,0	;const
-	pop	bc
-	pop	bc
+	ld	de,0
+	ld	hl,20	;const
+	add	hl,sp
+	ld	sp,hl
+	ex	de,hl
 	ret
 
 
@@ -283,7 +296,6 @@
 ; --- Start of Static Variables ---
 
 	SECTION	bss_compiler
-._a	defs	16
 	SECTION	code_compiler
 
 

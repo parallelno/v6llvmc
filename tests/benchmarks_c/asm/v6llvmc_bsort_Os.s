@@ -3,7 +3,7 @@
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
 ; %bb.0:
-	LXI	H, a
+	LXI	H, __v6c_a.main
 	LXI	D, INIT
 .LBB0_1:                                ; =>This Inner Loop Header: Depth=1
 	LDAX	D
@@ -22,15 +22,15 @@ main:                                   ; @main
 	SHLD	__v6c_ss.main+7
 .LBB0_3:                                ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB0_4 Depth 2
-	LXI	H, a
+	LXI	H, __v6c_a.main
 	SHLD	__v6c_ss.main+5
 	LXI	H, 0
 	SHLD	__v6c_ss.main+1
-	LDA	a
+	LDA	__v6c_a.main
 	STA	__v6c_ss.main
-	LXI	H, a
+	LXI	H, __v6c_a.main
 	SHLD	__v6c_ss.main+3
-	LXI	D, a
+	LXI	D, __v6c_a.main
 .LBB0_4:                                ;   Parent Loop BB0_3 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	INX	D
@@ -88,22 +88,23 @@ main:                                   ; @main
 	ORA	L
 	JNZ	.LBB0_3
 ; %bb.8:
-	LXI	H, a
-	MOV	E, A
+	LXI	H, __v6c_a.main
+	MOV	C, A
+	LXI	D, __v6c_a.main+16
 .LBB0_9:                                ; =>This Inner Loop Header: Depth=1
-	MOV	A, E
+	MOV	A, C
 	ADD	M
-	MOV	E, A
+	MOV	C, A
 	INX	H
-	MVI	A, <(a+16)
-	CMP	L
+	MOV	A, L
+	CMP	E
 	JNZ	.LBB0_9
 ; %bb.13:                               ;   in Loop: Header=BB0_9 Depth=1
-	MVI	A, >(a+16)
-	CMP	H
+	MOV	A, H
+	CMP	D
 	JNZ	.LBB0_9
 ; %bb.10:
-	MOV	A, E
+	MOV	A, C
 	OUT	0xed
 	HLT
                                         ; -- End function
@@ -111,8 +112,9 @@ main:                                   ; @main
 INIT:                                   ; @INIT
 	.ascii	"\r\310\007c*\001\372@\264\021X!\005\336d\233"
 
-	.local	a                               ; @a
-	.comm	a,16,1
+	.local	__v6c_a.main                    ; @__v6c_a.main
+	.comm	__v6c_a.main,16,1
 	.local	__v6c_ss.main                   ; @__v6c_ss.main
 	.comm	__v6c_ss.main,9,1
 	.addrsig
+	.addrsig_sym __v6c_a.main
