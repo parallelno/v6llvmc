@@ -1,4 +1,4 @@
-; RUN: llc -march=v6c -O2 < %s | FileCheck %s
+; RUN: llc -march=v6c -O2 -v6c-disable-alloca-promote -v6c-disable-static-stack-alloc < %s | FileCheck %s
 
 ; Test O44: adjacent XCHG cancellation peephole.
 ; Verify no XCHG; XCHG adjacent pairs appear in the output.

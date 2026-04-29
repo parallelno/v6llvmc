@@ -32,6 +32,7 @@
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 
 #include <queue>
@@ -39,6 +40,11 @@
 using namespace llvm;
 
 #define DEBUG_TYPE "v6c-static-stack-alloc"
+
+static cl::opt<bool> DisableStaticStackAlloc(
+    "v6c-disable-static-stack-alloc",
+    cl::desc("Disable V6C static stack allocation (O10)"),
+    cl::init(false), cl::Hidden);
 
 namespace {
 
@@ -200,6 +206,9 @@ bool V6CStaticStackAlloc::isFunctionEligible(
 }
 
 bool V6CStaticStackAlloc::runOnMachineFunction(MachineFunction &MF) {
+  if (DisableStaticStackAlloc)
+    return false;
+
   Module &M = *MF.getFunction().getParent();
 
   // Perform module-level analysis once.

@@ -1,4 +1,4 @@
-; RUN: llc -march=v6c < %s | FileCheck %s
+; RUN: llc -march=v6c -v6c-disable-alloca-promote -v6c-disable-static-stack-alloc < %s | FileCheck %s
 
 ; Test prologue/epilogue for function with 1 byte of locals.
 ; CHECK-LABEL: one_local:

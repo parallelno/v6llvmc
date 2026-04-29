@@ -1,4 +1,4 @@
-; RUN: llc -march=v6c < %s | FileCheck %s
+; RUN: llc -march=v6c -v6c-disable-alloca-promote -v6c-disable-static-stack-alloc < %s | FileCheck %s
 
 ; Test that a function with local variables generates stack access patterns
 ; (spill/reload through LXI+DAD SP and either MOV M,_ or STAX BC/DE).
