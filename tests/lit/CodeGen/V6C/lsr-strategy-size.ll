@@ -6,8 +6,8 @@
 ; Insns-first shape would extend the area to 12 bytes by allocating
 ; __v6c_ss.axpy3+10 (see lsr-strategy-speed.ll for the opt-in path).
 ;
-; RUN: llc -march=v6c -O2 -mv6c-static-stack < %s | FileCheck %s --check-prefix=AUTO
-; RUN: llc -march=v6c -O2 -mv6c-static-stack -v6c-lsr-strategy=regs-first < %s | FileCheck %s --check-prefix=EXPLICIT
+; RUN: llc -march=v6c -O2 -mv6c-static-stack -mv6c-no-spill-patched-reload < %s | FileCheck %s --check-prefix=AUTO
+; RUN: llc -march=v6c -O2 -mv6c-static-stack -mv6c-no-spill-patched-reload -v6c-lsr-strategy=regs-first < %s | FileCheck %s --check-prefix=EXPLICIT
 
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
 target triple = "i8080-unknown-v6c"

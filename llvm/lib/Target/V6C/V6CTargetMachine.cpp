@@ -45,14 +45,21 @@ static llvm::cl::opt<bool> V6CSpillPatchedReload(
     "mv6c-spill-patched-reload",
     llvm::cl::desc("O61: rewrite HL spill/reload pairs as patched LXI HL "
                    "(self-modifying code, static-stack only)"),
-    llvm::cl::init(false), llvm::cl::Hidden);
+    llvm::cl::init(true), llvm::cl::Hidden);
+
+static llvm::cl::opt<bool> V6CNoSpillPatchedReload(
+    "mv6c-no-spill-patched-reload",
+    llvm::cl::desc("Disable O61 spill-patched-reload rewriting"),
+    llvm::cl::init(false));
 
 namespace llvm {
 
 unsigned getV6CStartAddress() { return V6CStartAddress; }
 bool getV6CStaticStackEnabled() { return V6CStaticStack && !V6CNoStaticStack; }
 bool getV6CAnnotatePseudosEnabled() { return V6CAnnotatePseudos; }
-bool getV6CSpillPatchedReloadEnabled() { return V6CSpillPatchedReload; }
+bool getV6CSpillPatchedReloadEnabled() {
+  return V6CSpillPatchedReload && !V6CNoSpillPatchedReload;
+}
 
 // Data layout: little-endian, 16-bit pointers (8-bit aligned),
 // all types 8-bit aligned, native integer widths 8 and 16, stack alignment 8.

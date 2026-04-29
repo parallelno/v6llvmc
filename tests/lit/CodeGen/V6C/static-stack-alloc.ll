@@ -1,4 +1,4 @@
-; RUN: llc -march=v6c -O2 -mv6c-static-stack < %s | FileCheck %s
+; RUN: llc -march=v6c -O2 -mv6c-static-stack -mv6c-no-spill-patched-reload < %s | FileCheck %s
 
 ; Test O10: Static Stack Allocation for Non-Reentrant Functions.
 ; Non-reentrant functions with spills should use STA/LDA/SHLD/LHLD

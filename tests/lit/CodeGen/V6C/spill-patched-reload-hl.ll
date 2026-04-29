@@ -1,5 +1,5 @@
 ; RUN: llc -march=v6c -O2 -mv6c-spill-patched-reload -v6c-disable-shld-lhld-fold < %s | FileCheck %s
-; RUN: llc -march=v6c -O2 -v6c-disable-shld-lhld-fold < %s | FileCheck %s --check-prefix=DISABLED
+; RUN: llc -march=v6c -O2 -mv6c-no-spill-patched-reload -v6c-disable-shld-lhld-fold < %s | FileCheck %s --check-prefix=DISABLED
 
 ; O61 Stage 1: rewrite HL-only V6C_SPILL16 / V6C_RELOAD16 pairs into a
 ; patched LXI HL reload whose imm bytes are written by the SHLD spill.

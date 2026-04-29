@@ -1,5 +1,5 @@
 ; RUN: llc -march=v6c -O2 -mv6c-spill-patched-reload -v6c-disable-shld-lhld-fold < %s | FileCheck %s
-; RUN: llc -march=v6c -O2 -v6c-disable-shld-lhld-fold < %s | FileCheck %s --check-prefix=DISABLED
+; RUN: llc -march=v6c -O2 -mv6c-no-spill-patched-reload -v6c-disable-shld-lhld-fold < %s | FileCheck %s --check-prefix=DISABLED
 
 ; O61 Stage 6: widen the i8 spill-source filter from A-only (Stage 4)
 ; to any GR8 (A, B, C, D, E, H, L). The A-source fast path (STA Sym+1)

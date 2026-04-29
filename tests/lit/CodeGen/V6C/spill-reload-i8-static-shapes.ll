@@ -1,4 +1,4 @@
-; RUN: llc -march=v6c -O2 -mv6c-static-stack < %s | FileCheck %s
+; RUN: llc -march=v6c -O2 -mv6c-static-stack -mv6c-no-spill-patched-reload < %s | FileCheck %s
 
 ; O64 — Liveness-Aware i8 Spill/Reload Lowering (shared decision ladder
 ; in V6CSpillExpand). For static-stack-eligible functions the ladder

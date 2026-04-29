@@ -306,7 +306,8 @@ production builds — O43 saves 12cc + 4B per folded pair.
 
 ### O61 — Spill Into the Reload's Immediate Operand
 
-**Flag:** `-mllvm -mv6c-spill-patched-reload` (default: **off**)
+**Flag:** `-mllvm -mv6c-spill-patched-reload` (default: **on**); use
+`-mllvm -mv6c-no-spill-patched-reload` to disable.
 
 **Purpose:** Enables the `V6CSpillPatchedReload` post-RA pass. Instead of
 lowering a spill/reload pair to `SHLD slot` / `LHLD slot` (i16) or
@@ -344,8 +345,15 @@ With HL live in the "before" path (classical reload wrapped in
 
 **Usage:**
 ```bash
+clang -target i8080-unknown-v6c -O2 -S input.c -o output.s
+```
+
+The pass runs at every optimisation level by default. To opt out (for
+example, when targeting a ROM-resident `.text` section that cannot be
+patched at runtime), pass:
+```bash
 clang -target i8080-unknown-v6c -O2 -S input.c -o output.s \
-    -mllvm -mv6c-spill-patched-reload
+    -mllvm -mv6c-no-spill-patched-reload
 ```
 
 For clean demonstration of every patched site (no SHLD/LHLD pairs
@@ -353,16 +361,16 @@ getting folded away into `PUSH`/`POP`), combine with the O43 disable
 flag:
 ```bash
 clang -target i8080-unknown-v6c -O2 -S input.c -o output.s \
-    -mllvm -mv6c-spill-patched-reload \
     -mllvm -v6c-disable-shld-lhld-fold
 ```
 
 **Status:** Stages 1–5 complete (Stage 5 widens the i16 spill source
 from HL-only to `{HL, DE, BC}`, unlocking DE/BC argument-routed spill
-traffic); off by default pending broader code-in-RAM safety review
-(the patched imm bytes live in `.text`, which assumes code is
-RAM-resident and writable — true on Vector-06c but not on ROM/EPROM
-targets). Test assets live under `tests/features/37/` (i8 scope),
+traffic). On by default since the optimisation has stabilised across
+the C benchmark suite; the patched imm bytes live in `.text`, which
+assumes code is RAM-resident and writable — true on Vector-06c but
+not on ROM/EPROM targets, hence the `-mv6c-no-spill-patched-reload`
+opt-out. Test assets live under `tests/features/37/` (i8 scope),
 `tests/features/39/` (Stage 5 DE/BC), and
 `llvm/test/CodeGen/V6C/spill-patched-reload-*.ll`.
 

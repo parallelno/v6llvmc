@@ -1,4 +1,4 @@
-; RUN: llc -march=v6c -O2 --enable-deferred-spilling < %s | FileCheck %s
+; RUN: llc -march=v6c -O2 -mv6c-no-spill-patched-reload --enable-deferred-spilling < %s | FileCheck %s
 
 ; Test O43: SHLD/LHLD to PUSH/POP peephole (static stack spill shortening).
 ;

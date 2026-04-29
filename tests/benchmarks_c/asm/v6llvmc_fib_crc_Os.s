@@ -11,7 +11,7 @@ main:                                   ; @main
 	LDA	__v6c_a.main
 	MOV	H, E
 	MOV	L, A
-	SHLD	.LLo61_4+1
+	SHLD	__v6c_ss.main+6
 	LDA	__v6c_a.main+1
 	MOV	B, E
 	MOV	C, A
@@ -21,15 +21,17 @@ main:                                   ; @main
                                         ;     Child Loop BB0_2 Depth 2
                                         ;     Child Loop BB0_6 Depth 2
 	XCHG
-	SHLD	.LLo61_3+1
+	SHLD	__v6c_ss.main+2
 	XCHG
 	PUSH	H
-	MOV	L, C
-	MOV	H, B
-	SHLD	.LLo61_2+1
+	LXI	H, __v6c_ss.main+4
+	MOV	M, C
+	INX	H
+	MOV	M, B
 	POP	H
-.LLo61_4:
-	LXI	D, 0
+	XCHG
+	LHLD	__v6c_ss.main+6
+	XCHG
 	MOV	A, E
 	ADD	C
 	MOV	C, A
@@ -38,10 +40,10 @@ main:                                   ; @main
 	MOV	B, A
 	LXI	D, 0xff
 	PUSH	H
-	MOV	L, C
-	MOV	H, B
-	SHLD	.LLo61_0+1
-	SHLD	.LLo61_1+1
+	LXI	H, __v6c_ss.main
+	MOV	M, C
+	INX	H
+	MOV	M, B
 	POP	H
 	MOV	A, C
 	ANA	E
@@ -89,8 +91,9 @@ main:                                   ; @main
 	ORA	C
 	JNZ	.LBB0_2
 ; %bb.5:                                ;   in Loop: Header=BB0_1 Depth=1
-.LLo61_1:
-	LXI	D, 0
+	XCHG
+	LHLD	__v6c_ss.main
+	XCHG
 	MOV	E, D
 	MOV	D, B
 	MOV	A, L
@@ -133,18 +136,28 @@ main:                                   ; @main
 	ORA	C
 	JNZ	.LBB0_6
 ; %bb.9:                                ;   in Loop: Header=BB0_1 Depth=1
-.LLo61_3:
-	LXI	D, 0
+	XCHG
+	LHLD	__v6c_ss.main+2
+	XCHG
 	INX	D
-.LLo61_2:
-	LXI	B, 0
 	PUSH	H
-	MOV	L, C
-	MOV	H, B
-	SHLD	.LLo61_4+1
+	LXI	H, __v6c_ss.main+4
+	MOV	C, M
+	INX	H
+	MOV	B, M
 	POP	H
-.LLo61_0:
-	LXI	B, 0
+	PUSH	H
+	LXI	H, __v6c_ss.main+6
+	MOV	M, C
+	INX	H
+	MOV	M, B
+	POP	H
+	PUSH	H
+	LXI	H, __v6c_ss.main
+	MOV	C, M
+	INX	H
+	MOV	B, M
+	POP	H
 	MVI	A, 0x18
 	CMP	E
 	JNZ	.LBB0_1
@@ -159,5 +172,7 @@ main:                                   ; @main
                                         ; -- End function
 	.local	__v6c_a.main                    ; @__v6c_a.main
 	.comm	__v6c_a.main,2,1
+	.local	__v6c_ss.main                   ; @__v6c_ss.main
+	.comm	__v6c_ss.main,8,1
 	.addrsig
 	.addrsig_sym __v6c_a.main

@@ -83,7 +83,7 @@ def build_v6llvmc(prog: str, opt: str) -> Result:
     rom = BUILD / f"v6llvmc_{prog}_{opt}.rom"
     rom.unlink(missing_ok=True)
     cmd = [str(V6C_CLANG), "-target", "i8080-unknown-v6c",
-           f"-{opt}", "-mllvm", "-mv6c-spill-patched-reload",
+           f"-{opt}",
            str(SRC / f"{prog}.c"), "-o", str(rom)]
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode != 0 or not rom.exists():
@@ -93,7 +93,7 @@ def build_v6llvmc(prog: str, opt: str) -> Result:
     asm = ASM / f"v6llvmc_{prog}_{opt}.s"
     subprocess.run(
         [str(V6C_CLANG), "-target", "i8080-unknown-v6c",
-         f"-{opt}", "-mllvm", "-mv6c-spill-patched-reload",
+         f"-{opt}",
          "-S", str(SRC / f"{prog}.c"), "-o", str(asm)],
         capture_output=True, text=True,
     )
