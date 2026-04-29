@@ -26,16 +26,17 @@ cross_off:                              ; -- Begin function cross_off
 	MVI	L, 0
 	MOV	H, L
 	MOV	L, A
-	SHLD	__v6c_ss.cross_off
+	SHLD	.LLo61_0+1
 	CPI	0x7e
 	RNC
 .LBB1_1:
-	LHLD	__v6c_ss.cross_off
+	LHLD	.LLo61_0+1
 	DAD	H
 	LXI	B, buf
 .LBB1_2:                                ; =>This Inner Loop Header: Depth=1
+.LLo61_0:
+	LXI	D, 0
 	XCHG
-	LHLD	__v6c_ss.cross_off
 	DAD	D
 	XCHG
 	DAD	B
@@ -87,7 +88,7 @@ main:                                   ; @main
 	LXI	H, 2
 	MOV	E, L
 .LBB3_1:                                ; =>This Inner Loop Header: Depth=1
-	SHLD	__v6c_ss.main
+	SHLD	.LLo61_1+1
 	LXI	B, buf
 	DAD	B
 	MOV	A, M
@@ -95,14 +96,15 @@ main:                                   ; @main
 	JZ	.LBB3_3
 ; %bb.2:                                ;   in Loop: Header=BB3_1 Depth=1
 	MOV	A, E
-	LXI	H, __v6c_ss.main+2
+	LXI	H, .LLo61_2+1
 	MOV	M, E
 	CALL	cross_off
-	LXI	H, __v6c_ss.main+2
-	MOV	E, M
+.LLo61_2:
+	MVI	E, 0
 .LBB3_3:                                ;   in Loop: Header=BB3_1 Depth=1
 	INR	E
-	LHLD	__v6c_ss.main
+.LLo61_1:
+	LXI	H, 0
 	INX	H
 	MVI	A, 0x10
 	CMP	L
@@ -118,8 +120,4 @@ main:                                   ; @main
                                         ; -- End function
 	.local	buf                             ; @buf
 	.comm	buf,252,1
-	.local	__v6c_ss.cross_off              ; @__v6c_ss.cross_off
-	.comm	__v6c_ss.cross_off,2,1
-	.local	__v6c_ss.main                   ; @__v6c_ss.main
-	.comm	__v6c_ss.main,3,1
 	.addrsig

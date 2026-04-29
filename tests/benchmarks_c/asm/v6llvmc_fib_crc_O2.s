@@ -16,34 +16,34 @@ main:                                   ; @main
 	MOV	E, A
 	LXI	B, 0xffff
 	PUSH	H
-	LXI	H, __v6c_ss.main+4
-	MOV	M, C
-	INX	H
-	MOV	M, B
+	MOV	L, C
+	MOV	H, B
+	SHLD	.LLo61_2+1
 	POP	H
 	LXI	B, 0x18
 	JMP	.LBB0_1
 .LBB0_34:                               ;   in Loop: Header=BB0_1 Depth=1
-	SHLD	__v6c_ss.main+4
+	SHLD	.LLo61_2+1
 	MOV	B, D
 	MOV	C, E
 	DCX	B
-	LHLD	__v6c_ss.main+2
-	XCHG
-	LHLD	__v6c_ss.main
-	XCHG
+.LLo61_3:
+	LXI	H, 0
+.LLo61_1:
+	LXI	D, 0
 	MOV	A, B
 	ORA	C
 	JZ	.LBB0_35
 .LBB0_1:                                ; =>This Inner Loop Header: Depth=1
 	XCHG
-	SHLD	__v6c_ss.main+2
+	SHLD	.LLo61_3+1
 	XCHG
 	DAD	D
 	XCHG
 	LXI	H, 0xff
 	XCHG
-	SHLD	__v6c_ss.main
+	SHLD	.LLo61_0+1
+	SHLD	.LLo61_1+1
 	XCHG
 	MOV	A, E
 	ANA	L
@@ -51,9 +51,8 @@ main:                                   ; @main
 	MOV	A, D
 	ANA	H
 	MOV	H, A
-	XCHG
-	LHLD	__v6c_ss.main+4
-	XCHG
+.LLo61_2:
+	LXI	D, 0
 	MOV	A, L
 	XRA	E
 	MOV	L, A
@@ -268,9 +267,8 @@ main:                                   ; @main
 	XRA	D
 	MOV	H, A
 .LBB0_17:                               ;   in Loop: Header=BB0_1 Depth=1
-	XCHG
-	LHLD	__v6c_ss.main
-	XCHG
+.LLo61_0:
+	LXI	D, 0
 	MOV	E, D
 	MVI	D, 0
 	MOV	A, L
@@ -498,14 +496,12 @@ main:                                   ; @main
 	MOV	H, B
 	JMP	.LBB0_34
 .LBB0_35:
-	LHLD	__v6c_ss.main+4
+	LHLD	.LLo61_2+1
 	MOV	A, L
 	OUT	0xed
 	HLT
                                         ; -- End function
 	.local	__v6c_a.main                    ; @__v6c_a.main
 	.comm	__v6c_a.main,2,1
-	.local	__v6c_ss.main                   ; @__v6c_ss.main
-	.comm	__v6c_ss.main,6,1
 	.addrsig
 	.addrsig_sym __v6c_a.main

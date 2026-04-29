@@ -26,16 +26,17 @@ cross_off:                              ; -- Begin function cross_off
 	MVI	L, 0
 	MOV	H, L
 	MOV	L, A
-	SHLD	__v6c_ss.cross_off
+	SHLD	.LLo61_0+1
 	CPI	0x7e
 	RNC
 .LBB1_1:
-	LHLD	__v6c_ss.cross_off
+	LHLD	.LLo61_0+1
 	DAD	H
 	LXI	B, buf
 .LBB1_2:                                ; =>This Inner Loop Header: Depth=1
+.LLo61_0:
+	LXI	D, 0
 	XCHG
-	LHLD	__v6c_ss.cross_off
 	DAD	D
 	XCHG
 	DAD	B
@@ -188,6 +189,4 @@ main:                                   ; @main
                                         ; -- End function
 	.local	buf                             ; @buf
 	.comm	buf,252,1
-	.local	__v6c_ss.cross_off              ; @__v6c_ss.cross_off
-	.comm	__v6c_ss.cross_off,2,1
 	.addrsig
