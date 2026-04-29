@@ -84,6 +84,17 @@ See [docs/README.md](docs/README.md) for the full documentation index, including
 - [Calling Convention](docs/V6CCallingConvention.md) — register/stack argument passing, frame layout
 - [Optimization Passes](docs/V6COptimization.md) — 8 custom passes with toggle flags
 - [Instruction Timings](docs/V6CInstructionTimings.md) — cycle costs for all 8080 instructions
+- [Benchmarks](docs/benchmarks.md) — head-to-head vs c8080 and z88dk on shared C programs
+
+## Benchmarks
+
+V6C is benchmarked head-to-head against [c8080](https://github.com/Aleksey-F-Morozov/c8080)
+and [z88dk](https://github.com/z88dk/z88dk) (sccz80 backend) on three pure-C
+programs (`bsort`, `sieve`, `fib_crc`). v6llvmc -O2 wins 2 of 3 on cycle count.
+
+* Reproduce: `python tests/benchmarks_c/run_benchmarks.py`
+* Latest results: [docs/benchmarks.md](docs/benchmarks.md)
+* Source + how-to add new compilers/programs: [tests/benchmarks_c/](tests/benchmarks_c/README.md)
 
 ## License
 

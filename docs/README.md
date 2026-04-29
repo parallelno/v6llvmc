@@ -31,6 +31,7 @@ Goal: **C source → Clang → LLVM IR → V6C backend → flat binary → Vecto
 - **V6C backend source**: [llvm/lib/Target/V6C/](../llvm/lib/Target/V6C/) — git-tracked mirror
 - **Golden tests**: [tests/golden/](../tests/golden/) — emulator trust baseline
 - **Vector 06c CPU timings**: [Vector_06c_instruction_timings.md](Vector_06c_instruction_timings.md)
+- **Benchmarks vs other 8080 C compilers**: [benchmarks.md](benchmarks.md) (driver: [tests/benchmarks_c/](../tests/benchmarks_c/README.md))
 
 ## Milestone Status
 

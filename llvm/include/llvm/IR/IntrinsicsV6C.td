@@ -14,25 +14,25 @@ let TargetPrefix = "v6c" in {
 
 // I/O port access
 def int_v6c_in  : Intrinsic<[llvm_i8_ty], [llvm_i8_ty],
-    [IntrInaccessibleMemOnly]>,
+    [IntrInaccessibleMemOnly, IntrNoCallback]>,
     ClangBuiltin<"__builtin_v6c_in">;
 
 def int_v6c_out : Intrinsic<[], [llvm_i8_ty, llvm_i8_ty],
-    [IntrInaccessibleMemOnly]>,
+    [IntrInaccessibleMemOnly, IntrNoCallback]>,
     ClangBuiltin<"__builtin_v6c_out">;
 
 // Interrupt control
-def int_v6c_di  : Intrinsic<[], [], [IntrNoDuplicate, IntrHasSideEffects]>,
+def int_v6c_di  : Intrinsic<[], [], [IntrNoDuplicate, IntrHasSideEffects, IntrNoCallback]>,
     ClangBuiltin<"__builtin_v6c_di">;
 
-def int_v6c_ei  : Intrinsic<[], [], [IntrNoDuplicate, IntrHasSideEffects]>,
+def int_v6c_ei  : Intrinsic<[], [], [IntrNoDuplicate, IntrHasSideEffects, IntrNoCallback]>,
     ClangBuiltin<"__builtin_v6c_ei">;
 
 // Processor control
-def int_v6c_hlt : Intrinsic<[], [], [IntrNoDuplicate, IntrHasSideEffects]>,
+def int_v6c_hlt : Intrinsic<[], [], [IntrNoDuplicate, IntrHasSideEffects, IntrNoCallback]>,
     ClangBuiltin<"__builtin_v6c_hlt">;
 
-def int_v6c_nop : Intrinsic<[], [], [IntrHasSideEffects]>,
+def int_v6c_nop : Intrinsic<[], [], [IntrHasSideEffects, IntrNoCallback]>,
     ClangBuiltin<"__builtin_v6c_nop">;
 
 } // TargetPrefix = "v6c"
