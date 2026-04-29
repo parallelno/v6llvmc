@@ -98,6 +98,12 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
   setLoadExtAction(ISD::ZEXTLOAD, MVT::i16, MVT::i8, Expand);
   setLoadExtAction(ISD::EXTLOAD,  MVT::i16, MVT::i8, Expand);
 
+  // Truncating stores: expand to (trunc + store) so ISel sees a clean
+  // i8 store. Without this, at -O0 the matcher hits an unselectable
+  // `store<trunc to i8> i16` node (no DAGCombiner pass to fold the
+  // truncate into the value being stored).
+  setTruncStoreAction(MVT::i16, MVT::i8, Expand);
+
   // GlobalAddress, ExternalSymbol: Custom (wrap for LXI).
   setOperationAction(ISD::GlobalAddress,  MVT::i16, Custom);
   setOperationAction(ISD::ExternalSymbol, MVT::i16, Custom);
