@@ -50,12 +50,14 @@ define void @test_zero_reuse(i8 %a, i8 %b) {
   ret void
 }
 
-; --- Test 5: LXI value tracking ??? after LXI HL, 0x0500, H=5 and L=0 ---
-; If we then need MVI r, 0, should use MOV r, L (L is known 0).
+; --- Test 5: LXI value tracking — after LXI HL, 0x0500, H=5 and L=0. ---
+; A zero needs to be materialised in A for the i8 store. O55 rewrites
+; the would-be `MVI A, 0` to `XRA A` (FLAGS dead before STA), which is
+; 1B / 4cc — strictly better than O13's `MOV A, L` (1B / 8cc).
 ; CHECK-LABEL: test_lxi_tracking:
 ; CHECK:       LXI H, 0x500
 ; CHECK:       SHLD
-; CHECK-NEXT:  MOV A, L
+; CHECK-NEXT:  XRA A
 ; CHECK-NEXT:  STA g_out8
 define void @test_lxi_tracking() {
   store volatile i16 1280, ptr @g_out16  ; 0x0500

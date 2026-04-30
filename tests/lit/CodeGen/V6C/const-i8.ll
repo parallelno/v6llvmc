@@ -1,7 +1,7 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
 
 ; CHECK-LABEL: const_zero:
-; CHECK:       MVI A, 0
+; CHECK:       XRA A
 ; CHECK-NEXT:  RET
 define i8 @const_zero() {
   ret i8 0

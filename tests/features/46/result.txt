@@ -1,0 +1,237 @@
+O55 Pattern 2 -- `MVI A, 0` -> `XRA A` when FLAGS dead -- feature test 46
+==========================================================================
+
+Adds a single post-RA peephole, `foldMviZeroToXraA`, to V6CPeephole.cpp.
+For every `MVI A, 0` whose iterator-following uses of FLAGS are all dead,
+the pass replaces the 2-byte / 7-cycle `MVI A, 0` with the 1-byte /
+4-cycle `XRA A`. Pure size + speed win, no register class change, no
+ISel surface area touched. The FLAGS-liveness predicate reuses the
+existing `isRegDeadAfter()` helper (also used by O18, O38, O44, O65),
+which already handles Jcc/RST_cc as `Uses=[FLAGS]` thanks to the
+`Defs=[FLAGS]` declarations in V6CInstrInfo.td.
+
+The two sibling patterns from the parent spec
+(`design/future_plans/O55_additional_peepholes.md`) are obsolete:
+  * Pattern 1 (`XRI 0FFH` -> `CMA`) is already handled at ISel:
+    `(not i8) -> CMA` lives in V6CInstrInfo.td:539.
+  * Pattern 3 (idempotent `ANI/ORI 0FFH` and `ORI 0`) is dead code:
+    a corpus-wide grep across every V6C lit test, every benchmark in
+    docs/benchmarks.md, and the entire docs/ directory turns up zero
+    occurrences. DAG combiner already folds these constants away.
+Pattern 2 was the only one with non-zero hits in real codegen output.
+
+
+## C source (tests/features/46/v6llvmc.c)
+
+    typedef unsigned char  u8;
+    typedef signed char    i8;
+
+    // 1. Trailing constant zero -- FLAGS dead before RET.
+    i8 const_zero(void) { return 0; }
+
+    // 2. Multiple safe sites in a row through a side-effect call.
+    volatile u8 g_sink;
+    void clear_sink_twice(void) { g_sink = 0; g_sink = 0; }
+
+    // 3. Negative case: the constant-zero load is the live-out value
+    //    of one of the select arms; FLAGS are consumed by JP afterwards
+    //    in the *other* arm. The peephole correctly skips the live-FLAGS
+    //    site and only fires on the post-JP, FLAGS-already-consumed arm.
+    i8 neg_or_seven(i8 a, i8 b) {
+        return (a - b) < 0 ? (i8)0 : (i8)7;
+    }
+
+    volatile i8 g_a = -3, g_b = 4, g_out;
+
+    int main(void) {
+        g_out = const_zero();
+        clear_sink_twice();
+        g_out = neg_or_seven(g_a, g_b);
+        return 0;
+    }
+
+The c8080 reference (tests/features/46/c8080.c) is the same shape but
+uses `int main(int argc, char **argv)` because c8080 rejects `void`-arg
+`main`.
+
+
+## c8080 reference (Z80 -> 8080 conversion of main + helpers)
+
+    main:                              ; bytes / worst cc
+        LXI     H, 0                   ;  3 / 10
+        SHLD    __a_1_main             ;  3 / 16
+        SHLD    __a_2_main             ;  3 / 16
+        CALL    const_zero             ;  3 / 17
+        STA     g_out                  ;  3 / 13
+        CALL    clear_sink_twice       ;  3 / 17
+        LDA     g_a                    ;  3 / 13
+        STA     __a_1_neg_or_seven     ;  3 / 13
+        LDA     g_b                    ;  3 / 13
+        CALL    neg_or_seven           ;  3 / 17
+        STA     g_out                  ;  3 / 13
+        LXI     H, 0                   ;  3 / 10
+        RET                            ;  1 / 10
+                                       ; --- 37 B / 178 cc (caller body) ---
+
+    const_zero:
+        XRA     A                      ;  1 /  4
+        RET                            ;  1 / 10
+                                       ; --- 2 B / 14 cc ---
+
+    clear_sink_twice:                  ; c8080 fuses both volatile stores!
+        XRA     A                      ;  1 /  4
+        STA     g_sink                 ;  3 / 13
+        RET                            ;  1 / 10
+                                       ; --- 5 B / 27 cc ---  (only ONE store)
+
+    neg_or_seven:
+        STA     __a_2_neg_or_seven     ;  3 / 13
+        CALL    __o_i8_to_i16          ;  3 / 17
+        PUSH    H                      ;  1 / 11
+        LDA     __a_1_neg_or_seven     ;  3 / 13
+        CALL    __o_i8_to_i16          ;  3 / 17
+        POP     D                      ;  1 / 10
+        CALL    __o_sub_16             ;  3 / 17
+        LXI     D, 0                   ;  3 / 10
+        CALL    __o_sub_16             ;  3 / 17
+        JP      l_0                    ;  3 / 10
+        XRA     A                      ;  1 /  4
+        RET                            ;  1 / 10
+    l_0:
+        MVI     A, 7                   ;  2 /  7
+        RET                            ;  1 / 10
+                                       ; --- 31 B / 151 cc (worst) ---
+
+    __o_i8_to_i16:                     ; c8080 helper -- sign-extend i8 -> i16
+        MOV     L, A                   ;  1 /  5
+        RAL                            ;  1 /  4
+        SBB     A                      ;  1 /  4
+        MOV     H, A                   ;  1 /  5
+        RET                            ;  1 / 10
+                                       ; --- 5 B / 28 cc ---
+
+    __o_sub_16:                        ; c8080 helper -- HL = HL - DE
+        MOV     A, L                   ;  1 /  5
+        SUB     E                      ;  1 /  4
+        MOV     L, A                   ;  1 /  5
+        MOV     A, H                   ;  1 /  5
+        SBB     D                      ;  1 /  4
+        MOV     H, A                   ;  1 /  5
+        RET                            ;  1 / 10
+                                       ; --- 7 B / 38 cc ---
+
+
+## c8080 stats (worst CC and length per function)
+
+    Function             Bytes   Worst cc
+    -------------------  -----   --------
+    main                 37      178
+    const_zero            2       14
+    clear_sink_twice      5       27   (one volatile store dropped!)
+    neg_or_seven         31      151
+    __o_i8_to_i16         5       28
+    __o_sub_16            7       38
+
+Note: c8080 silently elides the second volatile store in
+`clear_sink_twice`, breaking C volatile semantics. v6llvmc honours
+both. The two compilers are otherwise structurally similar in this
+test, but main is a much smaller call-shaped function in c8080
+because c8080's static-stack ABI moves all argument marshalling
+into named locations (`__a_*_neg_or_seven`).
+
+
+## v6llvmc -O2 + O55 Pattern 2 (v6llvmc_new01.asm body)
+
+    const_zero:                        ; bytes / worst cc
+        XRA     A                      ;  1 /  4    [O55 rewrote MVI A, 0]
+        RET                            ;  1 / 10
+                                       ; --- 2 B / 14 cc ---
+
+    clear_sink_twice:
+        XRA     A                      ;  1 /  4    [O55 rewrote MVI A, 0]
+        STA     g_sink                 ;  3 / 13
+        STA     g_sink                 ;  3 / 13    (volatile preserved)
+        RET                            ;  1 / 10
+                                       ; --- 8 B / 40 cc ---
+
+    neg_or_seven:
+        CMP     B                      ;  1 /  4
+        JP      .LBB2_2                ;  3 / 10
+        XRA     A                      ;  1 /  4    [O55 rewrote MVI A, 0]
+        RET                            ;  1 / 10
+    .LBB2_2:
+        MVI     A, 7                   ;  2 /  7
+        RET                            ;  1 / 10
+                                       ; --- 9 B / 31 cc (worst path) ---
+
+    main:
+        XRA     A                      ;  1 /  4    [O55 rewrote MVI A, 0]
+        STA     g_out                  ;  3 / 13
+        STA     g_sink                 ;  3 / 13
+        STA     g_sink                 ;  3 / 13
+        LXI     H, g_b                 ;  3 / 10
+        LDA     g_a                    ;  3 / 13
+        CMP     M                      ;  1 /  7
+        JP      .LBB3_2                ;  3 / 10
+        XRA     A                      ;  1 /  4    [O55 rewrote MVI A, 0]
+        JMP     .LBB3_3                ;  3 / 10
+    .LBB3_2:
+        MVI     A, 7                   ;  2 /  7
+    .LBB3_3:
+        STA     g_out                  ;  3 / 13
+        LXI     H, 0                   ;  3 / 10
+        RET                            ;  1 / 10
+                                       ; --- 33 B / 130 cc (worst path) ---
+
+
+## v6llvmc stats (worst CC and length per function)
+
+    Function             OLD bytes   NEW bytes   OLD cc   NEW cc   delta
+    -------------------  ---------   ---------   ------   ------   ----------
+    const_zero               3           2          17       14    -1B / -3cc
+    clear_sink_twice         9           8          43       40    -1B / -3cc
+    neg_or_seven            10           9          31       31    -1B / 0cc *
+    main                    35          33         136      130    -2B / -6cc
+
+    *neg_or_seven: only the JP-not-taken arm rewrites; the worst-path
+     arm (JP taken -> MVI A, 7 -> RET) does not contain `MVI A, 0` and
+     is therefore identical across OLD/NEW. The non-worst arm saves
+     3 cc per execution.
+
+Five `MVI A, 0` sites total, five `XRA A` rewrites, five bytes saved
+across the test, no liveness regressions, no failures in the new lit
+test (peephole-mvi-zero-to-xra.ll) or the V6C C-feature golden suite
+(120/121 passing -- the one failure, ipra-call-preservation.ll, is a
+pre-existing regression unrelated to O55, verified by stashing the
+peephole change and observing the same failure).
+
+
+## Verification
+
+- New lit test: `llvm/test/CodeGen/V6C/peephole-mvi-zero-to-xra.ll`
+  -- 3 cases:
+    * `const_zero`     -- positive (trailing zero -> RET).
+    * `cold_zero`      -- positive (zero on JP-not-taken arm).
+    * `add_i32`        -- negative (`SBB D ; MVI A, 0 ; JNC` -- the
+                          MVI A, 0 sits between the carry-producer
+                          and a Jcc that consumes it; rewrite must
+                          NOT fire).
+- Full V6C lit suite: 95/96 PASS (the 1 fail is the pre-existing
+  ipra-call-preservation.ll regression).
+- Golden trust baseline (run_all.py): PASS.
+
+
+## Notes
+
+- The peephole runs in V6CPeephole, after register allocation and
+  after all the existing peepholes, so any FLAGS-clobbering rewrites
+  earlier in the pass cannot retroactively invalidate this one.
+- The transformation is exact: `XRA A` clears A and clears CY/AC/PSW
+  exactly the same way `MVI A, 0`'s following sequence clears them
+  (i.e., it doesn't, but no consumer needs them either, by the dead-
+  FLAGS predicate).
+- O13 (LXI value-tracking, see load-imm-combine.ll test_lxi_tracking)
+  used to substitute `MOV A, L` (1 B / 8 cc) when the L half of a
+  recent LXI was known zero. O55 supersedes that site with `XRA A`
+  (1 B / 4 cc) -- same byte count, half the cycles. The lit test
+  was updated to reflect the new (better) sequence.

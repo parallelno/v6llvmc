@@ -11,7 +11,6 @@
 | O6 | LDA/STA for Absolute Address Loads | [O06_lda_sta_absolute_addr.md](O06_lda_sta_absolute_addr.md) | V6C |
 | O7 | Loop Strength Reduction via TTI | [O07_loop_strength_reduction.md](O07_loop_strength_reduction.md) | V6C |
 | O8 | Spill Optimization (Tier 1/2 Strategy) | [O08_spill_optimization.md](O08_spill_optimization.md) | V6C |
-| O9 | Inline Assembly Completion (MC Asm Parser) | [O09_inline_assembly.md](O09_inline_assembly.md) | V6C |
 | O10 | Static Stack Allocation (Non-Reentrant) | [O10_static_stack_allocation.md](O10_static_stack_allocation.md) | llvm-mos |
 | O11 | Dual Cost Model (Bytes + Cycles) | [O11_dual_cost_model.md](O11_dual_cost_model.md) | llvm-mos |
 | O13 | Load-Immediate Combining (Register Value Tracking) | [O13_load_immediate_combining.md](O13_load_immediate_combining.md) | llvm-mos |
@@ -46,7 +45,6 @@
 | O43 | SHLD/LHLD to PUSH/POP Peephole (Static Stack Spill Shortening) ✅ | [O43_shld_lhld_to_push_pop.md](O43_shld_lhld_to_push_pop.md) | V6C |
 | O43-fix | SHLD/LHLD Safety Guard (Block fold when uncovered LHLD reachable) ✅ | [O43_fix_shld_lhld_safety_guard.md](O43_fix_shld_lhld_safety_guard.md) | V6C |
 | O44 | Adjacent XCHG Cancellation Peephole ✅ | [O44_xchg_cancellation.md](O44_xchg_cancellation.md) | V6C |
-| O45 | Adjacent POP/PUSH Cancellation Peephole | [O45_pop_push_cancellation.md](O45_pop_push_cancellation.md) | V6C |
 | O46 | MVI M, imm8 Immediate Store Peephole (superseded by O49) | [O46_mvi_m_immediate_store.md](O46_mvi_m_immediate_store.md) | V6C |
 | O49 | Direct Memory ALU/Store ISel (All M-Operand Instructions) ✅ | [O49_direct_memory_alu_isel.md](O49_direct_memory_alu_isel.md) | V6C |
 | O51 | LSR Cost Tuning (isLSRCostLess Enhancement) ✅ | [O51_lsr_cost_tuning.md](O51_lsr_cost_tuning.md) | llvm-z80 |
@@ -81,7 +79,6 @@
 | O6 | LDA/STA absolute addr | V6C | 2cc, 1B | Medium | Low | Low | None | [x] |
 | O7 | Loop Strength Reduction (TTI) | V6C | 120-160cc/iter | High (loops) | Medium | Medium | None | [x] |
 | O8 | Spill Optimization (T1/T2) | V6C | 64-76cc/pair | Very high | High | Med-High | O10 enhances T2 | [ ] |
-| O9 | Inline Assembly (MC parser) | V6C | N/A (feature) | N/A | High | Low | None | [ ] |
 | O10 | Static Stack (non-reentrant) | llvm-mos | 32-36cc/access | Very high | Medium | Medium | LTO/single-TU | [x] |
 | O11 | Dual Cost Model (Bytes+Cycles) | llvm-mos | N/A (infra) | N/A | Low | Very Low | None | [x] |
 | O13 | LdImm Combining (value track) | llvm-mos | 1B or 4cc+1B | High | Low | Very Low | None | [x] |
@@ -103,7 +100,7 @@
 | O30 | Conditional Return (Jcc RET→Rcc) | V6C | 3B, 1 instr | Med-High | Low | Very Low | O27 done | [x] |
 | O31 | Dead PHI-Constant Elimination | V6C | 9-11B, 40-60cc | Very high | Medium | Low | O27 done | [x] |
 | O32 | XCHG in copyPhysReg (RA-time swap) | V6C | 12cc, 1B | Med-High | Very Low | Very Low | None | [x] |
-| O33 | XCHG Peephole Relaxation | V6C | 12cc, 1B | Low | Very Low | Very Low | None | [ ] |
+| O33 | XCHG Peephole Relaxation | V6C | 12cc, 1B | Low | Very Low | Very Low | None | [x] |
 | O34 | SELECT_CC Zero-Test ISel Gap | V6C | 15cc, 3B + spill savings | Medium | Low-Med | Low | O27 done | [x] |
 | O35 | Conditional Return Over RET (Jcc-over-RET → Rcc) | 18cc, 3B | Medium | Very Low | Very Low | O28 done | [x] |
 | O36 | Branch-Implied Value Propagation | 12cc, 3B+ | Medium | Low | Low | O27+O35+O13 done | [x] |
@@ -116,14 +113,13 @@
 | O43 | SHLD/LHLD→PUSH/POP Peephole | V6C | 12cc, 4B per pair | Med-High | Low | Very Low | O10 done | [x] |
 | O43-fix | SHLD/LHLD Safety Guard (correctness) | V6C | N/A (bugfix) | N/A | Low | Very Low | O43 done | [x] |
 | O44 | Adjacent XCHG Cancellation | V6C | 8cc, 2B per pair | Medium | Very Low | Very Low | None | [x] |
-| O45 | Adjacent POP/PUSH Cancellation | V6C | 24cc, 2B per pair | High | Very Low | Very Low | O42 done | [ ] |
 | O46 | MVI M, imm8 Immediate Store (superseded by O49) | V6C | 4cc, 1B per instance | Low-Med | Very Low | Very Low | None | [ ] |
 | O49 | Direct Memory ALU/Store ISel (M-ops) | V6C | 4-8cc, 1-2B per instance | High | Low-Med | Very Low | O48 helps, supersedes O4+O46 | [x] |
 | O51 | LSR Cost Tuning (isLSRCostLess) | llvm-z80 | indirect (better LSR formulas) | High | Very Low | Very Low | O7 done | [x] |
 | O52 | Index IV Rewriting (8-bit indices) | llvm-mos | 14cc/iter | High | Low | Low | Complements O7 | [ ] |
 | O53 | Enhanced Value Tracking (RegVal) | llvm-z80 | 1-2B, 4-8cc per pattern | Very high | Medium | Low-Med | O13 done | [ ] |
 | O54 | Optimal Stack Adjustment | llvm-z80 | 3-7B, 8-20cc per frame | Medium | Low | Low | None | [ ] |
-| O55 | Additional Peepholes (CMA, XRA A) | llvm-z80 | 4cc, 1B per instance | Medium | Very Low | Very Low | None | [ ] |
+| O55 | Additional Peepholes (CMA, XRA A) | llvm-z80 | 4cc, 1B per instance | Medium | Very Low | Very Low | None | [x] (Pattern 2 only; Patterns 1 & 3 obsolete) |
 | O56 | Pre-RA Load Folding | llvm-z80 | 4cc, 1B per fold | Low-Med | Medium | Low | Complements O49 | [ ] |
 | O57 | Shift/Rotate Chaining | llvm-mos | 4-24cc per chain | Low | Medium | Low | None | [ ] |
 | O58 | CmpZero Backward Scan | llvm-mos | 4cc, 1B per instance | Medium | Low | Very Low | O17 done | [ ] |
@@ -153,7 +149,7 @@
 8. ~~**O23** — conditional tail call, extends O14 peephole, ~20 lines~~ ✅
 9. ~~**O27** — i16 zero-test (MOV A,H; ORA L), 10B+24cc per zero comparison, ~15 lines~~ ✅
 10. ~~**O32** — XCHG in copyPhysReg, 1B+12cc per DE↔HL copy, ~10 lines~~ ✅
-11. **O33** — XCHG peephole relaxation, drop isRegLiveBefore guard, ~10 lines
+11. ~~**O33** — XCHG peephole relaxation, drop isRegLiveBefore guard, ~10 lines~~ ✅
 12. ~~**O34** — SELECT_CC zero-test ISel gap, 3B+15cc + spill cascade savings, ~30 lines~~ ✅
 13. ~~**O28** — branch threading through JMP-only blocks, 3B+10cc, synergy with O27, ~25 lines~~ ✅
 14. ~~**O35** — conditional return over RET (Jcc-over-RET → Rcc), 3B per instance, ~20 lines~~ ✅
@@ -169,10 +165,9 @@
 24. ~~**O42** — liveness-aware pseudo expansion, skip PUSH/POP when dead, 21-24cc per instance, ~80 lines~~ ✅
 25. ~~**O43** — SHLD/LHLD→PUSH/POP peephole, 12cc+4B per short-lived HL spill, ~40 lines~~ ✅
 26. ~~**O44** — adjacent XCHG cancellation, 8cc+2B per pair, ~15 lines~~ ✅
-27. **O45** — adjacent POP/PUSH cancellation, 24cc+2B per pair, ~20 lines
 28. ~~**O49** — direct memory ALU/store ISel (all 11 M-operand instructions), supersedes O4+O46, ~80 lines~~ ✅
-31. **O51** — LSR cost tuning, evaluate Insns-first vs NumRegs-first ordering, ~10 lines
-32. **O55** — additional peepholes (CMA, XRA A, idempotent ALU), ~20 lines
+31. ~~**O51** — LSR cost tuning, evaluate Insns-first vs NumRegs-first ordering, ~10 lines~~ ✅
+32. ~~**O55** — `MVI A, 0` → `XRA A` peephole when FLAGS dead (Pattern 2 only; Patterns 1 and 3 obsolete — zero corpus occurrences), ~30 lines~~ ✅
 33. **O58** — CmpZero backward scan, skip past safe instructions in flag elimination, ~30 lines
 34. **O54** — optimal stack adjustment, POP/PUSH for small SP changes, ~30 lines
 35. ~~**O62** — efficient i16 shift-by-8/16 expansion, 16cc+1B per occurrence, ~60 lines~~ ✅
@@ -207,7 +202,6 @@
 33. **O61** — spill into reload's immediate operand (self-modifying code), 10-20cc+1-2B per reload, ~150 lines
 
 **Deferred**:
-- **O9** — inline assembly MC parser, implement when needed
 - **O57** — shift/rotate chaining, low priority — shifts uncommon in 8080 code
 
 ### Comparison with AVR

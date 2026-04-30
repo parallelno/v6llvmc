@@ -26,8 +26,10 @@ exit:
 ; The comparison constant should use MVI+CMP, not LXI+MOV+CMP.
 ; The optimizer may use either pointer comparison (MVI A, <(src+100))
 ; or integer counter comparison (MVI A, 0x64). Either way, MVI+CMP is used.
+; The high-byte half of an i16 counter compare loads a zero into A —
+; O55 narrows that to `XRA A` since FLAGS are dead until the next CMP.
 ; CHECK:      {{\.LBB.*:}}
 ; CHECK:      MVI A,
 ; CHECK:      CMP
-; CHECK:      MVI A,
+; CHECK:      {{(MVI A,|XRA A)}}
 ; CHECK:      CMP

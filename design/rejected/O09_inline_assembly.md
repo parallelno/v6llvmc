@@ -1,5 +1,8 @@
 # O9. Inline Assembly Completion (MC Asm Parser)
 
+## Rejected
+Already implemented `plan_asm_interop_overhaul.md`.
+
 ## Problem
 
 Inline assembly (`asm()` / `__asm__`) works at the LLVM IR level — constraint

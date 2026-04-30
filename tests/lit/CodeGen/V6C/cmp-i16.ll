@@ -6,9 +6,9 @@
 ; CHECK-LABEL: cmp_ne_i16:
 ; CHECK:       CMP
 ; CHECK:       JNZ
+; CHECK-NOT:   XRA
 ; CHECK:       CMP
 ; CHECK:       JNZ
-; CHECK-NOT:   XRA
 define i8 @cmp_ne_i16(i16 %a, i16 %b) {
   %c = icmp ne i16 %a, %b
   br i1 %c, label %then, label %else

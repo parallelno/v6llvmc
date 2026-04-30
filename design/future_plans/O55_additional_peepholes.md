@@ -1,7 +1,21 @@
-# O55. Additional Peepholes (CMA, XRA A, Idempotent ALU)
+# O55. Additional Peepholes (CMA, XRA A, Idempotent ALU) — ✅ Pattern 2 done; Patterns 1 and 3 obsolete
 
 *Inspired by llvm-z80 `Z80LateOptimization` peephole collection.*
 *Detailed analysis: [llvm_z80_analysis.md](llvm_z80_analysis.md) §S8.*
+
+## Status (2025)
+
+| Pattern | Status | Evidence |
+|---|---|---|
+| 1. `XRI 0FFH` → `CMA`              | **Obsolete** — already handled at ISel | `(not i8) → CMA` is a tablegen pattern in `V6CInstrInfo.td:539`. Corpus-wide grep finds zero `XRI 0FFH` (or `XRI 0xff`) instances anywhere in the V6C lit suite, benchmark output, or feature regression asm. |
+| 2. `MVI A, 0` → `XRA A` (FLAGS dead) | **✅ Implemented**                   | [`design/plan_O55_mvi_zero_to_xra_a.md`](../plan_O55_mvi_zero_to_xra_a.md) — feature test 46. New peephole `foldMviZeroToXraA` in `V6CPeephole.cpp`. Lit test `peephole-mvi-zero-to-xra.ll`. Saves 1 byte / 4 cycles per site (5 sites in feature test 46 = -5 B / -12 cc). |
+| 3. Idempotent `ANI n; ANI n` / `ORI n; ORI n` | **Obsolete** — never produced | Corpus-wide grep finds zero adjacent-identical ALU-immediate pairs. DAGCombine already folds these constants away before they reach codegen. |
+
+Pattern 2 was the only one with non-zero opportunity in real V6C
+codegen output. The implementation is complete; this file remains as
+historical context for the rejected/skipped patterns.
+
+
 
 ## Problem
 

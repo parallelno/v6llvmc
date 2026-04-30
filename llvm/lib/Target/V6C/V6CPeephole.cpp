@@ -64,6 +64,7 @@ private:
   bool foldShldLhldToPushPop(MachineBasicBlock &MBB);
   bool foldMovAluM(MachineBasicBlock &MBB);
   bool foldIncDecMviM(MachineBasicBlock &MBB);
+  bool foldMviZeroToXraA(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -890,6 +891,38 @@ bool V6CPeephole::foldIncDecMviM(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// O55 Pattern 2: replace `MVI A, 0` with `XRA A` when FLAGS is dead
+/// after the instruction. Saves 1 byte and 4 cycles per instance.
+///
+/// `XRA A` zeroes A *and* clobbers FLAGS (Z=1, S=0, P=1, CY=0, AC=0),
+/// while `MVI A, 0` leaves FLAGS untouched. The rewrite is therefore
+/// only legal when no live FLAGS use follows.
+bool V6CPeephole::foldMviZeroToXraA(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+  const TargetInstrInfo &TII =
+      *MBB.getParent()->getSubtarget().getInstrInfo();
+
+  for (MachineInstr &MI : llvm::make_early_inc_range(MBB)) {
+    if (MI.getOpcode() != V6C::MVIr)
+      continue;
+    if (MI.getOperand(0).getReg() != V6C::A)
+      continue;
+    if (!MI.getOperand(1).isImm() || MI.getOperand(1).getImm() != 0)
+      continue;
+    if (!isRegDeadAfter(MBB, MI.getIterator(), V6C::FLAGS, TRI))
+      continue;
+
+    BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(V6C::XRAr), V6C::A)
+        .addReg(V6C::A)
+        .addReg(V6C::A);
+    MI.eraseFromParent();
+    Changed = true;
+  }
+  return Changed;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -906,6 +939,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
     Changed |= foldXraCmpZeroTest(MBB);
     Changed |= foldXchgDad(MBB);
     Changed |= eliminateTailCall(MBB);
+    Changed |= foldMviZeroToXraA(MBB);
   }
   return Changed;
 }
