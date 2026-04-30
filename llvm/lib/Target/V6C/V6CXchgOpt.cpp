@@ -65,13 +65,11 @@ static bool isRegLiveBefore(MachineBasicBlock &MBB,
                             MachineBasicBlock::iterator I,
                             unsigned Reg,
                             const TargetRegisterInfo *TRI) {
-  // Check block's livein list (including aliases/subregs).
   for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
        ++AI) {
     if (MBB.isLiveIn(*AI))
       return true;
   }
-  // Scan backwards from I for any instruction that defines Reg.
   for (auto MI = MBB.begin(); MI != I; ++MI) {
     for (const MachineOperand &MO : MI->operands()) {
       if (MO.isReg() && MO.isDef() && TRI->regsOverlap(MO.getReg(), Reg))
@@ -79,6 +77,21 @@ static bool isRegLiveBefore(MachineBasicBlock &MBB,
     }
   }
   return false;
+}
+
+/// Mark the implicit-use operand of XCHG for `Reg` as `undef` when it
+/// wasn't proven live before the swap. This is a static annotation only —
+/// it tells the MIR verifier we knowingly read a possibly-undefined value
+/// that goes into a register proved dead after the swap. Codegen output
+/// is unchanged.
+static void markUndefIfNotLive(MachineInstr *XchgMI, MachineBasicBlock &MBB,
+                               unsigned Reg, const TargetRegisterInfo *TRI) {
+  // Scan up to (but not including) XCHG itself — its own implicit-def of Reg
+  // must not be counted as a live definition of Reg before the swap.
+  if (isRegLiveBefore(MBB, XchgMI->getIterator(), Reg, TRI))
+    return;
+  if (MachineOperand *MO = XchgMI->findRegisterUseOperand(Reg, /*isKill=*/false))
+    MO->setIsUndef(true);
 }
 
 /// Check if a physical register is dead (not read) after iterator I.
@@ -129,13 +142,18 @@ bool V6CXchgOpt::tryXchg(MachineBasicBlock &MBB,
   // XCHG swaps DE↔HL. Both pairs must be live (defined) before the swap.
   // If the "other" pair isn't live, XCHG would read an undefined register.
 
+  // O33: dropped isRegLiveBefore() — if HL/DE is dead after, the swap's
+  // side-effect into the other pair is harmless even when undefined.
   // Pattern 1: MOV D, H; MOV E, L → XCHG  (copies HL→DE, but also DE→HL)
   if (isMovReg(First, V6C::D, V6C::H) && isMovReg(Second, V6C::E, V6C::L)) {
-    if (!isRegLiveBefore(MBB, I, V6C::DE, TRI))
-      return false;
     if (!isRegDeadAfter(MBB, Next, V6C::HL, TRI))
       return false; // HL is live after → XCHG would corrupt it
-    BuildMI(MBB, First, First.getDebugLoc(), TII.get(V6C::XCHG));
+    MachineInstr *XchgMI =
+        BuildMI(MBB, First, First.getDebugLoc(), TII.get(V6C::XCHG));
+    // DE is the "other" pair: its value is unobserved post-swap (HL is dead).
+    // If DE wasn't defined before, annotate the implicit use as undef so
+    // -verify-machineinstrs is satisfied.
+    markUndefIfNotLive(XchgMI, MBB, V6C::DE, TRI);
     First.eraseFromParent();
     Second.eraseFromParent();
     return true;
@@ -143,11 +161,11 @@ bool V6CXchgOpt::tryXchg(MachineBasicBlock &MBB,
 
   // Pattern 2: MOV H, D; MOV L, E → XCHG  (copies DE→HL, but also HL→DE)
   if (isMovReg(First, V6C::H, V6C::D) && isMovReg(Second, V6C::L, V6C::E)) {
-    if (!isRegLiveBefore(MBB, I, V6C::HL, TRI))
-      return false;
     if (!isRegDeadAfter(MBB, Next, V6C::DE, TRI))
       return false; // DE is live after → XCHG would corrupt it
-    BuildMI(MBB, First, First.getDebugLoc(), TII.get(V6C::XCHG));
+    MachineInstr *XchgMI =
+        BuildMI(MBB, First, First.getDebugLoc(), TII.get(V6C::XCHG));
+    markUndefIfNotLive(XchgMI, MBB, V6C::HL, TRI);
     First.eraseFromParent();
     Second.eraseFromParent();
     return true;
@@ -155,11 +173,11 @@ bool V6CXchgOpt::tryXchg(MachineBasicBlock &MBB,
 
   // Pattern 3: MOV E, L; MOV D, H → XCHG (reversed order, same as pattern 1)
   if (isMovReg(First, V6C::E, V6C::L) && isMovReg(Second, V6C::D, V6C::H)) {
-    if (!isRegLiveBefore(MBB, I, V6C::DE, TRI))
-      return false;
     if (!isRegDeadAfter(MBB, Next, V6C::HL, TRI))
       return false; // HL is live after → XCHG would corrupt it
-    BuildMI(MBB, First, First.getDebugLoc(), TII.get(V6C::XCHG));
+    MachineInstr *XchgMI =
+        BuildMI(MBB, First, First.getDebugLoc(), TII.get(V6C::XCHG));
+    markUndefIfNotLive(XchgMI, MBB, V6C::DE, TRI);
     First.eraseFromParent();
     Second.eraseFromParent();
     return true;
@@ -167,11 +185,11 @@ bool V6CXchgOpt::tryXchg(MachineBasicBlock &MBB,
 
   // Pattern 4: MOV L, E; MOV H, D → XCHG (reversed order, same as pattern 2)
   if (isMovReg(First, V6C::L, V6C::E) && isMovReg(Second, V6C::H, V6C::D)) {
-    if (!isRegLiveBefore(MBB, I, V6C::HL, TRI))
-      return false;
     if (!isRegDeadAfter(MBB, Next, V6C::DE, TRI))
       return false; // DE is live after → XCHG would corrupt it
-    BuildMI(MBB, First, First.getDebugLoc(), TII.get(V6C::XCHG));
+    MachineInstr *XchgMI =
+        BuildMI(MBB, First, First.getDebugLoc(), TII.get(V6C::XCHG));
+    markUndefIfNotLive(XchgMI, MBB, V6C::HL, TRI);
     First.eraseFromParent();
     Second.eraseFromParent();
     return true;
