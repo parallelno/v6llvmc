@@ -17,13 +17,12 @@ define i8 @one_local(i8 %x) {
 }
 
 ; Test prologue/epilogue for function with 4-byte array local.
+; O54: PUSH/POP of a dead pair beats LXI+DAD+SPHL on 4-byte even frames.
 ; CHECK-LABEL: array_local:
-; CHECK:       LXI H, 0xfffc
-; CHECK-NEXT:  DAD SP
-; CHECK-NEXT:  SPHL
-; CHECK:       LXI H, 4
-; CHECK-NEXT:  DAD SP
-; CHECK-NEXT:  SPHL
+; CHECK:       PUSH B
+; CHECK-NEXT:  PUSH B
+; CHECK:       POP B
+; CHECK-NEXT:  POP B
 ; CHECK-NEXT:  RET
 define i8 @array_local(i8 %x) {
   %arr = alloca [4 x i8]

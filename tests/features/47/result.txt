@@ -1,0 +1,148 @@
+================================================================================
+O54: Optimal stack adjustment via PUSH/POP for small frames
+================================================================================
+
+Summary
+-------
+For SP adjustments with small even sizes (n ∈ {2,4} in non-Size mode,
+n ∈ {2,4,6} in Size mode), the V6C backend now emits PUSH/POP of a
+register pair whose halves are dead at the adjustment point. When no
+dead pair is available, it falls back to DCX/INX SP × n for n ∈ {2,4}
+(no clobber, 1B/8cc per step). Otherwise it keeps the existing
+LXI+DAD+SPHL sequence (5B/32cc, clobbers HL+FLAGS).
+
+Costs:
+  PUSH r           : 1 B / 16 cc   (SP -= 2)
+  POP  r           : 1 B / 12 cc   (SP += 2)
+  DCX/INX SP       : 1 B /  8 cc   (SP -= 1 / SP += 1)
+  LXI+DAD+SPHL     : 5 B / 32 cc   (clobbers HL, FLAGS)
+
+For a 2-byte even frame: PUSH+POP = 2 B / 28 cc beats LXI×2 = 10 B / 64 cc.
+For a 4-byte even frame: 2× PUSH/POP = 4 B / 56 cc beats LXI×2 = 10 B / 64 cc.
+
+================================================================================
+C test case (tests/features/47/v6llvmc.c)
+================================================================================
+extern unsigned char ext_fn(unsigned char x, unsigned char y);
+
+volatile unsigned int g_sink;
+
+unsigned int worker(unsigned char a, unsigned char b, unsigned char c) {
+    unsigned char r1 = ext_fn(a, b);
+    unsigned char r2 = ext_fn(b, c);
+    unsigned char r3 = ext_fn(a, c);
+    return (unsigned int)r1 + r2 + r3;
+}
+
+int main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    g_sink = worker(1, 2, 3);
+    return 0;
+}
+
+================================================================================
+c8080 asm (main + worker, Z80→i8080 converted)
+================================================================================
+main:
+    LXI    H, 0
+    SHLD   __a_1_main
+    SHLD   __a_2_main
+    MVI    A, 1
+    STA    __a_1_worker
+    MVI    A, 2
+    STA    __a_2_worker
+    MVI    A, 3
+    CALL   worker
+    SHLD   g_sink
+    LXI    H, 0
+    RET
+
+worker:
+    STA    __a_3_worker
+    LDA    __a_1_worker
+    STA    __a_1_ext_fn
+    LDA    __a_2_worker
+    CALL   ext_fn
+    STA    worker_r1
+    LDA    __a_2_worker
+    STA    __a_1_ext_fn
+    LDA    __a_3_worker
+    CALL   ext_fn
+    STA    worker_r2
+    LDA    __a_1_worker
+    STA    __a_1_ext_fn
+    LDA    __a_3_worker
+    CALL   ext_fn
+    STA    worker_r3
+    LHLD   worker_r1
+    MVI    H, 0
+    XCHG
+    LHLD   worker_r2
+    MVI    H, 0
+    DAD    D
+    XCHG
+    LHLD   worker_r3
+    MVI    H, 0
+    DAD    D
+    RET
+
+c8080 stats (excluding ext_fn body):
+  main:    ~14 instr,    ~28 bytes,   ~138 cc (incl. 3 calls into worker)
+  worker:  ~30 instr,    ~71 bytes,   ~302 cc (incl. 3 calls to ext_fn)
+  Note: c8080 uses static stack alloc (per-function arg/local globals);
+        no SP adjustment, no register save. main() has zero prologue
+        cost vs. v6llvmc's 1B/16cc PUSH PSW prologue.
+
+================================================================================
+v6llvmc asm — new (tests/features/47/v6llvmc_new01.asm)
+================================================================================
+worker:
+    LXI    H, 0xfffb              ; 5B odd frame → LXI+DAD+SPHL
+    DAD    SP
+    SPHL
+    ; ... (5-byte spill area for r1, r2, r3 plus argument scratch)
+    LXI    H, 5
+    DAD    SP
+    SPHL
+    XCHG
+    RET
+
+main:
+    PUSH   PSW                    ; *** O54: 1B/16cc instead of LXI+DAD+SPHL (5B/32cc) ***
+    MVI    A, 1
+    MVI    B, 2
+    CALL   ext_fn
+    LXI    H, 0
+    DAD    SP
+    MOV    M, A
+    ; ... (2-byte temp spill across calls)
+    SHLD   g_sink
+    LXI    H, 0
+    XCHG
+    POP    PSW                    ; *** O54: 1B/12cc instead of LXI+DAD+SPHL (5B/32cc) ***
+    XCHG
+    RET
+
+v6llvmc stats:
+  worker:  35 instr,  84 bytes,  ~360 cc  (5-byte odd frame, unchanged)
+  main:    19 instr,  29 bytes,  ~189 cc  (was 23 instr / 37 bytes / 225 cc)
+
+================================================================================
+Improvement vs. v6llvmc_old.asm
+================================================================================
+Function: main()
+  Prologue: LXI H,0xfffe / DAD SP / SPHL  →  PUSH PSW
+            5 B / 32 cc                  →  1 B / 16 cc      (-4 B, -16 cc)
+  Epilogue: LXI H,2 / DAD SP / SPHL      →  POP  PSW
+            5 B / 32 cc                  →  1 B / 12 cc      (-4 B, -20 cc)
+  Total:    -8 bytes, -36 cycles for main().
+
+Function: worker()
+  Frame size 5 (odd) → no eligible PUSH/POP path; LXI+DAD+SPHL kept.
+  Unchanged.
+
+Net regression-suite impact:
+  All 16 golden tests byte-exact.
+  All 122 lit tests pass (frame-lowering.ll, frame-lowering-pop-push.ll,
+  ipra-call-preservation.ll, ipra-recursive-scc.ll updated to reflect
+  PUSH PSW prologues for 2-byte even frames).

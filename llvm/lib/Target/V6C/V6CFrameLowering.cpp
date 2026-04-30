@@ -14,6 +14,7 @@
 
 #include "V6CFrameLowering.h"
 #include "V6C.h"
+#include "V6CInstrCost.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -29,6 +30,113 @@ bool V6CFrameLowering::hasFP(const MachineFunction &MF) const {
   return MF.getTarget().Options.DisableFramePointerElim(MF) ||
          MFI.hasVarSizedObjects() ||
          MFI.isFrameAddressTaken();
+}
+
+// Pick a GR16All pair whose halves are dead at MBBI. PSW (A+FLAGS) is
+// preferred — at function boundaries A is typically dead unless it is
+// the i8 arg-1 / i8 return register, and FLAGS is always dead.
+Register V6CFrameLowering::chooseDeadPair(const MachineBasicBlock &MBB,
+                                          MachineBasicBlock::iterator MBBI,
+                                          bool IsPrologue) const {
+  if (IsPrologue) {
+    // At entry: a half is "live" iff it appears in the MBB live-in set.
+    auto IsLive = [&](unsigned R) { return MBB.isLiveIn(R); };
+    bool ALive = IsLive(V6C::A);
+    bool BLive = IsLive(V6C::B) || IsLive(V6C::BC);
+    bool CLive = IsLive(V6C::C) || IsLive(V6C::BC);
+    bool DLive = IsLive(V6C::D) || IsLive(V6C::DE);
+    bool ELive = IsLive(V6C::E) || IsLive(V6C::DE);
+    bool HLive = IsLive(V6C::H) || IsLive(V6C::HL);
+    bool LLive = IsLive(V6C::L) || IsLive(V6C::HL);
+    if (!ALive)               return V6C::PSW;
+    if (!BLive && !CLive)     return V6C::BC;
+    if (!DLive && !ELive)     return V6C::DE;
+    if (!HLive && !LLive)     return V6C::HL;
+    return V6C::NoRegister;
+  }
+
+  // Epilogue: a half is "live" iff it is used by the terminating RET.
+  bool AUsed = false, BUsed = false, CUsed = false;
+  bool DUsed = false, EUsed = false, HUsed = false, LUsed = false;
+  if (MBBI != MBB.end() && MBBI->isReturn()) {
+    for (const MachineOperand &MO : MBBI->operands()) {
+      if (!MO.isReg()) continue;
+      Register R = MO.getReg();
+      if (R == V6C::A)                          AUsed = true;
+      if (R == V6C::B  || R == V6C::BC)         BUsed = true;
+      if (R == V6C::C  || R == V6C::BC)         CUsed = true;
+      if (R == V6C::D  || R == V6C::DE)         DUsed = true;
+      if (R == V6C::E  || R == V6C::DE)         EUsed = true;
+      if (R == V6C::H  || R == V6C::HL)         HUsed = true;
+      if (R == V6C::L  || R == V6C::HL)         LUsed = true;
+    }
+  }
+  if (!AUsed)               return V6C::PSW;
+  if (!BUsed && !CUsed)     return V6C::BC;
+  if (!DUsed && !EUsed)     return V6C::DE;
+  if (!HUsed && !LUsed)     return V6C::HL;
+  return V6C::NoRegister;
+}
+
+void V6CFrameLowering::emitSPAdjustment(MachineBasicBlock &MBB,
+                                        MachineBasicBlock::iterator MBBI,
+                                        int64_t Amount, const DebugLoc &DL,
+                                        bool IsPrologue,
+                                        V6COptMode Mode) const {
+  if (Amount == 0)
+    return;
+
+  const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  const uint64_t AbsN = static_cast<uint64_t>(Amount < 0 ? -Amount : Amount);
+
+  // Tier 1 — PUSH/POP x (AbsN/2) when a dead GR16All pair is available
+  // and the PUSH/POP cost beats LXI+DAD+SPHL under Mode.
+  bool PushPopEligible =
+      (AbsN % 2 == 0) && AbsN >= 2 &&
+      (AbsN == 2 || AbsN == 4 ||
+       (AbsN == 6 && Mode == V6COptMode::Size));
+  if (PushPopEligible) {
+    Register Pair = chooseDeadPair(MBB, MBBI, IsPrologue);
+    if (Pair != V6C::NoRegister) {
+      unsigned N = static_cast<unsigned>(AbsN / 2);
+      for (unsigned I = 0; I < N; ++I) {
+        if (IsPrologue) {
+          // PUSH reads Pair; the value is undef (we just want SP-=2).
+          BuildMI(MBB, MBBI, DL, TII.get(V6C::PUSH))
+              .addReg(Pair, RegState::Undef);
+        } else {
+          // POP defines Pair; mark the def Dead.
+          BuildMI(MBB, MBBI, DL, TII.get(V6C::POP))
+              .addReg(Pair, RegState::Define | RegState::Dead);
+        }
+      }
+      return;
+    }
+  }
+
+  // Tier 2 — DCX SP / INX SP x AbsN. Wins over LXI on bytes and cycles
+  // for AbsN in {2, 4}; ties on bytes and loses on cycles at AbsN=6.
+  // Used when PUSH/POP wasn't eligible OR no dead pair was available.
+  if (AbsN == 2 || AbsN == 4) {
+    unsigned Op = IsPrologue ? V6C::DCX : V6C::INX;
+    for (unsigned I = 0; I < AbsN; ++I) {
+      // INX/DCX have a tied $rp = $src constraint: pass SP as both
+      // def and use.
+      BuildMI(MBB, MBBI, DL, TII.get(Op), V6C::SP).addReg(V6C::SP);
+    }
+    return;
+  }
+
+  // Tier 3 — LXI HL, ±N; DAD SP; SPHL. Used for AbsN >= 6 (non-Size at
+  // n=6), AbsN >= 8, and any odd size. Clobbers HL and FLAGS — caller
+  // is responsible for HL save/restore around this site if needed.
+  int64_t LxiImm = IsPrologue ? -static_cast<int64_t>(AbsN)
+                              :  static_cast<int64_t>(AbsN);
+  BuildMI(MBB, MBBI, DL, TII.get(V6C::LXI))
+      .addReg(V6C::HL, RegState::Define)
+      .addImm(LxiImm);
+  BuildMI(MBB, MBBI, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
+  BuildMI(MBB, MBBI, DL, TII.get(V6C::SPHL));
 }
 
 // Emit prologue: subtract the stack frame size from SP.
@@ -51,6 +159,7 @@ void V6CFrameLowering::emitPrologue(MachineFunction &MF,
   MachineFrameInfo &MFI = MF.getFrameInfo();
   uint64_t StackSize = MFI.getStackSize();
   bool UseFP = hasFP(MF);
+  V6COptMode Mode = getV6COptMode(MF);
 
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
   MachineBasicBlock::iterator MBBI = MBB.begin();
@@ -89,11 +198,8 @@ void V6CFrameLowering::emitPrologue(MachineFunction &MF,
     }
 
     if (OrigStackSize > 0) {
-      BuildMI(MBB, MBBI, DL, TII.get(V6C::LXI))
-          .addReg(V6C::HL, RegState::Define)
-          .addImm(-static_cast<int64_t>(OrigStackSize));
-      BuildMI(MBB, MBBI, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
-      BuildMI(MBB, MBBI, DL, TII.get(V6C::SPHL));
+      emitSPAdjustment(MBB, MBBI, -static_cast<int64_t>(OrigStackSize), DL,
+                       /*IsPrologue=*/true, Mode);
     }
 
     // Reload saved DE from stack: at SP + OrigStackSize.
@@ -149,11 +255,8 @@ void V6CFrameLowering::emitPrologue(MachineFunction &MF,
     return;
   }
 
-  BuildMI(MBB, MBBI, DL, TII.get(V6C::LXI))
-      .addReg(V6C::HL, RegState::Define)
-      .addImm(-static_cast<int64_t>(StackSize));
-  BuildMI(MBB, MBBI, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
-  BuildMI(MBB, MBBI, DL, TII.get(V6C::SPHL));
+  emitSPAdjustment(MBB, MBBI, -static_cast<int64_t>(StackSize), DL,
+                   /*IsPrologue=*/true, Mode);
 
   if (NeedHLSave) {
     BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
@@ -179,6 +282,7 @@ void V6CFrameLowering::emitEpilogue(MachineFunction &MF,
   MachineFrameInfo &MFI = MF.getFrameInfo();
   uint64_t StackSize = MFI.getStackSize();
   bool UseFP = hasFP(MF);
+  V6COptMode Mode = getV6COptMode(MF);
 
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
   MachineBasicBlock::iterator MBBI = MBB.getLastNonDebugInstr();
@@ -245,15 +349,10 @@ void V6CFrameLowering::emitEpilogue(MachineFunction &MF,
         .addReg(V6C::E, RegState::Define)
         .addReg(V6C::L);
   }
-  // LXI HL, StackSize
-  BuildMI(MBB, MBBI, DL, TII.get(V6C::LXI))
-      .addReg(V6C::HL, RegState::Define)
-      .addImm(static_cast<int64_t>(StackSize));
-  // DAD SP  (HL = HL + SP = SP + StackSize)
-  BuildMI(MBB, MBBI, DL, TII.get(V6C::DAD))
-      .addReg(V6C::SP);
-  // SPHL  (SP = HL)
-  BuildMI(MBB, MBBI, DL, TII.get(V6C::SPHL));
+  // Adjust SP back: SP += StackSize. Helper picks PUSH/POP, DCX/INX SP,
+  // or LXI+DAD+SPHL based on size, opt mode, and register pressure.
+  emitSPAdjustment(MBB, MBBI, static_cast<int64_t>(StackSize), DL,
+                   /*IsPrologue=*/false, Mode);
   if (NeedHLSave) {
     BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
         .addReg(V6C::H, RegState::Define)

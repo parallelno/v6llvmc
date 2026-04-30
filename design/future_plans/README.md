@@ -51,6 +51,9 @@
 | O52 | Index IV Rewriting (8-bit Loop Indices) | [O52_index_iv_rewriting.md](O52_index_iv_rewriting.md) | llvm-mos |
 | O53 | Enhanced Value Tracking (Full RegVal) | [O53_enhanced_value_tracking.md](O53_enhanced_value_tracking.md) | llvm-z80 |
 | O54 | Optimal Stack Adjustment Strategy | [O54_optimal_stack_adjustment.md](O54_optimal_stack_adjustment.md) | llvm-z80 |
+| O54b | Per-Call Frame Cleanup via `POP rp` | [O54b_per_call_frame_cleanup.md](O54b_per_call_frame_cleanup.md) | V6C |
+| O54c | Stack-Arg Passing via `PUSH rp` (caller side) | [O54c_stack_arg_passing_push.md](O54c_stack_arg_passing_push.md) | V6C |
+| O54d | Constant-Size `alloca` via `PUSH rp` | [O54d_alloca_constant_size_push.md](O54d_alloca_constant_size_push.md) | V6C |
 | O55 | Additional Peepholes (CMA, XRA A, Idempotent ALU) | [O55_additional_peepholes.md](O55_additional_peepholes.md) | llvm-z80 |
 | O56 | Pre-RA Load Folding (optimizeLoadInstr) | [O56_pre_ra_load_folding.md](O56_pre_ra_load_folding.md) | llvm-z80 |
 | O57 | Shift/Rotate Chaining | [O57_shift_rotate_chaining.md](O57_shift_rotate_chaining.md) | llvm-mos |
@@ -118,11 +121,14 @@
 | O51 | LSR Cost Tuning (isLSRCostLess) | llvm-z80 | indirect (better LSR formulas) | High | Very Low | Very Low | O7 done | [x] |
 | O52 | Index IV Rewriting (8-bit indices) | llvm-mos | 14cc/iter | High | Low | Low | Complements O7 | [ ] |
 | O53 | Enhanced Value Tracking (RegVal) | llvm-z80 | 1-2B, 4-8cc per pattern | Very high | Medium | Low-Med | O13 done | [ ] |
-| O54 | Optimal Stack Adjustment | llvm-z80 | 3-7B, 8-20cc per frame | Medium | Low | Low | None | [ ] |
+| O54 | Optimal Stack Adjustment | llvm-z80 | 3-7B, 8-20cc per frame | Medium | Low | Low | None | [x] |
+| O54b | Per-Call Frame Cleanup (POP rp) | V6C | 3-4B, 8-20cc per call cleanup | Low (today: 0; opens up if hasReservedCallFrame=false) | Medium | Low-Med | O54a; gated on per-call-frame mode | [ ] |
+| O54c | Stack-Arg Passing (PUSH rp) | V6C | -6B/-28cc per i16 stack arg | Medium (FFI / >3-arg calls) | Medium | Medium | O54a; couples with O54b | [ ] |
+| O54d | Constant-Size alloca (PUSH rp) | V6C | -2 to -4B per small constant alloca | Niche (zero in benchmarks) | Low-Med | Low | O54a | [ ] |
 | O55 | Additional Peepholes (CMA, XRA A) | llvm-z80 | 4cc, 1B per instance | Medium | Very Low | Very Low | None | [x] (Pattern 2 only; Patterns 1 & 3 obsolete) |
 | O56 | Pre-RA Load Folding | llvm-z80 | 4cc, 1B per fold | Low-Med | Medium | Low | Complements O49 | [ ] |
 | O57 | Shift/Rotate Chaining | llvm-mos | 4-24cc per chain | Low | Medium | Low | None | [ ] |
-| O58 | CmpZero Backward Scan | llvm-mos | 4cc, 1B per instance | Medium | Low | Very Low | O17 done | [ ] |
+| O58 | CmpZero Backward Scan | llvm-mos | 4cc, 1B per instance | Medium | Low | Very Low | O17 done | [x] |
 | O59 | Freq-Weighted Spill Slot Alloc | llvm-mos | indirect (better slot placement) | Medium | High | Medium | O10 done | [ ] |
 | O61 | Spill Into Reload Immediate (self-modifying) | V6C | 10-20cc, 1-2B per reload | Very high | Medium | Low-Med | O10 done | [x] |
 | O62 | Efficient i16 Shift Expansion (constant amount) | V6C | 16cc, 1B per shift-by-8/16 | High | Low | Very Low | None | [ ] |
@@ -137,6 +143,7 @@
 ### Recommended order
 
 **Phase 1 — Quick wins (Low complexity, immediate benefit)**:
+
 1. ~~**O14** — trivial tail-call peephole, 18cc savings, ~15 lines~~ ✅
 2. ~~**O18** — loop counter DCR+JNZ peephole, 20cc savings per iteration, ~40 lines~~ ✅
 3. ~~**O17** — redundant flag elimination, 4cc+1B per instance, ~50 lines~~ ✅
@@ -145,6 +152,7 @@
 6. ~~**O6** — simple ISel pattern for LDA/STA~~ ✅
 
 **Phase 2 — Quick extensions (Low complexity, builds on completed work)**:
+
 7. ~~**O21** — LHLD/SHLD for i16 globals, ISel patterns like O6, ~20 lines~~ ✅
 8. ~~**O23** — conditional tail call, extends O14 peephole, ~20 lines~~ ✅
 9. ~~**O27** — i16 zero-test (MOV A,H; ORA L), 10B+24cc per zero comparison, ~15 lines~~ ✅
@@ -168,14 +176,18 @@
 28. ~~**O49** — direct memory ALU/store ISel (all 11 M-operand instructions), supersedes O4+O46, ~80 lines~~ ✅
 31. ~~**O51** — LSR cost tuning, evaluate Insns-first vs NumRegs-first ordering, ~10 lines~~ ✅
 32. ~~**O55** — `MVI A, 0` → `XRA A` peephole when FLAGS dead (Pattern 2 only; Patterns 1 and 3 obsolete — zero corpus occurrences), ~30 lines~~ ✅
-33. **O58** — CmpZero backward scan, skip past safe instructions in flag elimination, ~30 lines
-34. **O54** — optimal stack adjustment, POP/PUSH for small SP changes, ~30 lines
+33. ~~**O58** — CmpZero backward scan, skip past safe instructions in flag elimination, ~30 lines~~ ✅
+34. **O54** — optimal stack adjustment (prologue/epilogue baseline), POP/PUSH for small SP changes, ~30 lines. Establishes the `chooseDeadPair` + `emitSPAdjustment` helpers used by O54b/c/d.
+34a. **O54c** — caller-side `PUSH rp` for stack-arg passing, −6B/−28cc per i16 stack arg, ~120 lines. Highest practical impact of the O54 family; reuses O54 helpers.
+34b. **O54b** — per-call frame cleanup at `ADJCALLSTACKUP`, ~80 lines. **Gated** on a separate decision to flip `hasReservedCallFrame()` to false — until then, no real cleanup sites exist.
+34c. **O54d** — constant-size `alloca` via `PUSH rp × n/2`, ~50 lines. Niche (zero hits in current benchmarks); revisit only after O54 + O54c land.
 35. ~~**O62** — efficient i16 shift-by-8/16 expansion, 16cc+1B per occurrence, ~60 lines~~ ✅
 36. ~~**O65** — MOV r, M + ALU r fold (peephole backstop to O49), 4cc+1B per fold, ~40–60 lines~~ ✅
 37. ~~**O67** — i8 rotate ISel via RLC/RRC, ~14× speedup/size on constant rotl/rotr, ~60 lines~~ ✅
 38. ~~**O68** — wide SHL/ROTL by 1 via `DAD H`. Phase 1 (i16 `<<1`) is already de-facto delivered via O40 + `LowerSHL_i16` (no patch needed). **Phase 2 ✅** (`rotl i16, 1` → `DAD H; MOV A,L; ACI 0; MOV L,A`, 5B/36cc, saves −12B/−64cc per rotate; clobbers A, no liveness regression). Phase 3 (i32) deferred (~200 LOC of new infrastructure required — multi-result SDNode + glue, no `ReplaceNodeResults` hook today).~~ ✅
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
+
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅
 20. ~~**O20** — honest store/load defs, 14cc+2B per loop iteration, ~100 lines~~ ✅
 21. ~~**O16** — store-to-load forwarding, 44-52cc per eliminated reload~~ ✅
@@ -189,6 +201,7 @@
 27. **O56** — pre-RA load folding, fold single-use loads into M-operand consumers, ~100 lines
 
 **Phase 4 — Loop & stack (Medium-High complexity, massive payoff)**:
+
 27. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
 28. **O22** — TTI cost hooks (arithmetic, memory, cmp costs), extends O7
 29. ~~**O10** — static stack allocation for non-reentrant functions, supersedes O8 T2~~ ✅
@@ -196,12 +209,14 @@
 31. **O52** — index IV rewriting, narrow 16-bit loop indices to 8-bit via SCEV, ~80 lines
 
 **Phase 5 — Advanced (High complexity)**:
+
 30. **O3** — narrow-type arithmetic, highest per-instance savings but complex DAGCombine
 31. **O8** — remaining spill optimization (T1 PUSH/POP), complements O10
 32. **O59** — frequency-weighted spill slot allocation, enhances O10 with block frequency analysis, ~200 lines
 33. **O61** — spill into reload's immediate operand (self-modifying code), 10-20cc+1-2B per reload, ~150 lines
 
 **Deferred**:
+
 - **O57** — shift/rotate chaining, low priority — shifts uncommon in 8080 code
 
 ### Comparison with AVR

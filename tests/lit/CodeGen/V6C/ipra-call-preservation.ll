@@ -30,15 +30,17 @@ entry:
 ; IPRA-LABEL: test_external:
 ; The extern_action call's clobbers are unknown, so %x is spilled to
 ; stack. HL holds the live %x at entry; XCHG (1B/4cc) parks it in DE
-; before the frame-setup `LXI H, 0xfffe` overwrites HL. (Previously
-; the backend used `MOV D, H; MOV E, L` here — 2B/10cc — XCHG is
-; strictly better and HL is dead-on-entry to the LXI.)
+; before the prologue advances SP. O54 picks PUSH PSW (1B/16cc) over
+; LXI+DAD+SPHL (5B/32cc) for the 2-byte even frame. (Previously the
+; backend used `MOV D, H; MOV E, L` here — 2B/10cc — XCHG is strictly
+; better and HL is dead-on-entry to the SP adjustment.)
 ; IPRA:       XCHG
-; IPRA-NEXT:  LXI H, 0xfffe
+; IPRA-NEXT:  PUSH PSW
 ; IPRA:       CALL extern_action
 ; IPRA-NEXT:  CALL action_b
 ; IPRA:       MOV E, M
 ; IPRA:       MOV D, M
+; IPRA:       POP PSW
 
 ; IPRA-LABEL: test_direct:
 ; IPRA:       MOV D, H
@@ -51,15 +53,17 @@ entry:
 
 ; NOIPRA-LABEL: test_external:
 ; NOIPRA:       XCHG
-; NOIPRA-NEXT:  LXI H, 0xfffe
+; NOIPRA-NEXT:  PUSH PSW
 ; NOIPRA:       CALL extern_action
 ; NOIPRA-NEXT:  CALL action_b
 ; NOIPRA:       MOV E, M
 ; NOIPRA:       MOV D, M
+; NOIPRA:       POP PSW
 
 ; NOIPRA-LABEL: test_direct:
 ; NOIPRA:       XCHG
-; NOIPRA-NEXT:  LXI H, 0xfffe
+; NOIPRA-NEXT:  PUSH PSW
 ; NOIPRA:       CALL action_b
 ; NOIPRA:       MOV E, M
 ; NOIPRA:       MOV D, M
+; NOIPRA:       POP PSW

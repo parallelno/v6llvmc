@@ -66,7 +66,7 @@ entry:
 }
 
 ; CHECK-LABEL: caller_scc:
-; CHECK:       LXI H, 0xfffe
+; CHECK:       PUSH PSW
 ; CHECK:       CALL ping
 ;
 ; CHECK-LABEL: caller_leaf:
