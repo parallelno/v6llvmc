@@ -1,5 +1,10 @@
 # O58. CmpZero Backward Scan Enhancement
 
+## Rejected
+**it's already done**
+The optimization is no longer valid as a separate plan — it's already implemented in V6CRedundantFlagElim.cpp.
+
+
 *Inspired by llvm-mos `MOSLateOptimization::lowerCmpZeros`.*
 *Detailed analysis: [llvm_mos_analysis.md](llvm_mos_analysis.md) §S5.*
 
