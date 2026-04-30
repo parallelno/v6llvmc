@@ -28,8 +28,7 @@ entry:
 }
 
 ; IPRA-LABEL: test_external:
-; IPRA:       MOV D, H
-; IPRA-NEXT:  MOV E, L
+; IPRA:       XCHG
 ; IPRA-NEXT:  LXI H, 0xfffe
 ; IPRA:       CALL extern_action
 ; IPRA-NEXT:  CALL action_b
@@ -46,8 +45,7 @@ entry:
 ; IPRA-NOT:   PUSH D
 
 ; NOIPRA-LABEL: test_external:
-; NOIPRA:       MOV D, H
-; NOIPRA-NEXT:  MOV E, L
+; NOIPRA:       XCHG
 ; NOIPRA-NEXT:  LXI H, 0xfffe
 ; NOIPRA:       CALL extern_action
 ; NOIPRA-NEXT:  CALL action_b
@@ -55,8 +53,7 @@ entry:
 ; NOIPRA:       MOV D, M
 
 ; NOIPRA-LABEL: test_direct:
-; NOIPRA:       MOV D, H
-; NOIPRA-NEXT:  MOV E, L
+; NOIPRA:       XCHG
 ; NOIPRA-NEXT:  LXI H, 0xfffe
 ; NOIPRA:       CALL action_b
 ; NOIPRA:       MOV E, M
