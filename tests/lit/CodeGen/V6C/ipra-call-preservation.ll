@@ -28,8 +28,12 @@ entry:
 }
 
 ; IPRA-LABEL: test_external:
-; IPRA:       MOV D, H
-; IPRA-NEXT:  MOV E, L
+; The extern_action call's clobbers are unknown, so %x is spilled to
+; stack. HL holds the live %x at entry; XCHG (1B/4cc) parks it in DE
+; before the frame-setup `LXI H, 0xfffe` overwrites HL. (Previously
+; the backend used `MOV D, H; MOV E, L` here — 2B/10cc — XCHG is
+; strictly better and HL is dead-on-entry to the LXI.)
+; IPRA:       XCHG
 ; IPRA-NEXT:  LXI H, 0xfffe
 ; IPRA:       CALL extern_action
 ; IPRA-NEXT:  CALL action_b
@@ -46,8 +50,7 @@ entry:
 ; IPRA-NOT:   PUSH D
 
 ; NOIPRA-LABEL: test_external:
-; NOIPRA:       MOV D, H
-; NOIPRA-NEXT:  MOV E, L
+; NOIPRA:       XCHG
 ; NOIPRA-NEXT:  LXI H, 0xfffe
 ; NOIPRA:       CALL extern_action
 ; NOIPRA-NEXT:  CALL action_b
@@ -55,8 +58,7 @@ entry:
 ; NOIPRA:       MOV D, M
 
 ; NOIPRA-LABEL: test_direct:
-; NOIPRA:       MOV D, H
-; NOIPRA-NEXT:  MOV E, L
+; NOIPRA:       XCHG
 ; NOIPRA-NEXT:  LXI H, 0xfffe
 ; NOIPRA:       CALL action_b
 ; NOIPRA:       MOV E, M
