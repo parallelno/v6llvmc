@@ -150,7 +150,10 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
   setOperationAction(ISD::SHL,   MVT::i16, Custom);
   setOperationAction(ISD::SRL,   MVT::i16, Custom);
   setOperationAction(ISD::SRA,   MVT::i16, Custom);
-  setOperationAction(ISD::ROTL,  MVT::i16, Expand);
+  // O68 Phase 2: i16 rotate-left by 1 lowers to V6CISD::ROTL16_1
+  // (DAD H + ACI 0 carry-fold). All other amounts and ROTR fall back
+  // to the default Expand path via SDValue() return in LowerROTL.
+  setOperationAction(ISD::ROTL,  MVT::i16, Custom);
   setOperationAction(ISD::ROTR,  MVT::i16, Expand);
 
   // Compare-and-branch, select: Custom (fuse into 8-bit compare sequences).
@@ -220,6 +223,7 @@ const char *V6CTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case V6CISD::DCX16:    return "V6CISD::DCX16";
   case V6CISD::ROTL8:    return "V6CISD::ROTL8";
   case V6CISD::ROTR8:    return "V6CISD::ROTR8";
+  case V6CISD::ROTL16_1: return "V6CISD::ROTL16_1";
   }
   return nullptr;
 }
@@ -713,12 +717,23 @@ static SDValue emitRotChain(SelectionDAG &DAG, const SDLoc &DL, SDValue Val,
 }
 
 SDValue V6CTargetLowering::LowerROTL(SDValue Op, SelectionDAG &DAG) const {
-  if (Op.getValueType() != MVT::i8)
-    return SDValue();
-
+  EVT VT = Op.getValueType();
   SDLoc DL(Op);
   SDValue Val = Op.getOperand(0);
   SDValue Amt = Op.getOperand(1);
+
+  if (VT == MVT::i16) {
+    // O68 Phase 2: rotl i16 x, 1 → V6CISD::ROTL16_1 (DAD H + ACI 0).
+    // Other constants and variable amounts return SDValue() so LLVM
+    // falls back to the default Expand path (SHL+SRL+OR).
+    if (auto *CA = dyn_cast<ConstantSDNode>(Amt))
+      if ((CA->getZExtValue() & 15) == 1)
+        return DAG.getNode(V6CISD::ROTL16_1, DL, MVT::i16, Val);
+    return SDValue();
+  }
+
+  if (VT != MVT::i8)
+    return SDValue();
 
   if (auto *CA = dyn_cast<ConstantSDNode>(Amt)) {
     unsigned N = CA->getZExtValue() & 7;

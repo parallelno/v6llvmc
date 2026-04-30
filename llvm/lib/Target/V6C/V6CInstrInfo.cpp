@@ -1690,6 +1690,23 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     return true;
   }
 
+  case V6C::V6C_ROTL16_1: {
+    // O68 Phase 2: rotl i16 x, 1
+    //   DAD H        ; HL <<= 1, CY = old bit 15      (12cc, 1B)
+    //   MOV A, L     ;                                ( 8cc, 1B)
+    //   ACI 0        ; A = L + 0 + CY = L | CY        ( 8cc, 2B)
+    //   MOV L, A     ;                                ( 8cc, 1B)
+    // GR16Ptr / tied $dst=$src guarantees Dst == Src == HL post-RA,
+    // so no framing is needed. Total: 4 instr / 5B / 36cc, A clobbered
+    // (matches today's expand semantics).
+    BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(V6C::HL);
+    BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::L);
+    BuildMI(MBB, MI, DL, get(V6C::ACI), V6C::A).addReg(V6C::A).addImm(0);
+    BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::L).addReg(V6C::A);
+    MI.eraseFromParent();
+    return true;
+  }
+
   case V6C::V6C_LOAD8_P: {
     // HL-preserving expansion with 4-priority chain.
     Register DstReg = MI.getOperand(0).getReg();

@@ -1,0 +1,162 @@
+O68 Phase 2 -- rotl i16 by 1 via DAD H + ACI 0 -- feature test 45
+==================================================================
+
+Switches `ISD::ROTL` for `i16` from `Expand` to `Custom` and adds a
+new target ISD node `V6CISD::ROTL16_1` that lowers, post-RA, to a
+4-instruction carry-fold sequence in HL:
+
+    DAD  H            ; HL = HL+HL, CY = old MSB
+    MOV  A, L         ; A = new low byte (b0 = 0 after DAD)
+    ACI  0            ; b0 |= CY  (folds the rotated MSB into LSB)
+    MOV  L, A         ; HL holds the rotated value
+
+Total: 5 B / 36 cc / clobbers A. Today's default Expand path emits a
+6-step shift-left chain plus a 7-step shift-right chain plus an
+OR-of-halves -- ~17 B / ~100 cc per scalar `rotl i16, 1` and the
+same ~17 B again for every funnel-shift idiom that DAGCombine
+canonicalises to `ISD::ROTL i16, c`. Clang's `__builtin_rotateleft16`
+goes through the same path.
+
+Phase 1 of the parent feature spec (`design/future_plans/O68...md`)
+turned out to be already de-facto implemented: `LowerSHL_i16` rewrites
+shift-by-1 to `add x, x` (V6CISelLowering.cpp:778-810), which pairs
+with the O40 DAD fast path in V6C_ADD16 expansion (V6CInstrInfo.cpp:670)
+to produce the same single `DAD H` instruction we would otherwise
+emit by hand. Phase 3 (i32 rotl/shl by 1) is deferred -- a deeper
+investigation showed it requires ~150-200 LOC of net-new infrastructure
+(no `setOperationAction` for any i32 op today, no `ReplaceNodeResults`
+hook, requires multi-result SDNode + glue + label-emission idiom).
+
+Phase 2 is a pure scalar-rotate win: any function or hot loop that
+currently calls `__builtin_rotateleft16(x, 1)` or hand-writes
+`(x<<1)|(x>>15)` shrinks by ~12 B and ~64 cc per occurrence.
+
+Implementation:
+  V6CISelLowering.h      -- enum entry V6CISD::ROTL16_1.
+  V6CISelLowering.cpp    -- ISD::ROTL i16 -> Custom; LowerROTL i16
+                            recognises `(i16, 1)` and returns
+                            V6CISD::ROTL16_1; getTargetNodeName case;
+                            other amounts return SDValue() and fall
+                            back to the default Expand path.
+  V6CInstrInfo.td        -- SDT_V6CRotL16_1 profile; V6Crotl16_1 SDNode;
+                            V6C_ROTL16_1 pseudo (GR16Ptr-tied dst=src,
+                            Defs=[A,FLAGS]) with Pat<>.
+  V6CInstrInfo.cpp       -- expandPostRAPseudo case V6C_ROTL16_1
+                            emits the 4-instruction sequence.
+
+The pseudo is constrained to `GR16Ptr` (HL only), so register
+allocation guarantees the operand is in HL before expansion -- no
+copy-in/copy-out wrapper is required. Direction-flip
+(`ROTR i16` is canonicalised to `ROTL i16, 16-N` by DAGCombine, so
+the new path automatically catches `rotr i16 x, 15` too).
+
+
+## C source (tests/features/45/v6llvmc.c -- c8080.c is the same shape)
+
+    typedef unsigned short u16;
+    typedef unsigned char  u8;
+
+    u16 rotl_u16_1(u16 x) { return (u16)((x << 1) | (x >> 15)); }
+
+    u16 crc16_step(u16 crc, u8 byte) {
+        crc ^= ((u16)byte) << 8;
+        for (int i = 0; i < 8; ++i) {
+            u16 hi = crc & 0x8000;
+            crc = (u16)(crc << 1);
+            if (hi) crc ^= 0x1021;
+        }
+        return crc;
+    }
+
+    u16 rotl_u16_2(u16 x) { return (u16)((x << 2) | (x >> 14)); }
+    u16 fshl_u16_1(u16 x) { return __builtin_rotateleft16(x, (u16)1); }
+
+
+## Assembly outputs
+
+  v6llvmc_old.asm      6526 B  -- baseline (ROTL i16 = Expand)
+  v6llvmc_new01.asm    5452 B  -- O68 Phase 2 (ROTL i16, 1 = Custom)
+  c8080.asm            5923 B  -- reference (helper-call shape)
+
+
+## Per-function body length (lines, including label and trailing RET)
+
+  Function       v6llvmc OLD    v6llvmc NEW    Delta
+  ------------   ------------   ------------   ----------
+  rotl_u16_1     39             6              -33  (-85%)
+  fshl_u16_1     39             6              -33  (-85%)
+  rotl_u16_2     36             36             0    (Expand path, unchanged -- by design)
+  crc16_step     154            154            0    (no rotate -- see note below)
+
+
+## v6llvmc -O2 + O68 Phase 2 (v6llvmc_new01.asm, post-lowering)
+
+    rotl_u16_1:
+        DAD     H           ; 1 B / 10 cc
+        MOV     A, L        ; 1 B /  5 cc
+        ACI     0           ; 2 B /  7 cc
+        MOV     L, A        ; 1 B /  5 cc
+        RET
+
+    fshl_u16_1:
+        DAD     H           ; identical -- DAGCombine canonicalises
+        MOV     A, L        ; both forms to ISD::ROTL i16, 1.
+        ACI     0
+        MOV     L, A
+        RET
+
+
+## Headline numbers (per scalar rotate, body only, excluding RET)
+
+  Path         Bytes   Cycles
+  ----------   -----   ------
+  v6llvmc OLD  ~17     ~100
+  v6llvmc NEW    5       27   (DAD 10 + MOV 5 + ACI 7 + MOV 5)
+  ----------   -----   ------
+  Savings      -12B    -73cc  per `rotl i16, 1`
+
+
+## Note on crc16_step
+
+The CRC-16 inner loop is unchanged. LLVM lowers `crc <<= 1` as a
+plain `ISD::SHL i16, 1`, not `ISD::ROTL` -- the high-bit extraction
+goes through a separate `crc & 0x8000` AND that is independent of the
+shift. So the rotate-recognition pass in InstCombine never fires.
+The shift itself is already covered by the O40 DAD fast path
+(`SHL i16, 1` -> `DAD H`) since shift-amount-1 was rewritten to
+add-self by `LowerSHL_i16` (the de-facto Phase 1). This is exactly
+the case Phase 1 already covers, and is why `crc16_step`'s body
+length is identical in OLD vs NEW.
+
+The intended customer for Phase 2 is therefore the explicit
+funnel-shift idiom (`__builtin_rotateleft16`, hand-written
+`(x<<1)|(x>>15)`, `__builtin_rotateleft16` calls inside Clang
+intrinsics) rather than CRC-style bit-banged loops.
+
+
+## Verification
+
+- New lit test: `llvm-project/llvm/test/CodeGen/V6C/rotl-i16-dad-h.ll`
+  -- 3 cases (rotl_u16_1 exact-sequence assert, rotl_u16_2 Expand
+  fall-back assert, fshl_u16_1 funnel-shift recognition assert).
+- Full lit suite: 119/119 PASS.
+- Golden trust baseline + lit suite: 2/2 suites PASS via run_all.py.
+- Benchmarks (bsort, sieve, fib_crc): checksums unchanged
+  (0xC4 / 0x36 / 0x2B). fib_crc -O2 marginally improved
+  (68,536 -> 68,528 cc) from the rotate appearing in CRC initialisation.
+
+## Notes
+
+- We chose the branchless ACI 0 form over the branchful JNC/INR L
+  variant because the V6C backend has no precedent for emitting
+  named labels inside `expandPostRAPseudo`, and the ACI form clobbers
+  exactly what today's Expand path already clobbers (A) -- no
+  liveness regression for callers.
+- `GR16Ptr` (HL-only register class) is reused from the existing
+  `V6C_DAD` pseudo. Tied `$dst = $src` constraint mirrors that
+  precedent verbatim.
+- `ISD::ROTR i16` stays at `Expand`. DAGCombine canonicalises
+  rotates with constant amount through `ROTL`, so the pattern is
+  caught regardless of source direction.
+- No CLI flag: this is an unconditional ISel improvement -- the
+  default Expand path is strictly worse for amount=1.

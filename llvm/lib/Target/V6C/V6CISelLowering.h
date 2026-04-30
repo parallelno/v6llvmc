@@ -33,6 +33,9 @@ enum NodeType : unsigned {
   DCX16,      // 16-bit decrement by immediate count (1..3), no flag set.
   ROTL8,      // 1-bit accumulator rotate left  (RLC).
   ROTR8,      // 1-bit accumulator rotate right (RRC).
+  ROTL16_1,   // i16 rotate-left by 1, lowered via DAD H + ACI 0 carry-fold
+              // (O68 Phase 2). Single-result, HL-constrained at the pseudo
+              // level. CY chains internally inside the post-RA expansion.
 };
 } // namespace V6CISD
 

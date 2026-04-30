@@ -108,6 +108,10 @@ def SDT_V6CRot8 : SDTypeProfile<1, 1, [SDTCisVT<0, i8>, SDTCisVT<1, i8>]>;
 def V6Crotl8 : SDNode<"V6CISD::ROTL8", SDT_V6CRot8>;
 def V6Crotr8 : SDNode<"V6CISD::ROTR8", SDT_V6CRot8>;
 
+// O68 Phase 2: ROTL16_1 — i16 rotate-left by 1 (DAD H + ACI 0 fold).
+def SDT_V6CRotL16_1 : SDTypeProfile<1, 1, [SDTCisVT<0, i16>, SDTCisVT<1, i16>]>;
+def V6Crotl16_1     : SDNode<"V6CISD::ROTL16_1", SDT_V6CRotL16_1>;
+
 //===----------------------------------------------------------------------===//
 // V6C condition codes (used in BRCOND and SELECT_CC)
 //===----------------------------------------------------------------------===//
@@ -823,6 +827,16 @@ let Defs = [A, FLAGS] in {
       "# SRA16 $dst, $src, $amt",
       [(set i16:$dst, (V6Csra16 i16:$src, (i8 timm:$amt)))]>;
 }
+
+// O68 Phase 2: 16-bit rotate-left by 1.
+// HL-constrained via GR16Ptr: post-RA expansion is the literal
+// DAD H; MOV A,L; ACI 0; MOV L,A sequence (4 instr / 5 B / 36 cc).
+// CY chains internally inside the post-RA expansion; the pseudo
+// declares only the externally-observable Defs (A, FLAGS).
+let Defs = [A, FLAGS], Constraints = "$dst = $src" in
+def V6C_ROTL16_1 : V6CPseudo<(outs GR16Ptr:$dst), (ins GR16Ptr:$src),
+    "# ROTL16_1 $dst, $src",
+    [(set i16:$dst, (V6Crotl16_1 i16:$src))]>;
 
 // 16-bit load from pointer (register pair).
 // No Defs=[HL]: when addr=DE expansion uses XCHG (preserving HL),
