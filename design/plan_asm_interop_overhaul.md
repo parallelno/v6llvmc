@@ -416,7 +416,7 @@ Phase 4 — Inline-asm clobber verification
 
 Phase 5 — V6C resource headers
 - [x] 29. Create `clang/lib/Driver/ToolChains/V6C/include/{string.h, stdlib.h, v6c.h}`
-- [x] 30. CMake install rule for `<resource-dir>/lib/v6c/include/`  *(deferred for parity with v6c.ld; both rely on dev-tree path lookup in the driver. Add when `ninja install` becomes part of the workflow.)*
+- [x] 30. CMake install rule for `<resource-dir>/lib/v6c/include/`  *(headers and `v6c.ld` still rely on dev-tree path lookup in the driver; install rules to be added when `ninja install` becomes part of the workflow. **Note:** `compiler-rt/lib/builtins/v6c/crt0.s` is now auto-assembled into `<resource-dir>/lib/v6c/crt0.o` by `clang/lib/Driver/CMakeLists.txt` on every clang build, with a matching `install(FILES ...)` rule.)*
 - [x] 31. Mirror scripts updated for new include dir
 - [x] 32. Verify Clang stock `stdint.h` produces correct V6C macros (no override needed)
 
