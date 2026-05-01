@@ -990,6 +990,10 @@ SDValue V6CTargetLowering::LowerFormalArguments(
   MachineRegisterInfo &RegInfo = MF.getRegInfo();
 
   V6CArgAllocator Alloc;
+  // Offset (in bytes) of the next incoming stack argument relative to the
+  // outgoing-arg area in the caller's frame. Translated to a callee-SP
+  // offset by adding 2 for the return address pushed by CALL.
+  unsigned StackOffset = 0;
 
   for (unsigned i = 0, e = Ins.size(); i != e; ++i) {
     MVT VT = Ins[i].VT;
@@ -1011,12 +1015,15 @@ SDValue V6CTargetLowering::LowerFormalArguments(
       SDValue ArgVal = DAG.getCopyFromReg(Chain, DL, VReg, VT);
       InVals.push_back(ArgVal);
     } else {
-      // Stack argument. Located above the return address (2 bytes).
-      // The frame lowering will adjust offsets once the frame is set up.
+      // Stack argument. Located above the 2-byte return address pushed by
+      // CALL. The eliminateFrameIndex helper adds StackSize to the SPOffset
+      // recorded here, so we encode the +2 ret-addr skip plus the running
+      // arg offset.
       unsigned Size = VT.getSizeInBits() / 8;
       int FI = MFI.CreateFixedObject(Size,
-                                      /*SPOffset=*/0, // Adjusted later.
+                                      /*SPOffset=*/2 + StackOffset,
                                       /*IsImmutable=*/true);
+      StackOffset += Size;
       SDValue FIN = DAG.getFrameIndex(FI, MVT::i16);
       SDValue ArgVal = DAG.getLoad(VT, DL, Chain, FIN,
                                    MachinePointerInfo::getFixedStack(MF, FI));

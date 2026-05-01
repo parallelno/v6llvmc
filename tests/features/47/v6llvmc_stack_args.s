@@ -1,0 +1,131 @@
+	.text
+	.section	.text.error_stack_arg,"ax",@progbits
+	.globl	error_stack_arg                 ; -- Begin function error_stack_arg
+error_stack_arg:                        ; @error_stack_arg
+	;=== int error_stack_arg(int arg0, int arg1, int arg2, int arg3, int arg4) ===
+	;  arg0 = HL
+	;  arg1 = DE
+	;  arg2 = BC
+	;  arg3 = stack
+	;  arg4 = stack
+; %bb.0:
+	;--- V6C_ADD16 ---
+	DAD	D
+	;--- V6C_ADD16 ---
+	DAD	B
+	XCHG
+	;--- V6C_LEA_FI ---
+	LXI	H, 2
+	DAD	SP
+	MOV	B, H
+	MOV	C, L
+	;--- V6C_LOAD16_P ---
+	MOV	H, B
+	MOV	L, C
+	MOV	A, M
+	INX	H
+	MOV	H, M
+	MOV	L, A
+	;--- V6C_ADD16 ---
+	DAD	D
+	RET
+                                        ; -- End function
+	.section	.text.reg_args,"ax",@progbits
+	.globl	reg_args                        ; -- Begin function reg_args
+reg_args:                               ; @reg_args
+	;=== int reg_args(int arg0, int arg1, int arg2, int arg3, int arg4) ===
+	;  arg0 = HL
+	;  arg1 = DE
+	;  arg2 = BC
+	;  arg3 = stack
+	;  arg4 = stack
+; %bb.0:
+	;--- V6C_ADD16 ---
+	DAD	D
+	;--- V6C_ADD16 ---
+	DAD	B
+	RET
+                                        ; -- End function
+	.section	.text.main,"ax",@progbits
+	.globl	main                            ; -- Begin function main
+main:                                   ; @main
+	;=== int main(int arg0, void* arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
+; %bb.0:
+	PUSH	PSW
+	PUSH	PSW
+	;--- V6C_LOAD16_G ---
+	LHLD	i_p
+	SHLD	.LLo61_0+1
+	;--- V6C_LOAD16_G ---
+	XCHG
+	LHLD	i_p+2
+	XCHG
+	;--- V6C_LOAD16_G ---
+	LHLD	i_p+4
+	SHLD	.LLo61_1+1
+	;--- V6C_LOAD16_G ---
+	LHLD	i_p+6
+	;--- V6C_LOAD16_G ---
+	PUSH	H
+	LHLD	i_p+8
+	MOV	B, H
+	MOV	C, L
+	POP	H
+	PUSH	H
+	LXI	H, 2
+	DAD	SP
+	MOV	B, H
+	MOV	C, L
+	POP	H
+	;--- V6C_STORE16_P ---
+	MOV	A, L
+	STAX	B
+	INX	B
+	MOV	A, H
+	STAX	B
+.LLo61_0:
+	LXI	H, 0
+.LLo61_1:
+	LXI	B, 0
+	CALL	error_stack_arg
+	MOV	A, L
+	OUT	0xed
+	;--- V6C_LOAD16_G ---
+	LHLD	i_p
+	SHLD	.LLo61_0+1
+	;--- V6C_LOAD16_G ---
+	XCHG
+	LHLD	i_p+2
+	XCHG
+	;--- V6C_LOAD16_G ---
+	LHLD	i_p+4
+	MOV	B, H
+	MOV	C, L
+	;--- V6C_LOAD16_G ---
+	LHLD	i_p+6
+	;--- V6C_LOAD16_G ---
+	LHLD	i_p+8
+	LHLD	.LLo61_0+1
+	CALL	reg_args
+	MOV	A, L
+	OUT	0xed
+	LXI	H, 0
+	XCHG
+	POP	PSW
+	POP	PSW
+	XCHG
+	RET
+                                        ; -- End function
+	.data
+	.globl	i_p                             ; @i_p
+i_p:
+	DW	1                               ; 0x1
+	DW	2                               ; 0x2
+	DW	3                               ; 0x3
+	DW	4                               ; 0x4
+	DW	5                               ; 0x5
+
+	.addrsig
+	.addrsig_sym i_p

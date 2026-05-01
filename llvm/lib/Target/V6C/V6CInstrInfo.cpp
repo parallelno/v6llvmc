@@ -68,6 +68,28 @@ void V6CInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     return;
   }
 
+  // SP → DE / BC: route via HL but preserve the caller's HL.
+  // Sequence: PUSH HL; LXI HL,2; DAD SP; MOV DestHi,H; MOV DestLo,L; POP HL.
+  // The +2 in the LXI immediate cancels the SP -= 2 done by PUSH HL, so the
+  // value materialised is the original SP value. Clobbers FLAGS (reserved).
+  if (SrcReg == V6C::SP &&
+      (DestReg == V6C::DE || DestReg == V6C::BC)) {
+    const TargetRegisterInfo *TRI = &RI;
+    MCRegister DestHi = TRI->getSubReg(DestReg, V6C::sub_hi);
+    MCRegister DestLo = TRI->getSubReg(DestReg, V6C::sub_lo);
+    BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
+    BuildMI(MBB, MI, DL, get(V6C::LXI), V6C::HL).addImm(2);
+    BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(V6C::SP);
+    BuildMI(MBB, MI, DL, get(V6C::MOVrr))
+        .addReg(DestHi, RegState::Define)
+        .addReg(V6C::H);
+    BuildMI(MBB, MI, DL, get(V6C::MOVrr))
+        .addReg(DestLo, RegState::Define)
+        .addReg(V6C::L);
+    BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL);
+    return;
+  }
+
   llvm_unreachable("Cannot copy between these register classes");
 }
 
@@ -1313,7 +1335,10 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     } else {
       // Addr=BC: preserve HL via PUSH/POP.
       // O42: skip PUSH/POP HL when HL is dead after this instruction.
-      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+      // Also skip when DstReg == HL: the load itself fully redefines HL,
+      // so the surrounding PUSH/POP would just clobber the loaded value.
+      bool HLDead =
+          DstReg == V6C::HL || isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
       if (!HLDead)
         BuildMI(MBB, MI, DL, get(V6C::PUSH))
             .addReg(V6C::HL, RegState::Kill)
