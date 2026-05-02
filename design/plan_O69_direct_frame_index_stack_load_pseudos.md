@@ -108,11 +108,6 @@ Mark O69 complete in future plans and update plan notes/results.
 
 Complements O54/O54c stack-argument work and O49 direct memory operations by making stack-relative memory operations first-class before RA.
 
-## 7. Future Enhancements
-
-- Consider extending selection to indexed frame-pointer forms if a future frame pointer path benefits.
-- Consider FI direct forms for additional narrow/extending load cases if they appear in benchmarks.
-
 ## 8. References
 
 - `design\future_plans\O69_lea_fi_pointer_use_folding.md`
