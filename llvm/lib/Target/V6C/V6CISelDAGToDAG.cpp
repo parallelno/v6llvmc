@@ -53,6 +53,49 @@ void V6CDAGToDAGISel::Select(SDNode *N) {
   default:
     break;
 
+  case ISD::LOAD: {
+    auto *LD = cast<LoadSDNode>(N);
+    if (LD->getExtensionType() != ISD::NON_EXTLOAD)
+      break;
+    MVT VT = LD->getSimpleValueType(0);
+    if (VT != MVT::i8 && VT != MVT::i16)
+      break;
+    auto *FI = dyn_cast<FrameIndexSDNode>(LD->getBasePtr());
+    if (!FI)
+      break;
+
+    SDValue TFI = CurDAG->getTargetFrameIndex(FI->getIndex(), MVT::i16);
+    SmallVector<SDValue, 2> Ops = {TFI, LD->getChain()};
+    unsigned LoadOpc = (VT == MVT::i8) ? V6C::V6C_LOAD8_FI
+                                       : V6C::V6C_LOAD16_FI;
+    SDNode *Load = CurDAG->getMachineNode(
+        LoadOpc, DL, CurDAG->getVTList(VT, MVT::Other), Ops);
+    CurDAG->setNodeMemRefs(cast<MachineSDNode>(Load), {LD->getMemOperand()});
+    ReplaceNode(N, Load);
+    return;
+  }
+
+  case ISD::STORE: {
+    auto *ST = cast<StoreSDNode>(N);
+    if (ST->isTruncatingStore())
+      break;
+    MVT VT = ST->getMemoryVT().getSimpleVT();
+    if (VT != MVT::i8 && VT != MVT::i16)
+      break;
+    auto *FI = dyn_cast<FrameIndexSDNode>(ST->getBasePtr());
+    if (!FI)
+      break;
+
+    SDValue TFI = CurDAG->getTargetFrameIndex(FI->getIndex(), MVT::i16);
+    SmallVector<SDValue, 3> Ops = {ST->getValue(), TFI, ST->getChain()};
+    unsigned StoreOpc = (VT == MVT::i8) ? V6C::V6C_STORE8_FI
+                                        : V6C::V6C_STORE16_FI;
+    SDNode *Store = CurDAG->getMachineNode(StoreOpc, DL, MVT::Other, Ops);
+    CurDAG->setNodeMemRefs(cast<MachineSDNode>(Store), {ST->getMemOperand()});
+    ReplaceNode(N, Store);
+    return;
+  }
+
   case ISD::FrameIndex: {
     int FI = cast<FrameIndexSDNode>(N)->getIndex();
     SDValue TFI = CurDAG->getTargetFrameIndex(FI, MVT::i16);

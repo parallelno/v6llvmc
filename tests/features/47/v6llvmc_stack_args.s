@@ -14,20 +14,28 @@ error_stack_arg:                        ; @error_stack_arg
 	;--- V6C_ADD16 ---
 	DAD	B
 	XCHG
-	;--- V6C_LEA_FI ---
+	;--- V6C_LOAD16_FI ---
 	LXI	H, 2
 	DAD	SP
-	MOV	B, H
-	MOV	C, L
-	;--- V6C_LOAD16_P ---
-	MOV	H, B
-	MOV	L, C
-	MOV	A, M
+	MOV	C, M
 	INX	H
-	MOV	H, M
-	MOV	L, A
+	MOV	B, M
 	;--- V6C_ADD16 ---
-	DAD	D
+	MOV	A, E
+	ADD	C
+	MOV	E, A
+	MOV	A, D
+	ADC	B
+	MOV	D, A
+	;--- V6C_LOAD16_FI ---
+	LXI	H, 4
+	DAD	SP
+	MOV	C, M
+	INX	H
+	MOV	B, M
+	;--- V6C_ADD16 ---
+	XCHG
+	DAD	B
 	RET
                                         ; -- End function
 	.section	.text.reg_args,"ax",@progbits
@@ -59,9 +67,8 @@ main:                                   ; @main
 	LHLD	i_p
 	SHLD	.LLo61_0+1
 	;--- V6C_LOAD16_G ---
-	XCHG
 	LHLD	i_p+2
-	XCHG
+	SHLD	.LLo61_2+1
 	;--- V6C_LOAD16_G ---
 	LHLD	i_p+4
 	SHLD	.LLo61_1+1
@@ -76,17 +83,28 @@ main:                                   ; @main
 	PUSH	H
 	LXI	H, 2
 	DAD	SP
-	MOV	B, H
-	MOV	C, L
+	XCHG
 	POP	H
 	;--- V6C_STORE16_P ---
+	PUSH	D
 	MOV	A, L
-	STAX	B
-	INX	B
+	STAX	D
+	INX	D
 	MOV	A, H
-	STAX	B
+	STAX	D
+	POP	D
+	;--- V6C_INX16 ---
+	INX	D
+	INX	D
+	;--- V6C_STORE16_P ---
+	XCHG
+	MOV	M, C
+	INX	H
+	MOV	M, B
 .LLo61_0:
 	LXI	H, 0
+.LLo61_2:
+	LXI	D, 0
 .LLo61_1:
 	LXI	B, 0
 	CALL	error_stack_arg
@@ -111,6 +129,7 @@ main:                                   ; @main
 	CALL	reg_args
 	MOV	A, L
 	OUT	0xed
+	HLT
 	LXI	H, 0
 	XCHG
 	POP	PSW

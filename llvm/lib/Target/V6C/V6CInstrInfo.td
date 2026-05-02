@@ -847,6 +847,23 @@ def V6C_LOAD16_P : V6CPseudo<(outs GR16:$dst), (ins GR16:$addr),
     "# LOAD16P $dst, ($addr)",
     [(set i16:$dst, (load i16:$addr))]>;
 
+// Direct stack/frame-index loads and stores. These are ordinary value memory
+// operations, not spill/reload pseudos: they clobber HL while forming the
+// address and rely on RA to protect any live value that must survive.
+let mayLoad = 1, Defs = [HL, FLAGS] in {
+def V6C_LOAD8_FI : V6CPseudo<(outs GR8:$dst), (ins i16imm:$fi),
+    "# LOAD8FI $dst, $fi", []>;
+def V6C_LOAD16_FI : V6CPseudo<(outs GR16:$dst), (ins i16imm:$fi),
+    "# LOAD16FI $dst, $fi", []>;
+}
+
+let mayStore = 1, Defs = [HL, FLAGS] in {
+def V6C_STORE8_FI : V6CPseudo<(outs), (ins GR8NoHL:$val, i16imm:$fi),
+    "# STORE8FI $val, $fi", []>;
+def V6C_STORE16_FI : V6CPseudo<(outs), (ins GR16Idx:$val, i16imm:$fi),
+    "# STORE16FI $val, $fi", []>;
+}
+
 // 16-bit store to pointer (register pair).
 // Expands to: copy addr to HL, MOV M, lo; INX HL; MOV M, hi
 // A is clobbered when Val=HL (needs STAX path).

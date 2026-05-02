@@ -14,7 +14,7 @@
 
 __attribute__((noinline))
 int error_stack_arg(int x, int y, int z, int w, int a){
-    return x+y+z+w;
+    return x+y+z+w+a;
 }
 
 __attribute__((noinline))

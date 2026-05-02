@@ -278,8 +278,17 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     BuildMI(MBB, II, DL, TII.get(V6C::DAD))
         .addReg(V6C::SP);
     if (DstReg == V6C::DE) {
-      // XCHG swaps HL↔DE: result lands in DE; HL receives old DE value.
-      BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+      // XCHG: HL <-> DE (4cc, 1B). The pseudo does not read DE, so the
+      // old DE value is undef; mark XCHG's implicit DE use as Undef so
+      // the machine verifier accepts it. New DE = old HL (the address).
+      // Old HL goes into DE-input slot (undef, fine); HL is listed in
+      // the pseudo's Defs so it may be clobbered.
+      MachineInstr *MIB =
+          BuildMI(MBB, II, DL, TII.get(V6C::XCHG)).getInstr();
+      for (MachineOperand &MO : MIB->implicit_operands()) {
+        if (MO.isReg() && MO.getReg() == V6C::DE && MO.isUse())
+          MO.setIsUndef(true);
+      }
     } else if (DstReg == V6C::BC) {
       // Copy HL → BC (HL is dead after this pseudo by virtue of being in Defs).
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))
@@ -289,6 +298,67 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     } else {
       assert(DstReg == V6C::HL && "V6C_LEA_FI dst must be HL, DE, or BC");
     }
+    MI.eraseFromParent();
+    return true;
+  }
+
+  if (Opc == V6C::V6C_LOAD8_FI) {
+    Register DstReg = MI.getOperand(0).getReg();
+    BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+        .addReg(V6C::HL, RegState::Define).addImm(Offset);
+    BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
+    BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+        .addReg(DstReg, RegState::Define);
+    MI.eraseFromParent();
+    return true;
+  }
+
+  if (Opc == V6C::V6C_LOAD16_FI) {
+    Register DstReg = MI.getOperand(0).getReg();
+    BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+        .addReg(V6C::HL, RegState::Define).addImm(Offset);
+    BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
+    if (DstReg == V6C::HL) {
+      BuildMI(MBB, II, DL, TII.get(V6C::MOVrM), V6C::A);
+      BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
+      BuildMI(MBB, II, DL, TII.get(V6C::MOVrM), V6C::H);
+      BuildMI(MBB, II, DL, TII.get(V6C::MOVrr), V6C::L).addReg(V6C::A);
+    } else {
+      Register DstLo = getSubReg(DstReg, V6C::sub_lo);
+      Register DstHi = getSubReg(DstReg, V6C::sub_hi);
+      BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+          .addReg(DstLo, RegState::Define);
+      BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
+      BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+          .addReg(DstHi, RegState::Define);
+    }
+    MI.eraseFromParent();
+    return true;
+  }
+
+  if (Opc == V6C::V6C_STORE8_FI) {
+    Register SrcReg = MI.getOperand(0).getReg();
+    BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+        .addReg(V6C::HL, RegState::Define).addImm(Offset);
+    BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
+    BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
+        .addReg(SrcReg, getKillRegState(MI.getOperand(0).isKill()));
+    MI.eraseFromParent();
+    return true;
+  }
+
+  if (Opc == V6C::V6C_STORE16_FI) {
+    Register SrcReg = MI.getOperand(0).getReg();
+    Register SrcLo = getSubReg(SrcReg, V6C::sub_lo);
+    Register SrcHi = getSubReg(SrcReg, V6C::sub_hi);
+    BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+        .addReg(V6C::HL, RegState::Define).addImm(Offset);
+    BuildMI(MBB, II, DL, TII.get(V6C::DAD)).addReg(V6C::SP);
+    BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
+        .addReg(SrcLo, getKillRegState(MI.getOperand(0).isKill()));
+    BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
+    BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
+        .addReg(SrcHi, getKillRegState(MI.getOperand(0).isKill()));
     MI.eraseFromParent();
     return true;
   }

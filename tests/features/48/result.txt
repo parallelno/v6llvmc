@@ -1,0 +1,73 @@
+O69: Direct Frame-Index Memory Pseudos
+
+Purpose
+-------
+Exercise direct stack-relative i8/i16 loads and stores selected before register allocation:
+
+- V6C_LOAD8_FI
+- V6C_LOAD16_FI
+- V6C_STORE8_FI
+- V6C_STORE16_FI
+
+Build commands
+--------------
+Reference c8080 assembly:
+  tools\c8080\c8080.exe tests\features\48\c8080.c -a tests\features\48\c8080.asm
+
+V6C assembly verification:
+  llvm-build\bin\clang -target i8080-unknown-v6c -O3 -S tests\features\48\v6llvmc.c -o tests\features\48\v6llvmc_new01.asm -mllvm -mv6c-annotate-pseudos -mllvm -v6c-disable-alloca-promote -mllvm -v6c-disable-static-stack-alloc
+
+Assembly line counts
+--------------------
+c8080.asm:          176
+v6llvmc_old.asm:    146
+v6llvmc_new01.asm:  146
+
+Note: tests/features/48 was created after the implementation patch, so v6llvmc_old.asm is a current compiler snapshot rather than a pre-O69 historical baseline.
+
+Observed direct FI pseudo coverage
+----------------------------------
+v6llvmc_new01.asm contains:
+
+- V6C_LOAD8_FI in load8_stack_arg
+- V6C_LOAD16_FI in load16_stack_arg
+- V6C_STORE8_FI in store8_local
+- V6C_LOAD8_FI in store8_local reload
+- V6C_STORE16_FI in store16_local
+- V6C_LOAD16_FI in store16_local reload
+
+Representative output
+---------------------
+load8_stack_arg:
+  ;--- V6C_LOAD8_FI ---
+  LXI H, 2
+  DAD SP
+  MOV A, M
+
+load16_stack_arg:
+  ;--- V6C_LOAD16_FI ---
+  LXI H, 2
+  DAD SP
+  MOV C, M
+  INX H
+  MOV B, M
+
+store8_local:
+  ;--- V6C_STORE8_FI ---
+  LXI H, 0
+  DAD SP
+  MOV M, A
+
+store16_local:
+  ;--- V6C_STORE16_FI ---
+  LXI H, 0
+  DAD SP
+  MOV M, C
+  INX H
+  MOV M, B
+
+Regression notes
+----------------
+- Targeted O69 lit test passed: llvm-project/llvm/test/CodeGen/V6C/frame-index-direct-fi.ll
+- Golden tests passed: 16/16
+- Full lit run passed 121/122. Remaining failure is unrelated lsr-strategy-size.ll expecting .comm __v6c_ss.axpy3,10,1 while current code emits 12.

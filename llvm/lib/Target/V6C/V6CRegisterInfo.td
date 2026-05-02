@@ -86,6 +86,10 @@ def GR8 : RegisterClass<"V6C", [i8], 8, (add A, L, H, E, D, C, B)>;
 // GR8NoA — All 8-bit GPRs except the accumulator.
 def GR8NoA : RegisterClass<"V6C", [i8], 8, (add L, H, E, D, C, B)>;
 
+// GR8NoHL — 8-bit GPRs excluding H/L, used by stack-relative stores whose
+// expansion uses HL as an address scratch before reading the source operand.
+def GR8NoHL : RegisterClass<"V6C", [i8], 8, (add A, E, D, C, B)>;
+
 // Acc — Singleton accumulator class.
 def Acc : RegisterClass<"V6C", [i8], 8, (add A)>;
 
