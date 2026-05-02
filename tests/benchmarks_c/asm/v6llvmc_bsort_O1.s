@@ -19,27 +19,27 @@ main:                                   ; @main
 	JNZ	.LBB0_1
 ; %bb.2:
 	LXI	H, 0xf
-	SHLD	__v6c_ss.main+7
+	SHLD	.LLo61_2+1
 .LBB0_3:                                ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB0_4 Depth 2
 	LXI	H, __v6c_a.main
-	SHLD	__v6c_ss.main+2
+	SHLD	.LLo61_3+1
 	LXI	H, 0
-	SHLD	__v6c_ss.main
+	SHLD	.LLo61_0+1
 	LXI	H, __v6c_a.main
-	SHLD	__v6c_ss.main+4
+	SHLD	.LLo61_1+1
 	LXI	B, __v6c_a.main
 .LBB0_4:                                ;   Parent Loop BB0_3 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
-	LHLD	__v6c_ss.main+2
-	XCHG
+.LLo61_3:
+	LXI	D, 0
 	LDAX	D
 	MOV	L, A
 	INX	B
 	LDAX	B
 	PUSH	PSW
 	MOV	A, L
-	STA	__v6c_ss.main+6
+	STA	.LLo61_4+1
 	POP	PSW
 	CMP	L
 	MOV	H, B
@@ -47,28 +47,27 @@ main:                                   ; @main
 	JNC	.LBB0_6
 ; %bb.5:                                ;   in Loop: Header=BB0_4 Depth=2
 	STAX	D
-	PUSH	H
-	LXI	H, __v6c_ss.main+4
-	MOV	C, M
-	INX	H
-	MOV	B, M
-	POP	H
+.LLo61_1:
+	LXI	B, 0
 	INX	B
-	LDA	__v6c_ss.main+6
+.LLo61_4:
+	MVI	A, 0
 	STAX	B
 .LBB0_6:                                ;   in Loop: Header=BB0_4 Depth=2
 	INX	D
 	XCHG
-	SHLD	__v6c_ss.main+2
-	LHLD	__v6c_ss.main
+	SHLD	.LLo61_3+1
 	XCHG
+.LLo61_0:
+	LXI	D, 0
 	INX	D
-	SHLD	__v6c_ss.main+4
+	SHLD	.LLo61_1+1
 	MOV	B, H
 	MOV	C, L
-	LHLD	__v6c_ss.main+7
+.LLo61_2:
+	LXI	H, 0
 	XCHG
-	SHLD	__v6c_ss.main
+	SHLD	.LLo61_0+1
 	XCHG
 	MOV	A, L
 	CMP	E
@@ -78,9 +77,9 @@ main:                                   ; @main
 	CMP	D
 	JNZ	.LBB0_4
 ; %bb.7:                                ;   in Loop: Header=BB0_3 Depth=1
-	LHLD	__v6c_ss.main+7
+	LHLD	.LLo61_2+1
 	DCX	H
-	SHLD	__v6c_ss.main+7
+	SHLD	.LLo61_2+1
 	MOV	A, H
 	ORA	L
 	JNZ	.LBB0_3
@@ -111,7 +110,5 @@ INIT:                                   ; @INIT
 
 	.local	__v6c_a.main                    ; @__v6c_a.main
 	.comm	__v6c_a.main,16,1
-	.local	__v6c_ss.main                   ; @__v6c_ss.main
-	.comm	__v6c_ss.main,9,1
 	.addrsig
 	.addrsig_sym __v6c_a.main

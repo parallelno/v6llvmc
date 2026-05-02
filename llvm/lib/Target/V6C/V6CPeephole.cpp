@@ -40,6 +40,20 @@ static cl::opt<bool> DisableShldLhldFold(
     cl::desc("Disable SHLD/LHLD to PUSH/POP folding (O43)"),
     cl::init(false), cl::Hidden);
 
+/// True if MI is an O61 patched-immediate site: it carries a
+/// pre-instr `.LLo61_N:` label (referenced by SHLD/STA spills) and/or
+/// its imm operand is flagged MO_PATCH_IMM.  Erasing such an MI loses
+/// the label and orphans every spill that points at `Sym+1`, so
+/// peepholes that rewrite or remove MI must skip these.
+static bool isO61PatchedImm(const MachineInstr &MI) {
+  if (MI.getPreInstrSymbol())
+    return true;
+  for (const MachineOperand &MO : MI.operands())
+    if (MO.getTargetFlags() != 0)
+      return true;
+  return false;
+}
+
 namespace {
 
 class V6CPeephole : public MachineFunctionPass {
@@ -869,14 +883,24 @@ bool V6CPeephole::foldIncDecMviM(MachineBasicBlock &MBB) {
     }
 
     // ---- Shape B: MVI A, imm ; MOV M, A -> MVI M, imm ----
+    // O61 patched MVIs are still foldable: MVI M, imm has its own
+    // imm byte at the same `Sym+1` offset (both encodings are
+    // [opcode, imm] with the imm at byte offset 1), so we forward
+    // the pre-instr `.LLo61_N:` label and the operand's target flags
+    // (e.g. MO_PATCH_IMM) onto the new MVI M.
     if (Opc == V6C::MVIr && I->getOperand(0).getReg() == V6C::A) {
       auto Tail = nextNonDebug(std::next(I), E);
       if (Tail != E && Tail->getOpcode() == V6C::MOVMr &&
           Tail->getOperand(0).getReg() == V6C::A &&
           isRegDeadAfter(MBB, Tail, V6C::A, TRI)) {
         const MachineOperand &ImmOp = I->getOperand(1);
-        BuildMI(MBB, *Tail, Tail->getDebugLoc(), TII.get(V6C::MVIM))
-            .add(ImmOp);
+        MachineFunction &MF = *MBB.getParent();
+        MachineInstr *NewMI =
+            BuildMI(MBB, *Tail, Tail->getDebugLoc(), TII.get(V6C::MVIM))
+                .add(ImmOp)
+                .getInstr();
+        if (MCSymbol *PreSym = I->getPreInstrSymbol())
+          NewMI->setPreInstrSymbol(MF, PreSym);
         auto Next = std::next(Tail);
         Tail->eraseFromParent();
         I->eraseFromParent();
@@ -910,6 +934,11 @@ bool V6CPeephole::foldMviZeroToXraA(MachineBasicBlock &MBB) {
     if (MI.getOperand(0).getReg() != V6C::A)
       continue;
     if (!MI.getOperand(1).isImm() || MI.getOperand(1).getImm() != 0)
+      continue;
+    // Skip O61 patched MVIs: imm 0 is a placeholder, real value is
+    // written to MI's imm byte at runtime by an STA spill, and
+    // erasing the MI loses the .LLo61_N label.
+    if (isO61PatchedImm(MI))
       continue;
     if (!isRegDeadAfter(MBB, MI.getIterator(), V6C::FLAGS, TRI))
       continue;

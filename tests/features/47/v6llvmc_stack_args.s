@@ -115,7 +115,15 @@ main:                                   ; @main
 	XCHG
 	LHLD	i_p+2
 	XCHG
-	CALL	add_de_de
+	;--- V6C_ADD16 ---
+	MOV	A, E
+	ADD	E
+	MOV	E, A
+	MOV	A, D
+	ADC	D
+	MOV	D, A
+	;--- V6C_ADD16 ---
+	DAD	D
 	MOV	A, L
 	OUT	0xed
 	HLT

@@ -20,59 +20,53 @@ main:                                   ; @main
 	LXI	H, 0xc80d
 	SHLD	__v6c_a.main
 	LXI	H, 0xf
-	SHLD	__v6c_ss.main+7
+	SHLD	.LLo61_1+1
 .LBB0_1:                                ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB0_2 Depth 2
 	LXI	H, __v6c_a.main
-	SHLD	__v6c_ss.main+5
+	SHLD	.LLo61_3+1
 	LXI	H, 0
-	SHLD	__v6c_ss.main+1
+	SHLD	.LLo61_2+1
 	LDA	__v6c_a.main
-	STA	__v6c_ss.main
+	STA	.LLo61_4+1
 	LXI	H, __v6c_a.main
-	SHLD	__v6c_ss.main+3
+	SHLD	.LLo61_0+1
 	LXI	D, __v6c_a.main
 .LBB0_2:                                ;   Parent Loop BB0_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	INX	D
 	LDAX	D
-	LXI	H, __v6c_ss.main
-	CMP	M
-	LHLD	__v6c_ss.main+3
+.LLo61_4:
+	MVI	L, 0
+	CMP	L
 	XCHG
+.LLo61_0:
+	LXI	D, 0
 	JNC	.LBB0_4
 ; %bb.3:                                ;   in Loop: Header=BB0_2 Depth=2
 	STAX	D
-	PUSH	H
-	LXI	H, __v6c_ss.main+5
-	MOV	C, M
-	INX	H
-	MOV	B, M
-	POP	H
+.LLo61_3:
+	LXI	B, 0
 	INX	B
-	LDA	__v6c_ss.main
+	LDA	.LLo61_4+1
 	STAX	B
 .LBB0_4:                                ;   in Loop: Header=BB0_2 Depth=2
-	PUSH	H
-	LXI	H, __v6c_ss.main+1
-	MOV	C, M
-	INX	H
-	MOV	B, M
-	POP	H
+.LLo61_2:
+	LXI	B, 0
 	INX	B
 	INX	D
 	XCHG
-	SHLD	__v6c_ss.main+3
+	SHLD	.LLo61_0+1
 	XCHG
-	STA	__v6c_ss.main
-	SHLD	__v6c_ss.main+5
+	STA	.LLo61_4+1
+	SHLD	.LLo61_3+1
 	XCHG
-	LHLD	__v6c_ss.main+7
+.LLo61_1:
+	LXI	H, 0
 	PUSH	H
-	LXI	H, __v6c_ss.main+1
-	MOV	M, C
-	INX	H
-	MOV	M, B
+	MOV	L, C
+	MOV	H, B
+	SHLD	.LLo61_2+1
 	POP	H
 	MOV	A, L
 	CMP	C
@@ -82,9 +76,9 @@ main:                                   ; @main
 	CMP	B
 	JNZ	.LBB0_2
 ; %bb.5:                                ;   in Loop: Header=BB0_1 Depth=1
-	LHLD	__v6c_ss.main+7
+	LHLD	.LLo61_1+1
 	DCX	H
-	SHLD	__v6c_ss.main+7
+	SHLD	.LLo61_1+1
 	MOV	A, H
 	ORA	L
 	JNZ	.LBB0_1
@@ -125,7 +119,5 @@ main:                                   ; @main
                                         ; -- End function
 	.local	__v6c_a.main                    ; @__v6c_a.main
 	.comm	__v6c_a.main,16,1
-	.local	__v6c_ss.main                   ; @__v6c_ss.main
-	.comm	__v6c_ss.main,9,1
 	.addrsig
 	.addrsig_sym __v6c_a.main

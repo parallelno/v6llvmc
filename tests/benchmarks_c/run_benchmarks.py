@@ -26,7 +26,7 @@ BUILD = REPO / "tests" / "benchmarks_c" / "build"
 ASM = REPO / "tests" / "benchmarks_c" / "asm"
 DOCS = REPO / "docs" / "benchmarks.md"
 
-V6C_CLANG = REPO / "dist" / "v6c-2026.04.27-windows-x64" / "bin" / "clang.exe"
+V6C_CLANG = REPO / "llvm-build" / "bin" / "clang.exe"
 C8080 = REPO / "tools" / "c8080" / "c8080.exe"
 ZCC = REPO / "tools" / "z88dk" / "z88dk" / "bin" / "zcc.exe"
 ZCC_BIN = ZCC.parent

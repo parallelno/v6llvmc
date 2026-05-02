@@ -4,9 +4,9 @@ Cycle counts and ROM sizes for three pure-C benchmarks compiled with each i8080-
 
 | Program | v6llvmc-O2 | v6llvmc-O1 | v6llvmc-Os | c8080 | z88dk |
 |---|---|---|---|---|---|
-| bsort | 261 B / 51,464 cc (1.00x) | 201 B / 50,396 cc (0.98x) | 210 B / 52,796 cc (1.03x) | 227 B / 47,900 cc (0.93x) | 1183 B / 99,084 cc (1.93x) |
-| sieve | 303 B / 87,640 cc (1.00x) | 180 B / 89,460 cc (1.02x) | 180 B / 89,460 cc (1.02x) | 212 B / 148,184 cc (1.69x) | 1342 B / 195,472 cc (2.23x) |
-| fib_crc | 635 B / 68,528 cc (1.00x) | 257 B / 89,492 cc (1.31x) | 245 B / 86,588 cc (1.26x) | 308 B / 268,204 cc (3.91x) | 1155 B / 284,048 cc (4.14x) |
+| bsort | 249 B / 39,136 cc (1.00x) | 194 B / 43,412 cc (1.11x) | 198 B / 40,468 cc (1.03x) | 227 B / 47,900 cc (1.22x) | 1183 B / 99,084 cc (2.53x) |
+| sieve | 302 B / 84,320 cc (1.00x) | 176 B / 85,760 cc (1.02x) | 176 B / 85,760 cc (1.02x) | 212 B / 148,184 cc (1.76x) | 1342 B / 195,472 cc (2.32x) |
+| fib_crc | 630 B / 67,324 cc (1.00x) | 239 B / 85,868 cc (1.28x) | 227 B / 82,964 cc (1.23x) | 308 B / 268,204 cc (3.98x) | 1155 B / 284,048 cc (4.22x) |
 
 All compilers produced the same checksum byte per program (`bsort`=0xC4, `sieve`=0x36, `fib_crc`=0x2B), confirming the ROMs are functionally equivalent.
 
