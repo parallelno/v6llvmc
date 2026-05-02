@@ -82,7 +82,7 @@ cb_eq:
 cb_ult:
   MVI A, 0x63
   SUB L
-  XRA A
+  MVI A, 0
   SBB H
   CNC notify
   LDA observed

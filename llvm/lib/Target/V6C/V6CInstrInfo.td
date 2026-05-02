@@ -277,12 +277,14 @@ let Defs = [FLAGS] in {
     def ADDr : V6CInstRegSrc<0b000,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "ADD\t$rs", [(set i8:$dst, (add i8:$lhs, i8:$rs))]>;
+    let Uses = [FLAGS] in  // ADC reads CY
     def ADCr : V6CInstRegSrc<0b001,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "ADC\t$rs", []>;
     def SUBr : V6CInstRegSrc<0b010,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "SUB\t$rs", [(set i8:$dst, (sub i8:$lhs, i8:$rs))]>;
+    let Uses = [FLAGS] in  // SBB reads CY
     def SBBr : V6CInstRegSrc<0b011,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "SBB\t$rs", []>;
@@ -310,8 +312,10 @@ let Defs = [FLAGS] in {
 let Defs = [FLAGS], Uses = [HL], mayLoad = 1 in {
   let Constraints = "$dst = $lhs" in {
     def ADDM : V6CInstImplied<0x86, (outs Acc:$dst), (ins Acc:$lhs), "ADD\tM", []>;
+    let Uses = [HL, FLAGS] in  // ADC reads CY
     def ADCM : V6CInstImplied<0x8E, (outs Acc:$dst), (ins Acc:$lhs), "ADC\tM", []>;
     def SUBM : V6CInstImplied<0x96, (outs Acc:$dst), (ins Acc:$lhs), "SUB\tM", []>;
+    let Uses = [HL, FLAGS] in  // SBB reads CY
     def SBBM : V6CInstImplied<0x9E, (outs Acc:$dst), (ins Acc:$lhs), "SBB\tM", []>;
     def ANAM : V6CInstImplied<0xA6, (outs Acc:$dst), (ins Acc:$lhs), "ANA\tM", []>;
     def XRAM : V6CInstImplied<0xAE, (outs Acc:$dst), (ins Acc:$lhs), "XRA\tM", []>;
@@ -331,12 +335,14 @@ let Defs = [FLAGS] in {
     def ADI : V6CInstImm8Opc<0b000,
         (outs Acc:$dst), (ins Acc:$lhs, imm8:$imm),
         "ADI\t$imm", [(set i8:$dst, (add i8:$lhs, (i8 imm:$imm)))]>;
+    let Uses = [FLAGS] in  // ACI reads CY
     def ACI : V6CInstImm8Opc<0b001,
         (outs Acc:$dst), (ins Acc:$lhs, imm8:$imm),
         "ACI\t$imm", []>;
     def SUI : V6CInstImm8Opc<0b010,
         (outs Acc:$dst), (ins Acc:$lhs, imm8:$imm),
         "SUI\t$imm", [(set i8:$dst, (sub i8:$lhs, (i8 imm:$imm)))]>;
+    let Uses = [FLAGS] in  // SBI reads CY
     def SBI : V6CInstImm8Opc<0b011,
         (outs Acc:$dst), (ins Acc:$lhs, imm8:$imm),
         "SBI\t$imm", []>;
@@ -416,8 +422,10 @@ let Defs = [FLAGS] in {
   let Constraints = "$dst = $src" in {
     def RLC : V6CInstImplied<0x07, (outs Acc:$dst), (ins Acc:$src), "RLC", []>;
     def RRC : V6CInstImplied<0x0F, (outs Acc:$dst), (ins Acc:$src), "RRC", []>;
-    def RAL : V6CInstImplied<0x17, (outs Acc:$dst), (ins Acc:$src), "RAL", []>;
-    def RAR : V6CInstImplied<0x1F, (outs Acc:$dst), (ins Acc:$src), "RAR", []>;
+    let Uses = [FLAGS] in {  // RAL/RAR rotate through CY
+      def RAL : V6CInstImplied<0x17, (outs Acc:$dst), (ins Acc:$src), "RAL", []>;
+      def RAR : V6CInstImplied<0x1F, (outs Acc:$dst), (ins Acc:$src), "RAR", []>;
+    }
   }
 }
 

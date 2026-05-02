@@ -35,7 +35,7 @@ cb_ult:                                 ; @cb_ult
 ; %bb.0:
 	MVI	A, 0x63
 	SUB	L
-	XRA	A
+	MVI	A, 0
 	SBB	H
 	CNC	notify
 ; %bb.2:
@@ -49,7 +49,7 @@ cb_uge:                                 ; @cb_uge
 ; %bb.0:
 	MVI	A, 0x63
 	SUB	L
-	XRA	A
+	MVI	A, 0
 	SBB	H
 	CC	notify
 ; %bb.2:
