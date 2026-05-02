@@ -1,0 +1,108 @@
+O02 — Sequential LXI -> INX Folding (Extended)
+================================================
+
+C SOURCE (v6llvmc.c)
+--------------------
+    extern unsigned char ext_sink(unsigned char v);
+
+    struct S { unsigned char x, y, z, w; };
+    struct S g_s;
+
+    unsigned char sum4_global(void) {
+        return g_s.x + g_s.y + g_s.z + g_s.w;
+    }
+
+    volatile unsigned char g_a, g_b, g_c, g_d;
+    void write4_globals(unsigned char v) {
+        g_a = v;
+        g_b = v + 1;
+        g_c = v + 2;
+        g_d = v + 3;
+    }
+
+    unsigned char sum4_array(const unsigned char *p) {
+        unsigned char s = p[0];
+        s += p[1];
+        s += p[2];
+        s += p[3];
+        return s;
+    }
+
+    unsigned char g_arr[4];
+
+    int main(int argc, char **argv) {
+        (void)argc; (void)argv;
+        g_arr[0] = 1; g_arr[1] = 2; g_arr[2] = 3; g_arr[3] = 4;
+        unsigned char r1 = sum4_global();
+        unsigned char r2 = sum4_array(g_arr);
+        write4_globals(r1 + r2);
+        return ext_sink(g_a + g_b + g_c + g_d);
+    }
+
+
+C8080 ASM (i8080 mnemonics)
+---------------------------
+    sum4_global:
+            LXI     H, g_s          ; 12cc / 3B
+            LDA     g_s+1           ; 16cc / 3B
+            ADD     M               ;  8cc / 1B
+            LXI     H, g_s+2        ; 12cc / 3B
+            ADD     M               ;  8cc / 1B
+            LXI     H, g_s+3        ; 12cc / 3B
+            ADD     M               ;  8cc / 1B
+            RET                     ; 12cc / 1B
+    ; total: 88cc / 16B
+
+    sum4_array:
+            ; HL = p
+            MOV     A, M            ;  8cc / 1B
+            INX     H               ;  8cc / 1B
+            ADD     M               ;  8cc / 1B
+            INX     H               ;  8cc / 1B
+            ADD     M               ;  8cc / 1B
+            INX     H               ;  8cc / 1B
+            ADD     M               ;  8cc / 1B
+            RET                     ; 12cc / 1B
+    ; total: 68cc / 8B (already optimal — c8080 keeps HL invariant)
+
+C8080 STATS
+-----------
+    sum4_global:        88cc / 16B
+    sum4_array:         68cc /  8B (already INX-chained, no LXI to fold)
+
+
+V6LLVMC ASM (after O02 extension)
+---------------------------------
+    sum4_global:
+            LXI     H, g_s          ; 12cc / 3B
+            LDA     g_s+1           ; 16cc / 3B
+            ADD     M               ;  8cc / 1B
+            LXI     H, g_s+2        ; 12cc / 3B  (Delta=2 from g_s; not folded at -O2)
+            ADD     M               ;  8cc / 1B
+            INX     H               ;  8cc / 1B  *** WAS: LXI H, g_s+3 (12cc/3B) ***
+            ADD     M               ;  8cc / 1B
+            RET                     ; 12cc / 1B
+    ; total: 84cc / 14B  (was 88cc / 16B — saved 4cc + 2B)
+
+    main:    (same chain shape on g_s: 1 LXI->INX fold)
+             saves another 4cc + 2B
+
+V6LLVMC STATS
+-------------
+    sum4_global:        84cc / 14B   (was 88cc / 16B; -4cc -2B)
+    main inner chain:   one fold     (-4cc -2B per LXI)
+
+    Aggregate feature savings: 8cc + 4B at -O2.
+    At -Os the threshold rises to Delta<=3, picking up the second
+    LXI->INX fold per chain (+8cc +4B more).
+
+
+NOTES
+-----
+- The new HL-state tracker recognises Imm / GlobalAddress / ExternalSymbol
+  / BlockAddress as base operands and tracks per-MBB. Any def of H/L/HL
+  or RegMask call clobber resets the tracker (fail-safe).
+- Cost-mode-gated Delta threshold:
+    -O2/-O3 (Speed)    : Delta = 1   (strict speed win, 8cc < 12cc)
+    -O1     (Balanced) : Delta <= 2  (size-neutral, mild +cc)
+    -Os/-Oz (Size)     : Delta <= 3  (size break-even at 3)

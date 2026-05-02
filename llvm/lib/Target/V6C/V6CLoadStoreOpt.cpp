@@ -4,30 +4,38 @@
 //
 // Post-RA pass for load/store optimizations:
 //
-// 1. Adjacent 8-bit loads from consecutive addresses via (HL) that feed into
-//    a register pair can be recognized and left as-is efficiently (the
-//    INX HL sequence is already optimal). But if we see:
-//      LXI HL, addr; MOV r, M  followed by  LXI HL, addr+1; MOV r2, M
-//    Merge into: LXI HL, addr; MOV r, M; INX HL; MOV r2, M
-//    Saving one LXI (3 bytes, 12cc).
+// 1. Sequential HL Address Reuse (LXI -> INX/DCX folding):
+//    Track the abstract value held by HL across each MBB. When a new
+//    LXI H, X is seen and HL already holds X +/- Delta, replace the LXI
+//    with |Delta| copies of INX H / DCX H (or drop entirely on Delta=0).
+//    The tracker recognizes plain immediates, GlobalAddress + offset,
+//    ExternalSymbol + offset, and BlockAddress + offset.
+//    Permitted "gap" instructions (LDA, STA, MVI A, immediate ALU, IN,
+//    OUT, MOV between non-H/L registers, etc.) leave HL untouched, so
+//    they do not reset the tracker; any def of H/L/HL or call clobber
+//    resets it. Delta threshold is gated by the dual cost model:
+//      Speed (-O2/-O3): Delta=1 only      (8cc < 12cc, strict win)
+//      Balanced (-O1):  Delta<=2          (16cc/2B vs 12cc/3B, neutral)
+//      Size (-Os/-Oz):  Delta<=3          (24cc/3B vs 12cc/3B, size tie)
 //
-// 2. Adjacent stores: Same pattern for stores.
-//      LXI HL, addr; MOV M, r  followed by  LXI HL, addr+1; MOV M, r2
-//    Merge into: LXI HL, addr; MOV M, r; INX HL; MOV M, r2
-//
-// 3. Dead LXI elimination: If HL is loaded (LXI HL, X) and then
-//    immediately overwritten (another LXI HL, Y) without use, remove the
-//    first LXI.
+// 2. Dead LXI elimination: if HL is loaded (LXI HL, X) and then
+//    immediately overwritten without use, remove the first LXI.
+//    Kept as a belt-and-braces pass for cross-pattern leftovers.
 //
 //===----------------------------------------------------------------------===//
 
 #include "V6C.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
+#include "V6CInstrCost.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/MathExtras.h"
+
+#include <cstdlib>
 
 using namespace llvm;
 
@@ -39,6 +47,58 @@ static cl::opt<bool> DisableLoadStoreOpt(
     cl::init(false), cl::Hidden);
 
 namespace {
+
+/// Abstract value of HL within a single basic block.
+struct HLAddr {
+  enum class Kind : uint8_t { Unknown, Imm, GA, ES, BA };
+  Kind K = Kind::Unknown;
+  int64_t Offset = 0;
+  const GlobalValue *GV = nullptr;
+  const char *Sym = nullptr;          // for ES (interned)
+  const BlockAddress *BAv = nullptr;  // for BA
+  unsigned char TF = 0;               // target flags
+
+  bool isKnown() const { return K != Kind::Unknown; }
+  void reset() { *this = HLAddr(); }
+
+  /// Build from an LXI HL, X instruction (returns Unknown if it cannot
+  /// be tracked, e.g. unsupported operand kind or non-HL destination).
+  static HLAddr fromLXI(const MachineInstr &MI);
+
+  /// Two HLAddrs share the same symbolic base (kind + symbol identity +
+  /// target-flags). Both must be known.
+  bool sameBase(const HLAddr &O) const {
+    if (K != O.K || TF != O.TF) return false;
+    switch (K) {
+    case Kind::Imm: return true;
+    case Kind::GA:  return GV == O.GV;
+    case Kind::ES:  return Sym == O.Sym;
+    case Kind::BA:  return BAv == O.BAv;
+    case Kind::Unknown: return false;
+    }
+    return false;
+  }
+
+  /// If known and same base as O (also known), set Delta = O.Offset - this.Offset.
+  bool tryDelta(const HLAddr &O, int64_t &Delta) const {
+    if (!isKnown() || !O.isKnown() || !sameBase(O)) return false;
+    Delta = O.Offset - Offset;
+    return true;
+  }
+
+  /// Saturating bump (clears to Unknown on extreme magnitudes).
+  void bump(int64_t D) {
+    if (!isKnown()) return;
+    // Conservative guard — INX/DCX delta is always +/-1, so overflow
+    // is not a real concern; this just avoids wraparound surprises if
+    // a caller passes something larger.
+    if (Offset > (INT64_MAX >> 1) || Offset < (INT64_MIN >> 1)) {
+      reset();
+      return;
+    }
+    Offset += D;
+  }
+};
 
 class V6CLoadStoreOpt : public MachineFunctionPass {
 public:
@@ -52,155 +112,158 @@ public:
   bool runOnMachineFunction(MachineFunction &MF) override;
 
 private:
-  bool mergeAdjacentAccess(MachineBasicBlock &MBB);
+  bool foldHLChain(MachineBasicBlock &MBB, unsigned MaxDelta);
   bool eliminateDeadLXI(MachineBasicBlock &MBB);
 
-  /// Check if MI is LXI HL, imm and return the immediate value.
-  static bool isLXI_HL(const MachineInstr &MI, int64_t &Imm);
+  /// Compute the maximum |Delta| for which an LXI replacement is
+  /// considered profitable, based on optimization mode.
+  static unsigned getMaxDelta(const MachineFunction &MF) {
+    switch (getV6COptMode(MF)) {
+    case V6COptMode::Speed:    return 1;
+    case V6COptMode::Balanced: return 2;
+    case V6COptMode::Size:     return 3;
+    }
+    return 1;
+  }
 
-  /// Check if MI reads from M (uses HL implicitly).
-  static bool isLoadViaM(const MachineInstr &MI);
+  /// True if MI defines or clobbers any part of HL — explicit defs,
+  /// implicit defs, sub-register defs (H/L), or a RegMask covering HL.
+  static bool clobbersHL(const MachineInstr &MI);
 
-  /// Check if MI writes to M (uses HL implicitly).
-  static bool isStoreViaM(const MachineInstr &MI);
+  /// True if MI is INX HL.
+  static bool isINX_HL(const MachineInstr &MI) {
+    return MI.getOpcode() == V6C::INX && MI.getNumOperands() >= 1 &&
+           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == V6C::HL;
+  }
 
-  /// Check if MI defines or clobbers any part of HL.
-  static bool definesHL(const MachineInstr &MI);
+  /// True if MI is DCX HL.
+  static bool isDCX_HL(const MachineInstr &MI) {
+    return MI.getOpcode() == V6C::DCX && MI.getNumOperands() >= 1 &&
+           MI.getOperand(0).isReg() && MI.getOperand(0).getReg() == V6C::HL;
+  }
 
-  /// Check if MI uses any part of HL (aside from implicit use).
-  static bool usesHL(const MachineInstr &MI);
+  /// True if MI uses any part of HL.
+  static bool usesHL(const MachineInstr &MI) {
+    for (const MachineOperand &MO : MI.operands()) {
+      if (!MO.isReg() || !MO.isUse()) continue;
+      Register R = MO.getReg();
+      if (R == V6C::HL || R == V6C::H || R == V6C::L) return true;
+    }
+    return false;
+  }
 };
 
 } // end anonymous namespace
 
 char V6CLoadStoreOpt::ID = 0;
 
-bool V6CLoadStoreOpt::isLXI_HL(const MachineInstr &MI, int64_t &Imm) {
-  if (MI.getOpcode() != V6C::LXI)
-    return false;
-  if (MI.getOperand(0).getReg() != V6C::HL)
-    return false;
-  if (!MI.getOperand(1).isImm())
-    return false;
-  Imm = MI.getOperand(1).getImm();
-  return true;
-}
-
-bool V6CLoadStoreOpt::isLoadViaM(const MachineInstr &MI) {
-  unsigned Opc = MI.getOpcode();
-  return Opc == V6C::MOVrM || Opc == V6C::ADDM || Opc == V6C::ADCM ||
-         Opc == V6C::SUBM || Opc == V6C::SBBM || Opc == V6C::ANAM ||
-         Opc == V6C::XRAM || Opc == V6C::ORAM || Opc == V6C::CMPM;
-}
-
-bool V6CLoadStoreOpt::isStoreViaM(const MachineInstr &MI) {
-  return MI.getOpcode() == V6C::MOVMr || MI.getOpcode() == V6C::MVIM;
-}
-
-bool V6CLoadStoreOpt::definesHL(const MachineInstr &MI) {
-  for (const MachineOperand &MO : MI.operands()) {
-    if (!MO.isReg() || !MO.isDef())
-      continue;
-    Register Reg = MO.getReg();
-    if (Reg == V6C::HL || Reg == V6C::H || Reg == V6C::L)
-      return true;
+HLAddr HLAddr::fromLXI(const MachineInstr &MI) {
+  HLAddr A;
+  if (MI.getOpcode() != V6C::LXI) return A;
+  if (MI.getNumOperands() < 2) return A;
+  if (!MI.getOperand(0).isReg() || MI.getOperand(0).getReg() != V6C::HL)
+    return A;
+  const MachineOperand &Op = MI.getOperand(1);
+  A.TF = Op.getTargetFlags();
+  if (Op.isImm()) {
+    A.K = Kind::Imm;
+    A.Offset = Op.getImm();
+    return A;
   }
-  // Also check implicit defs.
-  for (const MachineOperand &MO : MI.implicit_operands()) {
-    if (!MO.isReg() || !MO.isDef())
+  if (Op.isGlobal()) {
+    A.K = Kind::GA;
+    A.GV = Op.getGlobal();
+    A.Offset = Op.getOffset();
+    return A;
+  }
+  if (Op.isSymbol()) {
+    A.K = Kind::ES;
+    A.Sym = Op.getSymbolName();
+    A.Offset = Op.getOffset();
+    return A;
+  }
+  if (Op.isBlockAddress()) {
+    A.K = Kind::BA;
+    A.BAv = Op.getBlockAddress();
+    A.Offset = Op.getOffset();
+    return A;
+  }
+  return A; // Unknown for MCSymbol, JumpTableIndex, etc.
+}
+
+bool V6CLoadStoreOpt::clobbersHL(const MachineInstr &MI) {
+  for (const MachineOperand &MO : MI.operands()) {
+    if (MO.isRegMask()) {
+      if (MO.clobbersPhysReg(V6C::HL) ||
+          MO.clobbersPhysReg(V6C::H)  ||
+          MO.clobbersPhysReg(V6C::L))
+        return true;
       continue;
-    Register Reg = MO.getReg();
-    if (Reg == V6C::HL || Reg == V6C::H || Reg == V6C::L)
-      return true;
+    }
+    if (!MO.isReg() || !MO.isDef()) continue;
+    Register R = MO.getReg();
+    if (R == V6C::HL || R == V6C::H || R == V6C::L) return true;
   }
   return false;
 }
 
-bool V6CLoadStoreOpt::usesHL(const MachineInstr &MI) {
-  for (const MachineOperand &MO : MI.operands()) {
-    if (!MO.isReg() || !MO.isUse())
-      continue;
-    Register Reg = MO.getReg();
-    if (Reg == V6C::HL || Reg == V6C::H || Reg == V6C::L)
-      return true;
-  }
-  return false;
-}
-
-/// Merge patterns:
-///   LXI HL, addr;  MOV r, M    (or MOV M, r)
-///   LXI HL, addr+1; MOV r2, M  (or MOV M, r2)
-/// Into:
-///   LXI HL, addr; MOV r, M; INX HL; MOV r2, M
-bool V6CLoadStoreOpt::mergeAdjacentAccess(MachineBasicBlock &MBB) {
+bool V6CLoadStoreOpt::foldHLChain(MachineBasicBlock &MBB, unsigned MaxDelta) {
   bool Changed = false;
   const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
 
+  HLAddr State;
+
   for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
-    // Look for: LXI HL, addr
-    int64_t Addr1;
-    if (!isLXI_HL(*I, Addr1)) {
+    MachineInstr &MI = *I;
+
+    // INX HL / DCX HL — bump tracker, leave instruction.
+    if (isINX_HL(MI)) {
+      if (State.isKnown()) State.bump(+1);
+      ++I;
+      continue;
+    }
+    if (isDCX_HL(MI)) {
+      if (State.isKnown()) State.bump(-1);
       ++I;
       continue;
     }
 
-    auto LXI1 = I;
-    auto Access1 = std::next(I);
-    if (Access1 == E) {
+    // LXI HL, X — try to fold against the running State.
+    if (MI.getOpcode() == V6C::LXI && MI.getOperand(0).isReg() &&
+        MI.getOperand(0).getReg() == V6C::HL && !MI.isBundled()) {
+      HLAddr New = HLAddr::fromLXI(MI);
+      int64_t Delta = 0;
+      if (State.isKnown() && New.isKnown() && State.tryDelta(New, Delta)) {
+        if (Delta == 0) {
+          // HL already holds the desired value — drop the LXI entirely.
+          auto ToErase = I++;
+          ToErase->eraseFromParent();
+          Changed = true;
+          continue;
+        }
+        uint64_t Abs = (uint64_t)std::abs(Delta);
+        if (Abs <= (uint64_t)MaxDelta) {
+          unsigned Opc = Delta > 0 ? V6C::INX : V6C::DCX;
+          DebugLoc DL = MI.getDebugLoc();
+          for (uint64_t k = 0; k < Abs; ++k) {
+            BuildMI(MBB, MI, DL, TII.get(Opc), V6C::HL).addReg(V6C::HL);
+          }
+          auto ToErase = I++;
+          ToErase->eraseFromParent();
+          State = New;
+          Changed = true;
+          continue;
+        }
+      }
+      State = New;
       ++I;
       continue;
     }
 
-    // Next must be a load or store via M.
-    bool IsLoad = isLoadViaM(*Access1);
-    bool IsStore = isStoreViaM(*Access1);
-    if (!IsLoad && !IsStore) {
-      ++I;
-      continue;
-    }
+    if (clobbersHL(MI))
+      State.reset();
 
-    auto LXI2 = std::next(Access1);
-    if (LXI2 == E) {
-      ++I;
-      continue;
-    }
-
-    int64_t Addr2;
-    if (!isLXI_HL(*LXI2, Addr2)) {
-      ++I;
-      continue;
-    }
-
-    // Addresses must be consecutive.
-    if (Addr2 != Addr1 + 1) {
-      ++I;
-      continue;
-    }
-
-    auto Access2 = std::next(LXI2);
-    if (Access2 == E) {
-      ++I;
-      continue;
-    }
-
-    // Second access must be the same type (load or store via M).
-    if (IsLoad && !isLoadViaM(*Access2)) {
-      ++I;
-      continue;
-    }
-    if (IsStore && !isStoreViaM(*Access2)) {
-      ++I;
-      continue;
-    }
-
-    // Merge: replace LXI2 with INX HL.
-    BuildMI(MBB, *LXI2, LXI2->getDebugLoc(), TII.get(V6C::INX), V6C::HL)
-        .addReg(V6C::HL);
-    LXI2->eraseFromParent();
-
-    Changed = true;
-    // Advance past the merged sequence.
-    I = std::next(Access2);
+    ++I;
   }
 
   return Changed;
@@ -211,28 +274,26 @@ bool V6CLoadStoreOpt::eliminateDeadLXI(MachineBasicBlock &MBB) {
   bool Changed = false;
 
   for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
-    int64_t Imm;
-    if (!isLXI_HL(*I, Imm)) {
+    if (!(I->getOpcode() == V6C::LXI && I->getNumOperands() >= 1 &&
+          I->getOperand(0).isReg() && I->getOperand(0).getReg() == V6C::HL)) {
       ++I;
       continue;
     }
 
-    // Look ahead: skip instructions that don't touch HL.
     auto Next = std::next(I);
     bool Dead = false;
-    while (Next != E) {
+    while (Next != MBB.end()) {
       if (usesHL(*Next))
-        break; // HL is used — not dead.
-      if (definesHL(*Next)) {
-        Dead = true; // HL is overwritten without being used.
+        break;
+      if (clobbersHL(*Next)) {
+        Dead = true;
         break;
       }
       ++Next;
     }
 
     if (Dead) {
-      auto ToErase = I;
-      ++I;
+      auto ToErase = I++;
       ToErase->eraseFromParent();
       Changed = true;
     } else {
@@ -247,9 +308,10 @@ bool V6CLoadStoreOpt::runOnMachineFunction(MachineFunction &MF) {
   if (DisableLoadStoreOpt)
     return false;
 
+  unsigned MaxDelta = getMaxDelta(MF);
   bool Changed = false;
   for (MachineBasicBlock &MBB : MF) {
-    Changed |= mergeAdjacentAccess(MBB);
+    Changed |= foldHLChain(MBB, MaxDelta);
     Changed |= eliminateDeadLXI(MBB);
   }
   return Changed;

@@ -97,3 +97,4 @@
 1.328909e-01 peephole-mvi-zero-to-xra.ll
 1.030784e-01 frame-lowering-pop-push.ll
 8.656025e-02 frame-index-direct-fi.ll
+1.285248e-01 loadstore-opt-chain.ll
