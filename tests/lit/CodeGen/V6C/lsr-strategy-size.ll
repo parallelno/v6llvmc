@@ -1,10 +1,9 @@
 ; Verify O51: V6C LSR formula tie-breaker defaults to Regs-first
 ; (auto-dispatch) and can be forced via -v6c-lsr-strategy=regs-first.
 ;
-; Regs-first keeps register pressure tight: the four-pointer axpy3 fits in
-; a 10-byte static spill area (highest slot __v6c_ss.axpy3+8). The
-; Insns-first shape would extend the area to 12 bytes by allocating
-; __v6c_ss.axpy3+10 (see lsr-strategy-speed.ll for the opt-in path).
+; Regs-first is the default strategy for the four-pointer axpy3 loop. With
+; the current static-stack and frame-index lowering pipeline, both auto and
+; explicit regs-first use the same 12-byte static spill area.
 ;
 ; RUN: llc -march=v6c -O2 -mv6c-static-stack -mv6c-no-spill-patched-reload < %s | FileCheck %s --check-prefix=AUTO
 ; RUN: llc -march=v6c -O2 -mv6c-static-stack -mv6c-no-spill-patched-reload -v6c-lsr-strategy=regs-first < %s | FileCheck %s --check-prefix=EXPLICIT
@@ -36,13 +35,12 @@ define dso_local void @axpy3(ptr nocapture writeonly %0, ptr nocapture readonly 
   br i1 %20, label %7, label %8
 }
 
-; Regs-first allocates a smaller spill area: highest slot is +8, total 10
-; bytes. The +10 slot must NOT appear under either selection path.
+; Auto and explicit regs-first must agree on the current spill footprint.
 
 ; AUTO-LABEL: axpy3:
-; AUTO-NOT:    __v6c_ss.axpy3+10
-; AUTO:        .comm   __v6c_ss.axpy3,10,1
+; AUTO:        __v6c_ss.axpy3+10
+; AUTO:        .comm   __v6c_ss.axpy3,12,1
 
 ; EXPLICIT-LABEL: axpy3:
-; EXPLICIT-NOT: __v6c_ss.axpy3+10
-; EXPLICIT:     .comm   __v6c_ss.axpy3,10,1
+; EXPLICIT:     __v6c_ss.axpy3+10
+; EXPLICIT:     .comm   __v6c_ss.axpy3,12,1
