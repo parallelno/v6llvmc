@@ -417,6 +417,28 @@ static bool isFlagsDefDead(const MachineInstr &MI) {
   return true;
 }
 
+/// Return true if Reg has a visible value before iterator I in MBB.
+static bool isRegLiveBefore(MachineBasicBlock &MBB,
+                            MachineBasicBlock::iterator I, Register Reg,
+                            const TargetRegisterInfo *TRI) {
+  for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
+       ++AI) {
+    if (MBB.isLiveIn(*AI))
+      return true;
+  }
+  for (auto MI = MBB.begin(); MI != I; ++MI) {
+    if (MI->modifiesRegister(Reg, TRI))
+      return true;
+  }
+  return false;
+}
+
+static void markXchgUseUndef(MachineInstr *XchgMI, Register Reg) {
+  if (MachineOperand *MO = XchgMI->findRegisterUseOperand(Reg,
+                                                          /*isKill=*/false))
+    MO->setIsUndef(true);
+}
+
 /// Return true if \p Reg is not used by any instruction between \p After
 /// (exclusive) and the next redefinition or end of \p MBB.
 static bool isRegDeadAfter(MachineBasicBlock &MBB,
@@ -699,6 +721,25 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     if (DstReg == V6C::HL && RhsReg == V6C::HL) {
       // ADD is commutative: HL = rp + HL → DAD rp
       BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(LhsReg);
+      MI.eraseFromParent();
+      return true;
+    }
+
+    // DE = DE + BC. Preserve HL with XCHG; DAD B; XCHG (20cc, 3B),
+    // instead of the general A-byte chain. This is valid even when old HL
+    // is live because the second XCHG restores it. If old HL is undef, mark
+    // the corresponding XCHG implicit reads as undef for the MIR verifier.
+    if (DstReg == V6C::DE &&
+        ((LhsReg == V6C::DE && RhsReg == V6C::BC) ||
+         (LhsReg == V6C::BC && RhsReg == V6C::DE))) {
+      bool HLLive = isRegLiveBefore(MBB, MI.getIterator(), V6C::HL, &RI);
+      MachineInstr *FirstXchg = BuildMI(MBB, MI, DL, get(V6C::XCHG)).getInstr();
+      BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(V6C::BC);
+      MachineInstr *SecondXchg = BuildMI(MBB, MI, DL, get(V6C::XCHG)).getInstr();
+      if (!HLLive) {
+        markXchgUseUndef(FirstXchg, V6C::HL);
+        markXchgUseUndef(SecondXchg, V6C::DE);
+      }
       MI.eraseFromParent();
       return true;
     }

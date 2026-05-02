@@ -9,10 +9,12 @@ define i32 @const_i32() {
   ret i32 305419896
 }
 
-; i32 add: should produce add chains (verbose but functional)
+; i32 add: high-half add can preserve HL via XCHG; DAD B; XCHG.
 ; CHECK-LABEL: add_i32:
-; CHECK:       ADD
-; CHECK:       ADC
+; CHECK:       DAD B
+; CHECK:       XCHG
+; CHECK-NEXT:  DAD B
+; CHECK-NEXT:  XCHG
 ; CHECK:       RET
 define i32 @add_i32(i32 %a, i32 %b) {
   %r = add i32 %a, %b

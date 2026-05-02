@@ -21,12 +21,9 @@ error_stack_arg:                        ; @error_stack_arg
 	INX	H
 	MOV	B, M
 	;--- V6C_ADD16 ---
-	MOV	A, E
-	ADD	C
-	MOV	E, A
-	MOV	A, D
-	ADC	B
-	MOV	D, A
+	XCHG
+	DAD	B
+	XCHG
 	;--- V6C_LOAD16_FI ---
 	LXI	H, 4
 	DAD	SP
@@ -38,20 +35,22 @@ error_stack_arg:                        ; @error_stack_arg
 	DAD	B
 	RET
                                         ; -- End function
-	.section	.text.reg_args,"ax",@progbits
-	.globl	reg_args                        ; -- Begin function reg_args
-reg_args:                               ; @reg_args
-	;=== int reg_args(int arg0, int arg1, int arg2, int arg3, int arg4) ===
+	.section	.text.add_de_de,"ax",@progbits
+	.globl	add_de_de                       ; -- Begin function add_de_de
+add_de_de:                              ; @add_de_de
+	;=== int add_de_de(int arg0, int arg1) ===
 	;  arg0 = HL
 	;  arg1 = DE
-	;  arg2 = BC
-	;  arg3 = stack
-	;  arg4 = stack
 ; %bb.0:
 	;--- V6C_ADD16 ---
-	DAD	D
+	MOV	A, E
+	ADD	E
+	MOV	E, A
+	MOV	A, D
+	ADC	D
+	MOV	D, A
 	;--- V6C_ADD16 ---
-	DAD	B
+	DAD	D
 	RET
                                         ; -- End function
 	.section	.text.main,"ax",@progbits
@@ -112,21 +111,11 @@ main:                                   ; @main
 	OUT	0xed
 	;--- V6C_LOAD16_G ---
 	LHLD	i_p
-	SHLD	.LLo61_0+1
 	;--- V6C_LOAD16_G ---
 	XCHG
 	LHLD	i_p+2
 	XCHG
-	;--- V6C_LOAD16_G ---
-	LHLD	i_p+4
-	MOV	B, H
-	MOV	C, L
-	;--- V6C_LOAD16_G ---
-	LHLD	i_p+6
-	;--- V6C_LOAD16_G ---
-	LHLD	i_p+8
-	LHLD	.LLo61_0+1
-	CALL	reg_args
+	CALL	add_de_de
 	MOV	A, L
 	OUT	0xed
 	HLT
