@@ -418,16 +418,29 @@ static bool isFlagsDefDead(const MachineInstr &MI) {
 }
 
 /// Return true if Reg has a visible value before iterator I in MBB.
+/// Backward scan: the most recent event wins — an explicit def keeps Reg
+/// live, while a regmask clobber (e.g. from a CALL) renders it undef.
 static bool isRegLiveBefore(MachineBasicBlock &MBB,
                             MachineBasicBlock::iterator I, Register Reg,
                             const TargetRegisterInfo *TRI) {
+  while (I != MBB.begin()) {
+    --I;
+    bool FoundDef = false, FoundClobber = false;
+    for (const MachineOperand &MO : I->operands()) {
+      if (MO.isReg() && MO.isDef() && MO.getReg().isPhysical() &&
+          TRI->regsOverlap(MO.getReg(), Reg))
+        FoundDef = true;
+      else if (MO.isRegMask() && MO.clobbersPhysReg(Reg))
+        FoundClobber = true;
+    }
+    if (FoundDef)
+      return true;
+    if (FoundClobber)
+      return false;
+  }
   for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
        ++AI) {
     if (MBB.isLiveIn(*AI))
-      return true;
-  }
-  for (auto MI = MBB.begin(); MI != I; ++MI) {
-    if (MI->modifiesRegister(Reg, TRI))
       return true;
   }
   return false;
@@ -1481,9 +1494,17 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       emitLHLD(MI);
     } else if (DstReg == V6C::DE) {
       // XCHG; LHLD addr; XCHG — saves 2B + 22cc vs PUSH/POP path.
-      BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      // First XCHG saves HL into DE (we observe DE only via the second
+      // XCHG, which overwrites HL with the loaded value, so the value
+      // brought into HL by the first XCHG is dead). If DE wasn't live
+      // before, the implicit-DE read is genuinely undef-tolerant —
+      // annotate so -verify-machineinstrs is satisfied.
+      MachineInstr *FirstXchg =
+          BuildMI(MBB, MI, DL, get(V6C::XCHG)).getInstr();
       emitLHLD(MI);
       BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      if (!isRegLiveBefore(MBB, FirstXchg->getIterator(), V6C::DE, &RI))
+        markXchgUseUndef(FirstXchg, V6C::DE);
     } else {
       // BC case: PUSH HL; LHLD; MOV B,H; MOV C,L; POP HL
       MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);

@@ -120,10 +120,8 @@ main:                                   ; @main
 	OUT	0xed
 	HLT
 	LXI	H, 0
-	XCHG
 	POP	PSW
 	POP	PSW
-	XCHG
 	RET
                                         ; -- End function
 	.data

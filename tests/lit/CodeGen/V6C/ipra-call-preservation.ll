@@ -29,13 +29,12 @@ entry:
 
 ; IPRA-LABEL: test_external:
 ; The extern_action call's clobbers are unknown, so %x is spilled to
-; stack. HL holds the live %x at entry; XCHG (1B/4cc) parks it in DE
-; before the prologue advances SP. O54 picks PUSH PSW (1B/16cc) over
-; LXI+DAD+SPHL (5B/32cc) for the 2-byte even frame. (Previously the
-; backend used `MOV D, H; MOV E, L` here — 2B/10cc — XCHG is strictly
-; better and HL is dead-on-entry to the SP adjustment.)
-; IPRA:       XCHG
-; IPRA-NEXT:  PUSH PSW
+; stack. O54 picks PUSH PSW (1B/16cc) over LXI+DAD+SPHL (5B/32cc) for
+; the 2-byte even frame. Since PUSH PSW does not clobber HL, frame
+; lowering no longer emits a redundant HL save in the prologue;
+; the SPILL16 expansion handles HL preservation across the call.
+; IPRA:       PUSH PSW
+; IPRA-NEXT:  XCHG
 ; IPRA:       CALL extern_action
 ; IPRA-NEXT:  CALL action_b
 ; IPRA:       MOV E, M
@@ -52,8 +51,8 @@ entry:
 ; IPRA-NOT:   PUSH D
 
 ; NOIPRA-LABEL: test_external:
-; NOIPRA:       XCHG
-; NOIPRA-NEXT:  PUSH PSW
+; NOIPRA:       PUSH PSW
+; NOIPRA-NEXT:  XCHG
 ; NOIPRA:       CALL extern_action
 ; NOIPRA-NEXT:  CALL action_b
 ; NOIPRA:       MOV E, M
@@ -61,8 +60,8 @@ entry:
 ; NOIPRA:       POP PSW
 
 ; NOIPRA-LABEL: test_direct:
-; NOIPRA:       XCHG
-; NOIPRA-NEXT:  PUSH PSW
+; NOIPRA:       PUSH PSW
+; NOIPRA-NEXT:  XCHG
 ; NOIPRA:       CALL action_b
 ; NOIPRA:       MOV E, M
 ; NOIPRA:       MOV D, M

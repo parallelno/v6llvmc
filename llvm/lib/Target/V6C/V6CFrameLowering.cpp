@@ -139,6 +139,31 @@ void V6CFrameLowering::emitSPAdjustment(MachineBasicBlock &MBB,
   BuildMI(MBB, MBBI, DL, TII.get(V6C::SPHL));
 }
 
+bool V6CFrameLowering::spAdjustClobbersHL(const MachineBasicBlock &MBB,
+                                          MachineBasicBlock::iterator MBBI,
+                                          int64_t Amount, bool IsPrologue,
+                                          V6COptMode Mode) const {
+  if (Amount == 0)
+    return false;
+  const uint64_t AbsN = static_cast<uint64_t>(Amount < 0 ? -Amount : Amount);
+
+  // Tier 1 — PUSH/POP x (AbsN/2): does not touch HL.
+  bool PushPopEligible =
+      (AbsN % 2 == 0) && AbsN >= 2 &&
+      (AbsN == 2 || AbsN == 4 ||
+       (AbsN == 6 && Mode == V6COptMode::Size));
+  if (PushPopEligible &&
+      chooseDeadPair(MBB, MBBI, IsPrologue) != V6C::NoRegister)
+    return false;
+
+  // Tier 2 — DCX/INX SP x AbsN for AbsN in {2, 4}: does not touch HL.
+  if (AbsN == 2 || AbsN == 4)
+    return false;
+
+  // Tier 3 — LXI HL, ±N; DAD SP; SPHL: clobbers HL.
+  return true;
+}
+
 // Emit prologue: subtract the stack frame size from SP.
 // On 8080 there is no SUB SP,imm, so we use:
 //   LXI HL, -FrameSize
@@ -226,8 +251,15 @@ void V6CFrameLowering::emitPrologue(MachineFunction &MF,
   }
 
   // Case 2: Only HL is live-in (DE is free). Save HL to DE via MOV pairs.
+  // The save is only needed if HL will actually be clobbered by either the
+  // FP setup (LXI 0; DAD SP) or the SP-adjust tier picked below.
   bool NeedHLSave = HLIsLiveIn && !DEIsLiveIn && NeedSPAdjust;
-  if (NeedHLSave) {
+  bool HLClobberedByAdjust =
+      StackSize > 0 &&
+      spAdjustClobbersHL(MBB, MBBI, -static_cast<int64_t>(StackSize),
+                         /*IsPrologue=*/true, Mode);
+  bool DoSave = NeedHLSave && (UseFP || HLClobberedByAdjust);
+  if (DoSave) {
     BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
         .addReg(V6C::D, RegState::Define).addReg(V6C::H);
     BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
@@ -246,7 +278,7 @@ void V6CFrameLowering::emitPrologue(MachineFunction &MF,
   }
 
   if (StackSize == 0) {
-    if (NeedHLSave) {
+    if (DoSave) {
       BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
           .addReg(V6C::H, RegState::Define).addReg(V6C::D);
       BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
@@ -258,7 +290,7 @@ void V6CFrameLowering::emitPrologue(MachineFunction &MF,
   emitSPAdjustment(MBB, MBBI, -static_cast<int64_t>(StackSize), DL,
                    /*IsPrologue=*/true, Mode);
 
-  if (NeedHLSave) {
+  if (DoSave) {
     BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
         .addReg(V6C::H, RegState::Define).addReg(V6C::D);
     BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
@@ -341,7 +373,13 @@ void V6CFrameLowering::emitEpilogue(MachineFunction &MF,
   if (StackSize == 0)
     return;
 
-  if (NeedHLSave) {
+  // Only save HL if the SP-adjust tier we'll pick actually clobbers it.
+  // Tier 1 (PUSH/POP PSW/...) and Tier 2 (DCX/INX SP) leave HL alone.
+  bool ClobbersHL = spAdjustClobbersHL(MBB, MBBI,
+                                       static_cast<int64_t>(StackSize),
+                                       /*IsPrologue=*/false, Mode);
+  bool DoSave = NeedHLSave && ClobbersHL;
+  if (DoSave) {
     BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
         .addReg(V6C::D, RegState::Define)
         .addReg(V6C::H);
@@ -353,7 +391,7 @@ void V6CFrameLowering::emitEpilogue(MachineFunction &MF,
   // or LXI+DAD+SPHL based on size, opt mode, and register pressure.
   emitSPAdjustment(MBB, MBBI, static_cast<int64_t>(StackSize), DL,
                    /*IsPrologue=*/false, Mode);
-  if (NeedHLSave) {
+  if (DoSave) {
     BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
         .addReg(V6C::H, RegState::Define)
         .addReg(V6C::D);

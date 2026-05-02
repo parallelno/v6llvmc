@@ -52,6 +52,14 @@ private:
                         MachineBasicBlock::iterator MBBI,
                         int64_t Amount, const DebugLoc &DL,
                         bool IsPrologue, V6COptMode Mode) const;
+
+  /// Predict whether emitSPAdjustment(|Amount|, MBBI, IsPrologue, Mode) will
+  /// pick the LXI+DAD+SPHL tier (which clobbers HL). PUSH/POP and DCX/INX SP
+  /// tiers leave HL untouched.
+  bool spAdjustClobbersHL(const MachineBasicBlock &MBB,
+                          MachineBasicBlock::iterator MBBI,
+                          int64_t Amount, bool IsPrologue,
+                          V6COptMode Mode) const;
 };
 
 } // namespace llvm

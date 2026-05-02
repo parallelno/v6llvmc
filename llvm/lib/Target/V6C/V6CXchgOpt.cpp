@@ -59,22 +59,35 @@ static bool isMovReg(const MachineInstr &MI, unsigned Dst, unsigned Src) {
          MI.getOperand(1).getReg() == Src;
 }
 
-/// Check if a physical register (or any alias) is defined before iterator I
-/// in the given MBB — either as a livein or by a preceding instruction.
+/// Check if a physical register (or any alias) holds a defined value at
+/// iterator I in the given MBB. Backward scan from I toward block start:
+/// the most recent event wins — an explicit def keeps Reg live, while a
+/// regmask clobber (e.g. from a CALL) renders Reg undef from that point
+/// onward. If no event is seen, fall back to livein status.
 static bool isRegLiveBefore(MachineBasicBlock &MBB,
                             MachineBasicBlock::iterator I,
                             unsigned Reg,
                             const TargetRegisterInfo *TRI) {
+  while (I != MBB.begin()) {
+    --I;
+    bool FoundDef = false, FoundClobber = false;
+    for (const MachineOperand &MO : I->operands()) {
+      if (MO.isReg() && MO.isDef() && MO.getReg().isPhysical() &&
+          TRI->regsOverlap(MO.getReg(), Reg))
+        FoundDef = true;
+      else if (MO.isRegMask() && MO.clobbersPhysReg(Reg))
+        FoundClobber = true;
+    }
+    // Explicit def wins over regmask clobber within the same instruction.
+    if (FoundDef)
+      return true;
+    if (FoundClobber)
+      return false;
+  }
   for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
        ++AI) {
     if (MBB.isLiveIn(*AI))
       return true;
-  }
-  for (auto MI = MBB.begin(); MI != I; ++MI) {
-    for (const MachineOperand &MO : MI->operands()) {
-      if (MO.isReg() && MO.isDef() && TRI->regsOverlap(MO.getReg(), Reg))
-        return true;
-    }
   }
   return false;
 }
