@@ -33,8 +33,9 @@ def brtarget : Operand<OtherVT> {
 // pair name (BC->"B", DE->"D", HL->"H", SP->"SP", PSW->"PSW"). Encoding and
 // register-class matching are inherited from the underlying class — only the
 // printed mnemonic changes.
-def GR16AllPair : RegisterOperand<GR16All, "printRegPair8080">;
-def GR16IdxPair : RegisterOperand<GR16Idx, "printRegPair8080">;
+def GR16AllPair   : RegisterOperand<GR16All,   "printRegPair8080">;
+def GR16IdxPair   : RegisterOperand<GR16Idx,   "printRegPair8080">;
+def GR16StackPair : RegisterOperand<GR16Stack, "printRegPair8080">;
 
 //===----------------------------------------------------------------------===//
 // 8080 Condition codes (3-bit encoding for Jcc/Ccc/Rcc)
@@ -235,13 +236,13 @@ def XCHG : V6CInstImplied<0xEB,
 // PUSH rp — 11_RP_0101 (rp: BC=00, DE=01, HL=10, PSW=11)
 let Uses = [SP], Defs = [SP], mayStore = 1 in
 def PUSH : V6CInstRegPair<0b11, 0b0101,
-    (outs), (ins GR16AllPair:$rp),
+    (outs), (ins GR16StackPair:$rp),
     "PUSH\t$rp", []>;
 
 // POP rp — 11_RP_0001 (rp: BC=00, DE=01, HL=10, PSW=11)
 let Uses = [SP], Defs = [SP], mayLoad = 1 in
 def POP : V6CInstRegPair<0b11, 0b0001,
-    (outs GR16AllPair:$rp), (ins),
+    (outs GR16StackPair:$rp), (ins),
     "POP\t$rp", []>;
 
 // SPHL — 0xF9 — Load SP from HL

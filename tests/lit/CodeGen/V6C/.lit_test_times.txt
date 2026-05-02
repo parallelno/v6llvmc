@@ -1,6 +1,6 @@
 2.726054e-01 acc-planning.ll
-1.550338e-01 add-i16.ll
-1.371441e-01 add-i32.ll
+6.835246e-02 add-i16.ll
+7.735252e-02 add-i32.ll
 1.612849e-01 add-i8.ll
 1.668189e-01 add16-dad-expansion.ll
 1.348853e-01 and-i8.ll

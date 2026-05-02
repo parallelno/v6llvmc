@@ -389,11 +389,21 @@ unsigned V6CAsmParser::validateTargetOperandClass(MCParsedAsmOperand &AsmOp,
   default:
     return Match_InvalidOperand;
 
-  // Any 16-bit pair operand (PUSH, POP, DAD, INX, DCX, LXI):
+  // Any 16-bit pair operand (DAD, INX, DCX, LXI):
   // accept B/D/H (promoted), SP (already in GR16All — default check passed),
   // and PSW (not in GR16All — we accept it here).
   case MCK_GR16All:
     if (R == V6C::PSW || R == V6C::SP)
+      return Match_Success;
+    if (unsigned P = promotePair(R)) {
+      Op.setReg(P);
+      return Match_Success;
+    }
+    return Match_InvalidOperand;
+
+  // PUSH / POP operand: BC, DE, HL, PSW (NOT SP — opcode 0xF1/0xF5 means PSW).
+  case MCK_GR16Stack:
+    if (R == V6C::PSW)
       return Match_Success;
     if (unsigned P = promotePair(R)) {
       Op.setReg(P);

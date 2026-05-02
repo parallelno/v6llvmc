@@ -105,8 +105,16 @@ def GR16Idx : RegisterClass<"V6C", [i16], 8, (add BC, DE)>;
 // GR16SP — Stack pointer only.
 def GR16SP : RegisterClass<"V6C", [i16], 8, (add SP)>;
 
-// GR16All — All 16-bit operands including SP (for PUSH/POP, LXI, INX, DCX, DAD).
+// GR16All — All 16-bit operands including SP (for LXI, INX, DCX, DAD).
 def GR16All : RegisterClass<"V6C", [i16], 8, (add HL, DE, BC, SP)>;
+
+// GR16Stack — Operand class for PUSH/POP (encoding RP=11 means PSW, not SP).
+// 8080 valid operands: BC, DE, HL, PSW. Non-allocatable; all uses come from
+// frame-lowering / pseudo-expansion with pre-assigned physregs.
+def GR16Stack : RegisterClass<"V6C", [i16], 8, (add HL, DE, BC, PSW)> {
+  let CopyCost = -1;
+  let isAllocatable = 0;
+}
 
 // FlagReg — Implicit def/use on ALU/compare instructions.
 def FlagReg : RegisterClass<"V6C", [i8], 8, (add FLAGS)> {
