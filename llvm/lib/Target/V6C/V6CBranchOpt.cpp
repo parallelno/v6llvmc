@@ -33,6 +33,11 @@
 //    Example:  CPI 0 / JNZ .Lskip / MVI E,0 / .Lskip: MOV A,E / RET
 //           →  CPI 0 / RZ / MOV A,E / RET
 //
+// 8. Conditional call folding (O15): Jcc skip / CALL fn / skip: is
+//    replaced with the inverted conditional call (e.g. JZ→CNZ).
+//    Example:  JZ .Lskip / CALL foo / .Lskip:
+//           →  CNZ foo / .Lskip:
+//
 //===----------------------------------------------------------------------===//
 
 #include "V6C.h"
@@ -72,6 +77,7 @@ private:
   bool threadJMPOnlyBlocks(MachineFunction &MF);
   bool removeRedundantJMP(MachineFunction &MF);
   bool invertConditionalBranch(MachineFunction &MF);
+  bool foldConditionalCalls(MachineFunction &MF);
   bool foldConditionalReturns(MachineFunction &MF);
   bool removeDeadBlocks(MachineFunction &MF);
 
@@ -510,6 +516,129 @@ bool V6CBranchOpt::foldZeroSelectReturn(MachineFunction &MF) {
   return Changed;
 }
 
+/// Map Jcc opcode to the corresponding inverted-condition Cxx call
+/// opcode. The inversion is intentional: in the pattern
+///     Jcc skip / CALL fn / skip:
+/// the CALL fires iff the Jcc condition is FALSE, so the equivalent
+/// fused opcode tests the inverse predicate (e.g. JZ → CNZ).
+static unsigned getConditionalCall(unsigned JccOpc) {
+  switch (JccOpc) {
+  case V6C::JZ:  return V6C::CNZ;
+  case V6C::JNZ: return V6C::CZ;
+  case V6C::JC:  return V6C::CNC;
+  case V6C::JNC: return V6C::CC;
+  case V6C::JPE: return V6C::CPO;
+  case V6C::JPO: return V6C::CPE;
+  case V6C::JP:  return V6C::CM;
+  case V6C::JM:  return V6C::CP;
+  default: return 0;
+  }
+}
+
+/// Fold Jcc-over-CALL into a single conditional CALL instruction.
+///
+/// Pattern:
+///   bb.MBB:    ... ; Jcc bb.skip                (last terminator)
+///   bb.call:   CALL fn                          (only non-debug instr,
+///                                                single pred = MBB,
+///                                                single succ = bb.skip)
+///   bb.skip:   ...                              (layout successor of bb.call)
+///
+/// Transform:
+///   bb.MBB:    ... ; Cxx_inv fn                 (forwards all operands of
+///                                                the original CALL,
+///                                                including the RegMask)
+///   bb.skip:   ...                              (falls through from MBB)
+///
+/// bb.call becomes dead and is removed.
+///
+/// IPRA correctness: the original CALL carries a RegMask operand added
+/// by LowerCall (see O39). All operands are forwarded verbatim onto the
+/// new Cxx so the per-callee narrowed clobber set is preserved.
+bool V6CBranchOpt::foldConditionalCalls(MachineFunction &MF) {
+  bool Changed = false;
+  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
+  SmallVector<MachineBasicBlock *, 4> DeadBlocks;
+
+  for (MachineBasicBlock &MBB : MF) {
+    if (MBB.empty())
+      continue;
+
+    // Last instruction must be a Jcc to a local MBB.
+    MachineInstr &Jcc = MBB.back();
+    unsigned CxxOpc = getConditionalCall(Jcc.getOpcode());
+    if (!CxxOpc)
+      continue;
+    if (!Jcc.getOperand(0).isMBB())
+      continue;
+    MachineBasicBlock *SkipBB = Jcc.getOperand(0).getMBB();
+
+    // Layout successor of MBB is the call block.
+    MachineFunction::iterator NextIt = std::next(MBB.getIterator());
+    if (NextIt == MF.end())
+      continue;
+    MachineBasicBlock &CallBB = *NextIt;
+    if (&CallBB == SkipBB)
+      continue;
+    if (!MBB.isSuccessor(&CallBB))
+      continue;
+
+    // CallBB: single predecessor (so we can delete it safely),
+    // single successor (must be SkipBB).
+    if (CallBB.pred_size() != 1)
+      continue;
+    if (CallBB.succ_size() != 1 || *CallBB.succ_begin() != SkipBB)
+      continue;
+
+    // SkipBB must be the layout successor of CallBB (so the fused Cxx
+    // in MBB falls through to SkipBB just as the original Jcc did).
+    MachineFunction::iterator AfterCall = std::next(NextIt);
+    if (AfterCall == MF.end() || &*AfterCall != SkipBB)
+      continue;
+
+    // CallBB must contain exactly one non-debug instruction: a CALL
+    // (not a tail call, not anything else — e.g. a result COPY would
+    // disqualify the fold because the COPY belongs to that block only).
+    auto FirstNonDbg = CallBB.getFirstNonDebugInstr();
+    if (FirstNonDbg == CallBB.end())
+      continue;
+    if (FirstNonDbg->getOpcode() != V6C::CALL)
+      continue;
+    auto NextInst = std::next(FirstNonDbg);
+    while (NextInst != CallBB.end() && NextInst->isDebugInstr())
+      ++NextInst;
+    if (NextInst != CallBB.end())
+      continue; // More than one non-debug instruction.
+
+    MachineInstr &CallMI = *FirstNonDbg;
+
+    // Build the conditional CALL. Forward the brtarget operand and
+    // every remaining operand of the original CALL (implicit reg uses
+    // for arguments, implicit defs for return values, and — critical —
+    // the RegMask operand for IPRA).
+    auto MIB = BuildMI(MBB, Jcc, Jcc.getDebugLoc(), TII.get(CxxOpc));
+    for (const MachineOperand &MO : CallMI.operands())
+      MIB.add(MO);
+
+    // Tear down the original instructions and the dead CallBB edge.
+    Jcc.eraseFromParent();
+    CallMI.eraseFromParent();
+
+    MBB.removeSuccessor(&CallBB);
+    // CallBB is now dead (single-pred was MBB).
+    DeadBlocks.push_back(&CallBB);
+    Changed = true;
+  }
+
+  for (MachineBasicBlock *Dead : DeadBlocks) {
+    while (!Dead->succ_empty())
+      Dead->removeSuccessor(Dead->succ_begin());
+    Dead->eraseFromParent();
+  }
+
+  return Changed;
+}
+
 /// Replace Jcc .Lret with Rcc when .Lret contains only RET.
 bool V6CBranchOpt::foldConditionalReturns(MachineFunction &MF) {
   bool Changed = false;
@@ -576,6 +705,7 @@ bool V6CBranchOpt::runOnMachineFunction(MachineFunction &MF) {
   Changed |= foldZeroSelectReturn(MF);
   Changed |= threadJMPOnlyBlocks(MF);
   Changed |= invertConditionalBranch(MF);
+  Changed |= foldConditionalCalls(MF);
   Changed |= removeRedundantJMP(MF);
   Changed |= foldConditionalReturns(MF);
   Changed |= removeDeadBlocks(MF);

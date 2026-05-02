@@ -15,7 +15,7 @@
 | O11 | Dual Cost Model (Bytes + Cycles) | [O11_dual_cost_model.md](O11_dual_cost_model.md) | llvm-mos |
 | O13 | Load-Immediate Combining (Register Value Tracking) | [O13_load_immediate_combining.md](O13_load_immediate_combining.md) | llvm-mos |
 | O14 | Tail Call Optimization (CALL+RET → JMP) | [O14_tail_call_optimization.md](O14_tail_call_optimization.md) | llvm-mos |
-| O15 | Conditional Call Optimization (Branch-over-Call → CC/CZ) | [O15_conditional_call_optimization.md](O15_conditional_call_optimization.md) | llvm-z80 |
+| O15 | Conditional Call Optimization (Branch-over-Call → CC/CZ) ✅ | [O15_conditional_call_optimization.md](O15_conditional_call_optimization.md) | llvm-z80 |
 | O16 | Post-RA Store-to-Load Forwarding (Spill/Reload) | [O16_store_to_load_forwarding.md](O16_store_to_load_forwarding.md) | llvm-z80 |
 | O17 | Redundant Flag-Setting Elimination (Post-RA) | [O17_redundant_flag_elimination.md](O17_redundant_flag_elimination.md) | llvm-z80 |
 | O18 | Loop Counter DEC+Branch Peephole | [O18_loop_counter_peephole.md](O18_loop_counter_peephole.md) | llvm-z80 |
@@ -87,7 +87,7 @@
 | O11 | Dual Cost Model (Bytes+Cycles) | llvm-mos | N/A (infra) | N/A | Low | Very Low | None | [x] |
 | O13 | LdImm Combining (value track) | llvm-mos | 1B or 4cc+1B | High | Low | Very Low | None | [x] |
 | O14 | Tail Call (CALL+RET→JMP) | llvm-mos | 18cc, 1B | Medium | Very Low | Very Low | None | [x] |
-| O15 | Conditional Call (JNZ+CALL→CNZ) | llvm-z80 | 12cc, 3B | Medium | Medium | Low | None | [ ] |
+| O15 | Conditional Call (JNZ+CALL→CNZ) | llvm-z80 | 12cc, 3B | Medium | Medium | Low | None | [x] |
 | O16 | Store-to-Load Forwarding | llvm-z80 | 44-52cc/reload | Very high | Medium | Low-Med | None | [x] |
 | O17 | Redundant Flag Elimination | llvm-z80 | 4cc, 1B | Med-high | Low | Very Low | None | [x] |
 | O18 | Loop Counter DCR+JNZ | llvm-z80 | 20cc, 4B/iter | Very high | Low | Very Low | None | [x] |
@@ -96,7 +96,7 @@
 | O21 | LHLD/SHLD 16-bit absolute addr | V6C | 14-22cc, 3-4B | Medium | Low | Very Low | O6 done | [x] |
 | O22 | TTI Cost Hooks Expansion | V6C | indirect (better decisions) | High | Low-Med | Low | O7 done | [ ] |
 | O23 | Conditional Tail Call | V6C | 14cc, 1B | Medium | Low-Med | Low | O14 done | [x] |
-| O24 | I16 Immediate Unsigned CMP | V6C | 2cc, 1B + free reg pair | Med-high | Medium | Low | None | [ ] |
+| O24 | I16 Immediate Unsigned CMP | V6C | 2cc, 1B + free reg pair | Med-high | Medium | Low | None | [x] |
 | O26 | Cost Model Infra (getInstrCost) | V6C | N/A (infra) | N/A | Low | Very Low | O11 done | [ ] |
 | O27 | i16 Zero-Test (MOV+ORA) | V6C | 24cc, 10B | Very high | Low-Med | Low | None | [x] |
 | O28 | Branch Threading (JMP-only blocks) | V6C | 10cc, 3B | Medium | Low | Very Low | O27 enables | [x] |
@@ -196,7 +196,7 @@
 21. ~~**O16** — store-to-load forwarding, 44-52cc per eliminated reload~~ ✅
 19. ~~**O39** — IPRA integration, eliminates 13-18 spill instructions per function with calls, ~20 lines~~ ✅
 21. ~~**O16** — store-to-load forwarding, 44-52cc per eliminated reload~~ ✅
-22. **O24** — I16 immediate unsigned comparison, frees register pair
+22. ~~**O24** — I16 immediate unsigned comparison, frees register pair~~ ✅
 23. **O15** — conditional call, 12cc+3B per instance, reduces branch count
 24. **O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings
 25. **O2** — sequential LXI→INX folding

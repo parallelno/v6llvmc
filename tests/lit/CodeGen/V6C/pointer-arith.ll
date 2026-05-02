@@ -2,9 +2,9 @@
 
 ; GEP with i16 index on i16 element: base + idx * 2
 ; CHECK-LABEL: gep_i16:
-; CHECK:       ADD
-; CHECK:       ADC
-; CHECK:       DAD D
+; CHECK:       XCHG
+; CHECK:       DAD	H
+; CHECK:       DAD	D
 ; CHECK:       MOV A, M
 ; CHECK:       INX H
 ; CHECK-NEXT:  MOV H, M

@@ -35,21 +35,6 @@ error_stack_arg:                        ; @error_stack_arg
 	DAD	B
 	RET
                                         ; -- End function
-	.section	.text.add_de_de,"ax",@progbits
-	.globl	add_de_de                       ; -- Begin function add_de_de
-add_de_de:                              ; @add_de_de
-	;=== int add_de_de(int arg0, int arg1) ===
-	;  arg0 = HL
-	;  arg1 = DE
-; %bb.0:
-	;--- V6C_ADD16 ---
-	XCHG
-	DAD	H
-	XCHG
-	;--- V6C_ADD16 ---
-	DAD	D
-	RET
-                                        ; -- End function
 	.section	.text.main,"ax",@progbits
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main

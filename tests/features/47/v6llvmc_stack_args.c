@@ -17,7 +17,7 @@ int error_stack_arg(int x, int y, int z, int w, int a){
     return x+y+z+w+a;
 }
 
-int add_de_de(int x, int y){
+static int add_de_de(int x, int y){
     return x+(y+y);
 }
 
