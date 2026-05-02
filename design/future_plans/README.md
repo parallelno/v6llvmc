@@ -126,7 +126,7 @@
 | O54b | Per-Call Frame Cleanup (POP rp) | V6C | 3-4B, 8-20cc per call cleanup | Low (today: 0; opens up if hasReservedCallFrame=false) | Medium | Low-Med | O54a; gated on per-call-frame mode |
 | O54c | Stack-Arg Passing (PUSH rp) | V6C | -6B/-28cc per i16 stack arg | Medium (FFI / >3-arg calls) | Medium | Medium | O54a; couples with O54b |
 | O54d | Constant-Size alloca (PUSH rp) | V6C | -2 to -4B per small constant alloca | Niche (zero in benchmarks) | Low-Med | Low | O54a |
-| O55 | Additional Peepholes (CMA, XRA A) | llvm-z80 | 4cc, 1B per instance | Medium | Very Low | Very Low | None | [x] (Pattern 2 only; Patterns 1 & 3 obsolete) |
+| O55 | Additional Peepholes (CMA, XRA A) | llvm-z80 | 4cc, 1B per instance | Medium | Very Low | Very Low | None | (Pattern 2 only; Patterns 1 & 3 obsolete) |
 | O56 | Pre-RA Load Folding | llvm-z80 | 4cc, 1B per fold | Low-Med | Medium | Low | Complements O49 |
 | O57 | Shift/Rotate Chaining | llvm-mos | 4-24cc per chain | Low | Medium | Low | None |
 | O58 | CmpZero Backward Scan | llvm-mos | 4cc, 1B per instance | Medium | Low | Very Low | O17 done |
@@ -200,13 +200,13 @@
 23. ~~**O15** — conditional call, 12cc+3B per instance, reduces branch count~~ ✅
 24. ~~**O5** — BUILD_PAIR+ADD16 fusion, high per-instance savings~~ ✅
 25. ~~**O2** — sequential LXI→INX folding~~ ✅
-26. **O53** — enhanced value tracking (full RegVal), extends O13 with flag state + sub-reg composition, ~300 lines
-27. **O56** — pre-RA load folding, fold single-use loads into M-operand consumers, ~100 lines
+26. ~~**O53** — enhanced value tracking (full RegVal), extends O13 with flag state + sub-reg composition, ~300 lines~~ ✅
+27. ~~**O56** — pre-RA load folding, fold single-use loads into M-operand consumers, ~100 lines~~ ✅
 
 **Phase 4 — Loop & stack (Medium-High complexity, massive payoff)**:
 
 27. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
-28. **O22** — TTI cost hooks (arithmetic, memory, cmp costs), extends O7
+28. ~~**O22** — TTI cost hooks (arithmetic, memory, cmp costs), extends O7~~ ✅
 29. ~~**O10** — static stack allocation for non-reentrant functions, supersedes O8 T2~~ ✅
 30. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
 31. **O52** — index IV rewriting, narrow 16-bit loop indices to 8-bit via SCEV, ~80 lines

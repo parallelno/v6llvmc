@@ -3,6 +3,9 @@
 *Inspired by jacobly0 `Z80MachinePreRAOptimization`.*
 *Detailed analysis: [llvm_z80_analysis.md](llvm_z80_analysis.md) §S3.*
 
+## Rejected
+Verdict: Plan is obsolete. The optimization it describes is already delivered by O49 (Direct Memory ALU ISel), which is fully implemented and runs at ISel time — exactly catching the patterns O56 targeted.
+
 ## Problem
 
 After instruction selection, some load instructions have a single use that

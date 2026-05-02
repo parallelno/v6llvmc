@@ -4,15 +4,11 @@ init_buf:                               ; -- Begin function init_buf
                                         ; @init_buf
 ; %bb.0:
 	LXI	H, buf
+	MVI	A, 0xfc
 .LBB0_1:                                ; =>This Inner Loop Header: Depth=1
 	MVI	M, 1
 	INX	H
-	MVI	A, <(buf+252)
-	CMP	L
-	JNZ	.LBB0_1
-; %bb.3:                                ;   in Loop: Header=BB0_1 Depth=1
-	MVI	A, >(buf+252)
-	CMP	H
+	DCR	A
 	JNZ	.LBB0_1
 ; %bb.2:
 	LXI	H, 0
@@ -45,7 +41,7 @@ cross_off:                              ; -- Begin function cross_off
 	MOV	L, E
 	MVI	A, 0xfb
 	SUB	E
-	XRA	A
+	MVI	A, 0
 	SBB	D
 	JNC	.LBB1_2
 ; %bb.3:
@@ -55,30 +51,29 @@ cross_off:                              ; -- Begin function cross_off
 count_set:                              ; -- Begin function count_set
                                         ; @count_set
 ; %bb.0:
+	XRA	A
 	LXI	H, buf
-	MVI	E, 0
+	MVI	C, 0xfc
+	JMP	.LBB2_1
+.LBB2_3:                                ;   in Loop: Header=BB2_1 Depth=1
+	MOV	A, D
+	ADD	E
+	MOV	D, A
+	INX	H
+	MOV	A, C
+	DCR	A
+	MOV	C, A
+	MOV	A, D
+	RZ
 .LBB2_1:                                ; =>This Inner Loop Header: Depth=1
+	MOV	D, A
 	MOV	A, M
 	ORA	A
-	MVI	D, 0
+	MVI	E, 0
 	JZ	.LBB2_3
 ; %bb.2:                                ;   in Loop: Header=BB2_1 Depth=1
-	INR	D
-.LBB2_3:                                ;   in Loop: Header=BB2_1 Depth=1
-	MOV	A, E
-	ADD	D
-	MOV	E, A
-	INX	H
-	MVI	A, <(buf+252)
-	CMP	L
-	JNZ	.LBB2_1
-; %bb.5:                                ;   in Loop: Header=BB2_1 Depth=1
-	MVI	A, >(buf+252)
-	CMP	H
-	JNZ	.LBB2_1
-; %bb.4:
-	MOV	A, E
-	RET
+	INR	E
+	JMP	.LBB2_3
                                         ; -- End function
 	.section	.text.main,"ax",@progbits
 	.globl	main                            ; -- Begin function main

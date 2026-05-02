@@ -16,6 +16,36 @@ namespace {
 enum class LSRStrategy { Auto, InsnsFirst, RegsFirst };
 } // namespace
 
+// O22: master / per-hook switches for the V6C-specific TTI cost model.
+// All default to ON. Use `-mllvm -v6c-tti-cost-hooks=0` to fall back to
+// BasicTTI defaults wholesale, or any of the per-hook flags to bisect a
+// regression to a single hook without rebuilding.
+static cl::opt<bool> EnableTTICostHooks(
+    "v6c-tti-cost-hooks",
+    cl::desc("Master switch for V6C-specific TTI cost hooks (O22). "
+             "Disable to fall back to BasicTTI defaults."),
+    cl::init(true), cl::Hidden);
+
+static cl::opt<bool> EnableArithCost(
+    "v6c-tti-cost-arith",
+    cl::desc("Enable V6C-specific TTI arithmetic cost (O22)."),
+    cl::init(true), cl::Hidden);
+
+static cl::opt<bool> EnableMemCost(
+    "v6c-tti-cost-mem",
+    cl::desc("Enable V6C-specific TTI memory cost (O22)."),
+    cl::init(true), cl::Hidden);
+
+static cl::opt<bool> EnableCmpCost(
+    "v6c-tti-cost-cmp",
+    cl::desc("Enable V6C-specific TTI cmp/select cost (O22)."),
+    cl::init(true), cl::Hidden);
+
+static cl::opt<bool> EnableScalingCost(
+    "v6c-tti-cost-scaling",
+    cl::desc("Enable V6C-specific TTI scaling-factor cost (O22)."),
+    cl::init(true), cl::Hidden);
+
 static cl::opt<LSRStrategy> LSRStrategyOpt(
     "v6c-lsr-strategy",
     cl::desc("LSR formula tie-breaker ordering on V6C."),
@@ -118,4 +148,112 @@ bool V6CTTIImpl::isLSRCostLess(const TTI::LSRCost &C1,
   }
 
   return regsFirstLess(C1, C2);
+}
+
+// === O22: V6C-tuned TTI cost hooks ============================================
+//
+// Numbers below are abstract relative weights (not clock cycles) tuned to
+// the i8080 cost ratios documented in design/future_plans/O22_tti_cost_hooks.md
+// and reflect the multi-instruction expansions visible in the regression
+// corpus (e.g. tests/features/51).
+//
+// Every hook:
+//   1. Falls back to BaseT if its per-hook flag (or the master flag) is off.
+//   2. Falls back to BaseT for any type it does not understand (vectors, FP,
+//      pointer types, oversize integers) so we never produce *worse* numbers
+//      than BasicTTI for cases we don't model explicitly.
+// ============================================================================
+
+InstructionCost V6CTTIImpl::getArithmeticInstrCost(
+    unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
+    TTI::OperandValueInfo Opd1Info, TTI::OperandValueInfo Opd2Info,
+    ArrayRef<const Value *> Args, const Instruction *CxtI) {
+  if (!EnableTTICostHooks || !EnableArithCost)
+    return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Opd1Info,
+                                         Opd2Info, Args, CxtI);
+
+  if (!Ty || Ty->isVectorTy() || !Ty->isIntegerTy())
+    return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Opd1Info,
+                                         Opd2Info, Args, CxtI);
+
+  unsigned BW = Ty->getIntegerBitWidth();
+  // 8-bit native ALU op (ADD/SUB/AND/OR/XOR r): 4cc, 1 instruction.
+  if (BW <= 8)
+    return 1;
+  // 16-bit ALU expands to multi-instruction sequences (DAD, ADC, manual
+  // borrow, …) — ~24-48cc, 5-10 instructions.
+  if (BW <= 16)
+    return 6;
+  // 32-bit goes through a libcall (__mulsi3, __addsi3, etc.).
+  if (BW <= 32)
+    return 20;
+  return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Opd1Info,
+                                       Opd2Info, Args, CxtI);
+}
+
+InstructionCost V6CTTIImpl::getMemoryOpCost(
+    unsigned Opcode, Type *Src, MaybeAlign Alignment, unsigned AddressSpace,
+    TTI::TargetCostKind CostKind, TTI::OperandValueInfo OpInfo,
+    const Instruction *I) {
+  if (!EnableTTICostHooks || !EnableMemCost)
+    return BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace,
+                                  CostKind, OpInfo, I);
+
+  if (!Src || Src->isVectorTy() || !Src->isIntegerTy())
+    return BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace,
+                                  CostKind, OpInfo, I);
+
+  unsigned BW = Src->getIntegerBitWidth();
+  // Every memory access requires HL setup (LXI HL, addr) — there are no
+  // free indexed addressing modes on i8080.
+  if (BW <= 8)
+    return 2; // LXI + MOV M / MOV r,M
+  if (BW <= 16)
+    return 4; // LXI + MOV + INX + MOV
+  if (BW <= 32)
+    return 8; // 2× i16 access pattern
+  return BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace,
+                                CostKind, OpInfo, I);
+}
+
+InstructionCost V6CTTIImpl::getCmpSelInstrCost(
+    unsigned Opcode, Type *ValTy, Type *CondTy, CmpInst::Predicate VecPred,
+    TTI::TargetCostKind CostKind, const Instruction *I) {
+  if (!EnableTTICostHooks || !EnableCmpCost)
+    return BaseT::getCmpSelInstrCost(Opcode, ValTy, CondTy, VecPred,
+                                     CostKind, I);
+
+  if (!ValTy || ValTy->isVectorTy() || !ValTy->isIntegerTy())
+    return BaseT::getCmpSelInstrCost(Opcode, ValTy, CondTy, VecPred,
+                                     CostKind, I);
+
+  unsigned BW = ValTy->getIntegerBitWidth();
+  // i1 / i8: single CMP r (4cc).
+  if (BW <= 8)
+    return 1;
+  // i16: BR_CC16 expansion is multi-instruction (CMP/CMP/Jcc/...).
+  if (BW <= 16)
+    return 4;
+  if (BW <= 32)
+    return 10;
+  return BaseT::getCmpSelInstrCost(Opcode, ValTy, CondTy, VecPred,
+                                   CostKind, I);
+}
+
+InstructionCost V6CTTIImpl::getScalingFactorCost(Type *Ty, GlobalValue *BaseGV,
+                                                  int64_t BaseOffset,
+                                                  bool HasBaseReg,
+                                                  int64_t Scale,
+                                                  unsigned AddrSpace) {
+  if (!EnableTTICostHooks || !EnableScalingCost)
+    return BaseT::getScalingFactorCost(Ty, BaseGV, BaseOffset, HasBaseReg,
+                                       Scale, AddrSpace);
+
+  // V6C only supports a single base register (HL) with no offset and no
+  // scaled index. Anything else is invalid (mirrors isLegalAddressingMode).
+  if (BaseGV || BaseOffset != 0 || (Scale != 0 && Scale != 1))
+    return InstructionCost::getInvalid();
+  if (!HasBaseReg && Scale == 0)
+    return InstructionCost::getInvalid();
+  return 0;
 }

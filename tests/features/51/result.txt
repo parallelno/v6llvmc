@@ -1,0 +1,220 @@
+O22 — TTI Cost Hooks Expansion
+================================
+
+Test sources
+------------
+v6llvmc.c (and equivalent c8080.c):
+
+    extern unsigned short ext_sink16(unsigned short v);
+
+    unsigned short sum_array(const unsigned short *a, unsigned char n) {
+        unsigned short s = 0;
+        for (unsigned char i = 0; i < n; i++)
+            s += a[i] * 3 + 7;
+        return s;
+    }
+
+    unsigned short poly(const unsigned short *a, unsigned char n) {
+        unsigned short s = 0;
+        for (unsigned char i = 0; i < n; i++) {
+            unsigned short x = a[i];
+            s += x * 5 + (x >> 1) + 3;
+        }
+        return s;
+    }
+
+    unsigned short g_arr[8];
+
+    int main(int, char**) {
+        g_arr[0..7] = 1..8;
+        unsigned short r1 = sum_array(g_arr, 8);
+        unsigned short r2 = poly(g_arr, 8);
+        return ext_sink16(r1 + r2);
+    }
+
+
+c8080 reference (i8080 mnemonics, main + key callees)
+-----------------------------------------------------
+sum_array:
+        ld   (__a_2_sum_array), a
+        ld   hl, 0
+        ld   (sum_array_s), hl
+        xor  a
+        ld   (sum_array_i), a
+l_0:    ld   hl, __a_2_sum_array
+        cp   (hl)
+        jp   nc, l_2
+        ld   hl, (__a_1_sum_array)
+        ex   hl, de
+        ld   hl, (sum_array_i)
+        ld   h, 0
+        add  hl, hl
+        add  hl, de
+        ld   e, (hl)
+        inc  hl
+        ld   d, (hl)
+        ld   h, d
+        ld   l, e
+        add  hl, hl
+        add  hl, de
+        ld   de, 7
+        add  hl, de
+        ex   hl, de
+        ld   hl, (sum_array_s)
+        add  hl, de
+        ld   (sum_array_s), hl
+        inc  a
+        ld   (sum_array_i), a
+        jp   l_0
+l_2:    ld   hl, (sum_array_s)
+        ret
+
+poly:
+        ld   (__a_2_poly), a
+        ld   hl, 0
+        ld   (poly_s), hl
+        xor  a
+        ld   (poly_i), a
+l_3:    ld   hl, __a_2_poly
+        cp   (hl)
+        jp   nc, l_5
+        ld   hl, (__a_1_poly)
+        ex   hl, de
+        ld   hl, (poly_i)
+        ld   h, 0
+        add  hl, hl
+        add  hl, de
+        ld   e, (hl)
+        inc  hl
+        ld   d, (hl)
+        ex   hl, de
+        ld   (poly_x), hl
+        ld   d, h
+        ld   e, l
+        add  hl, hl
+        add  hl, hl
+        add  hl, de
+        push hl
+        ld   hl, (poly_x)
+        ld   de, 1
+        call __o_shr_u16
+        pop  de
+        add  hl, de
+        inc  hl
+        inc  hl
+        inc  hl
+        ex   hl, de
+        ld   hl, (poly_s)
+        add  hl, de
+        ld   (poly_s), hl
+        ld   a, (poly_i)
+        inc  a
+        ld   (poly_i), a
+        jp   l_3
+l_5:    ld   hl, (poly_s)
+        ret
+
+main: (constant-folded — loops still emitted but main bypasses them)
+        ; populate g_arr with 1..8
+        ; compute r1 + r2 statically and tail-call ext_sink16
+
+
+c8080 stats (per function, indicative)
+--------------------------------------
+sum_array body : ~33 instrs / iter, static-stack spills throughout
+poly       body : ~38 instrs / iter, includes call to __o_shr_u16 each iter
+
+
+v6llvmc — BASELINE (BasicTTI defaults: -mllvm -v6c-tti-cost-hooks=0)
+-------------------------------------------------------------------
+v6llvmc_old.asm (also reproducible with hooks-off):
+total file = 147 lines
+
+sum_array inner loop body (.LBB0_2 .. JNZ): 33 lines
+        SHLD .LLo61_2+1                  ; spill HL
+        PUSH H
+        MOV  L, C
+        MOV  H, B
+        SHLD .LLo61_3+1                  ; spill BC (loop counter, i16)
+        POP  H
+        XCHG
+        SHLD .LLo61_0+1                  ; spill DE (ptr)
+        SHLD .LLo61_1+1                  ; spill DE again
+        MOV  A, M
+        INX  H
+        MOV  H, M
+        MOV  L, A
+        XCHG
+        LXI  D, 3
+        CALL __mulhi3
+.LLo61_3: LXI  B, 0                      ; reload BC
+.LLo61_0: LXI  D, 0                      ; reload DE
+.LLo61_2: LXI  D, 0                      ; reload DE (s)
+        DAD  D
+        LXI  D, 7
+        DAD  D
+.LLo61_1: LXI  D, 0                      ; reload DE (ptr)
+        INX  D
+        INX  D
+        DCX  B                            ; counter-- (i16)
+        MOV  A, B
+        ORA  C                            ; i16 zero test
+        JNZ  .LBB0_2
+
+Per iter (baseline): 4 SHLD spills + PUSH/POP pair + i16 zero-test (3 instrs)
+                     + 4 self-modifying LXI reloads.
+
+
+v6llvmc — WITH O22 HOOKS (default)
+----------------------------------
+v6llvmc_new01.asm:
+total file = 128 lines (-19 lines, -13%)
+
+sum_array inner loop body (.LBB0_2 .. JNZ): 25 lines
+        XCHG
+        SHLD .LLo61_1+1                  ; spill HL (s)
+        XCHG
+        SHLD .LLo61_0+1                  ; spill HL (ptr)
+        STA  .LLo61_2+1                  ; spill A   (counter — now i8!)
+.LLo61_0: LXI  H, 0
+        MOV  A, M
+        INX  H
+        MOV  H, M
+        MOV  L, A
+        LXI  D, 3
+        CALL __mulhi3
+.LLo61_1: LXI  D, 0
+        DAD  D
+        LXI  D, 7
+        DAD  D
+        XCHG
+        LHLD .LLo61_0+1                  ; reload HL (ptr) — pre-incremented
+.LLo61_2: MVI  A, 0                       ; reload A   (counter)
+        INX  H
+        INX  H
+        DCR  A                            ; counter-- (i8, 1 instr)
+        JNZ  .LBB0_2
+
+Per iter (with hooks): 2 SHLD + 1 STA spill + i8 zero-test (1 instr)
+                       + 2 LXI reloads + 1 LHLD reload + 1 MVI reload.
+
+What changed — and why
+----------------------
+Driver: O22 makes i16 ops cost 6× and i16 cmp cost 4× their i8 equivalents.
+Two visible IR-level effects:
+
+1. Loop counter narrowed i16 → i8.
+   IndVarSimplify/LSR now sees that an i16 IV with i16 cmp costs 4
+   per compare vs 1 for i8. It demotes the counter to i8, eliminating
+   the 3-instruction `MOV A,B; ORA C; JNZ` zero-test in favour of
+   `DCR A; JNZ`.
+
+2. Lower spill pressure.
+   Demoting the counter frees a register pair, so the per-iter spill
+   set drops from 4×SHLD + PUSH/POP to 2×SHLD + 1×STA.
+
+3. Pointer increment hoisted into reload (LHLD .LLo61_0+1 reloads
+   the *post-incremented* HL; INX H executes on the reloaded value).
+   No correctness cost — just less critical-path reshuffling.
+
+Equivalent improvement applies to poly (file slimmed similarly).

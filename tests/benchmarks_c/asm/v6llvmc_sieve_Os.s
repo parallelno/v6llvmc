@@ -4,15 +4,11 @@ init_buf:                               ; -- Begin function init_buf
                                         ; @init_buf
 ; %bb.0:
 	LXI	H, buf
+	MVI	A, 0xfc
 .LBB0_1:                                ; =>This Inner Loop Header: Depth=1
 	MVI	M, 1
 	INX	H
-	MVI	A, <(buf+252)
-	CMP	L
-	JNZ	.LBB0_1
-; %bb.3:                                ;   in Loop: Header=BB0_1 Depth=1
-	MVI	A, >(buf+252)
-	CMP	H
+	DCR	A
 	JNZ	.LBB0_1
 ; %bb.2:
 	LXI	H, 0
@@ -45,7 +41,7 @@ cross_off:                              ; -- Begin function cross_off
 	MOV	L, E
 	MVI	A, 0xfb
 	SUB	E
-	XRA	A
+	MVI	A, 0
 	SBB	D
 	JNC	.LBB1_2
 ; %bb.3:
@@ -55,29 +51,28 @@ cross_off:                              ; -- Begin function cross_off
 count_set:                              ; -- Begin function count_set
                                         ; @count_set
 ; %bb.0:
+	XRA	A
 	LXI	H, buf
-	MVI	E, 0
+	MVI	C, 0xfc
 .LBB2_1:                                ; =>This Inner Loop Header: Depth=1
+	MOV	D, A
 	MOV	A, M
 	ORA	A
-	MVI	D, 0
+	MVI	E, 0
 	JZ	.LBB2_3
 ; %bb.2:                                ;   in Loop: Header=BB2_1 Depth=1
-	INR	D
+	INR	E
 .LBB2_3:                                ;   in Loop: Header=BB2_1 Depth=1
-	MOV	A, E
-	ADD	D
-	MOV	E, A
+	MOV	A, D
+	ADD	E
+	MOV	D, A
 	INX	H
-	MVI	A, <(buf+252)
-	CMP	L
-	JNZ	.LBB2_1
-; %bb.5:                                ;   in Loop: Header=BB2_1 Depth=1
-	MVI	A, >(buf+252)
-	CMP	H
+	MOV	A, C
+	DCR	A
+	MOV	C, A
+	MOV	A, D
 	JNZ	.LBB2_1
 ; %bb.4:
-	MOV	A, E
 	RET
                                         ; -- End function
 	.section	.text.main,"ax",@progbits
@@ -85,33 +80,25 @@ count_set:                              ; -- Begin function count_set
 main:                                   ; @main
 ; %bb.0:
 	CALL	init_buf
-	LXI	H, 2
-	MOV	E, L
+	MVI	A, 2
+	LXI	H, buf+2
 .LBB3_1:                                ; =>This Inner Loop Header: Depth=1
-	SHLD	.LLo61_1+1
-	LXI	B, buf
-	DAD	B
+	STA	.LLo61_2+1
 	MOV	A, M
 	ORA	A
 	JZ	.LBB3_3
 ; %bb.2:                                ;   in Loop: Header=BB3_1 Depth=1
-	MOV	A, E
-	LXI	H, .LLo61_2+1
-	MOV	M, E
+	LDA	.LLo61_2+1
+	SHLD	.LLo61_1+1
 	CALL	cross_off
-.LLo61_2:
-	MVI	E, 0
-.LBB3_3:                                ;   in Loop: Header=BB3_1 Depth=1
-	INR	E
 .LLo61_1:
 	LXI	H, 0
+.LBB3_3:                                ;   in Loop: Header=BB3_1 Depth=1
 	INX	H
-	MVI	A, 0x10
-	CMP	L
-	JNZ	.LBB3_1
-; %bb.5:                                ;   in Loop: Header=BB3_1 Depth=1
-	XRA	A
-	CMP	H
+.LLo61_2:
+	MVI	A, 0
+	INR	A
+	CPI	0x10
 	JNZ	.LBB3_1
 ; %bb.4:
 	CALL	count_set

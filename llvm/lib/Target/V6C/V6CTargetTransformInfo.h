@@ -50,6 +50,29 @@ public:
   bool isNumRegsMajorCostOfLSR() const { return true; }
 
   bool isLSRCostLess(const TTI::LSRCost &C1, const TTI::LSRCost &C2) const;
+
+  // --- O22: V6C-tuned cost hooks (gated by -v6c-tti-cost-hooks) ---
+  InstructionCost getArithmeticInstrCost(
+      unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
+      TTI::OperandValueInfo Opd1Info = {TTI::OK_AnyValue, TTI::OP_None},
+      TTI::OperandValueInfo Opd2Info = {TTI::OK_AnyValue, TTI::OP_None},
+      ArrayRef<const Value *> Args = {},
+      const Instruction *CxtI = nullptr);
+
+  InstructionCost getMemoryOpCost(
+      unsigned Opcode, Type *Src, MaybeAlign Alignment,
+      unsigned AddressSpace, TTI::TargetCostKind CostKind,
+      TTI::OperandValueInfo OpInfo = {TTI::OK_AnyValue, TTI::OP_None},
+      const Instruction *I = nullptr);
+
+  InstructionCost getCmpSelInstrCost(
+      unsigned Opcode, Type *ValTy, Type *CondTy,
+      CmpInst::Predicate VecPred, TTI::TargetCostKind CostKind,
+      const Instruction *I = nullptr);
+
+  InstructionCost getScalingFactorCost(Type *Ty, GlobalValue *BaseGV,
+                                       int64_t BaseOffset, bool HasBaseReg,
+                                       int64_t Scale, unsigned AddrSpace);
 };
 
 } // namespace llvm

@@ -36,9 +36,9 @@ void write4_globals(unsigned char v) {
  * accumulator arithmetic between accesses. */
 unsigned char sum4_array(const unsigned char *p) {
     unsigned char s = p[0];
-    s += p[1];
-    s += p[2];
     s += p[3];
+    s += p[2];
+    s += p[1];
     return s;
 }
 

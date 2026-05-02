@@ -19,100 +19,75 @@ main:                                   ; @main
 	SHLD	__v6c_a.main+2
 	LXI	H, 0xc80d
 	SHLD	__v6c_a.main
-	LXI	H, 0xf
-	SHLD	.LLo61_1+1
+	MVI	A, 0xf
+	JMP	.LBB0_1
+.LBB0_5:                                ;   in Loop: Header=BB0_1 Depth=1
+.LLo61_1:
+	MVI	A, 0
+	DCR	A
+	JZ	.LBB0_6
 .LBB0_1:                                ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB0_2 Depth 2
-	LXI	H, __v6c_a.main
-	SHLD	.LLo61_3+1
-	LXI	H, 0
-	SHLD	.LLo61_2+1
-	LDA	__v6c_a.main
-	STA	.LLo61_4+1
-	LXI	H, __v6c_a.main
-	SHLD	.LLo61_0+1
 	LXI	D, __v6c_a.main
+	STA	.LLo61_1+1
+	LXI	H, __v6c_a.main
+	JMP	.LBB0_2
+.LBB0_4:                                ;   in Loop: Header=BB0_2 Depth=2
+.LLo61_0:
+	MVI	A, 0
+	DCR	A
+	MOV	D, H
+	MOV	E, L
+	JZ	.LBB0_5
 .LBB0_2:                                ;   Parent Loop BB0_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
-	INX	D
+	STA	.LLo61_0+1
 	LDAX	D
-.LLo61_4:
-	MVI	L, 0
-	CMP	L
-	XCHG
-.LLo61_0:
-	LXI	D, 0
+	MOV	C, A
+	INX	H
+	MOV	A, M
+	STA	.LLo61_2+1
+	CMP	C
 	JNC	.LBB0_4
 ; %bb.3:                                ;   in Loop: Header=BB0_2 Depth=2
-	STAX	D
-.LLo61_3:
-	LXI	B, 0
-	INX	B
-	LDA	.LLo61_4+1
-	STAX	B
-.LBB0_4:                                ;   in Loop: Header=BB0_2 Depth=2
 .LLo61_2:
-	LXI	B, 0
-	INX	B
+	MVI	A, 0
+	STAX	D
 	INX	D
-	XCHG
-	SHLD	.LLo61_0+1
-	XCHG
-	STA	.LLo61_4+1
-	SHLD	.LLo61_3+1
-	XCHG
-.LLo61_1:
-	LXI	H, 0
-	PUSH	H
-	MOV	L, C
-	MOV	H, B
-	SHLD	.LLo61_2+1
-	POP	H
-	MOV	A, L
-	CMP	C
-	JNZ	.LBB0_2
-; %bb.7:                                ;   in Loop: Header=BB0_2 Depth=2
-	MOV	A, H
-	CMP	B
-	JNZ	.LBB0_2
-; %bb.5:                                ;   in Loop: Header=BB0_1 Depth=1
-	LHLD	.LLo61_1+1
-	DCX	H
-	SHLD	.LLo61_1+1
-	MOV	A, H
-	ORA	L
-	JNZ	.LBB0_1
-; %bb.6:
+	MOV	A, C
+	STAX	D
+	JMP	.LBB0_4
+.LBB0_6:
 	LXI	H, __v6c_a.main
 	LDA	__v6c_a.main+1
 	ADD	M
 	LXI	H, __v6c_a.main+2
 	ADD	M
-	LXI	H, __v6c_a.main+3
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+4
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+5
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+6
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+7
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+8
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+9
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+10
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+11
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+12
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+13
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+14
+	INX	H
 	ADD	M
-	LXI	H, __v6c_a.main+15
+	INX	H
 	ADD	M
 	OUT	0xed
 	HLT

@@ -3,102 +3,71 @@
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
 ; %bb.0:
-	LXI	H, __v6c_a.main
-	LXI	D, INIT
+	LXI	H, INIT
+	LXI	D, __v6c_a.main
+	MVI	A, 0x10
 .LBB0_1:                                ; =>This Inner Loop Header: Depth=1
-	LDAX	D
-	MOV	M, A
-	INX	H
+	MOV	C, M
+	PUSH	H
+	MOV	H, D
+	MOV	L, E
+	MOV	M, C
+	POP	H
 	INX	D
-	MVI	A, <(INIT+16)
-	CMP	E
-	JNZ	.LBB0_1
-; %bb.11:                               ;   in Loop: Header=BB0_1 Depth=1
-	MVI	A, >(INIT+16)
-	CMP	D
+	INX	H
+	DCR	A
 	JNZ	.LBB0_1
 ; %bb.2:
-	LXI	H, 0xf
-	SHLD	.LLo61_1+1
+	MVI	A, 0xf
 .LBB0_3:                                ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB0_4 Depth 2
-	LXI	H, __v6c_a.main
-	SHLD	.LLo61_3+1
-	LXI	H, 0
-	SHLD	.LLo61_2+1
-	LDA	__v6c_a.main
-	STA	.LLo61_4+1
-	LXI	H, __v6c_a.main
-	SHLD	.LLo61_0+1
 	LXI	D, __v6c_a.main
+	STA	.LLo61_1+1
+	LXI	H, __v6c_a.main
 .LBB0_4:                                ;   Parent Loop BB0_3 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
-	INX	D
+	STA	.LLo61_0+1
 	LDAX	D
-.LLo61_4:
-	MVI	L, 0
-	CMP	L
-	XCHG
-.LLo61_0:
-	LXI	D, 0
-	JNC	.LBB0_6
-; %bb.5:                                ;   in Loop: Header=BB0_4 Depth=2
-	STAX	D
-.LLo61_3:
-	LXI	B, 0
-	INX	B
-	LDA	.LLo61_4+1
-	STAX	B
-.LBB0_6:                                ;   in Loop: Header=BB0_4 Depth=2
-.LLo61_2:
-	LXI	B, 0
-	INX	B
-	INX	D
-	XCHG
-	SHLD	.LLo61_0+1
-	XCHG
-	STA	.LLo61_4+1
-	SHLD	.LLo61_3+1
-	XCHG
-.LLo61_1:
-	LXI	H, 0
-	PUSH	H
-	MOV	L, C
-	MOV	H, B
-	SHLD	.LLo61_2+1
-	POP	H
-	MOV	A, L
-	CMP	C
-	JNZ	.LBB0_4
-; %bb.12:                               ;   in Loop: Header=BB0_4 Depth=2
-	MOV	A, H
-	CMP	B
-	JNZ	.LBB0_4
-; %bb.7:                                ;   in Loop: Header=BB0_3 Depth=1
-	LHLD	.LLo61_1+1
-	DCX	H
-	SHLD	.LLo61_1+1
-	MOV	A, H
-	ORA	L
-	JNZ	.LBB0_3
-; %bb.8:
-	LXI	H, __v6c_a.main
-	MOV	C, A
-	LXI	D, __v6c_a.main+16
-.LBB0_9:                                ; =>This Inner Loop Header: Depth=1
-	MOV	A, C
-	ADD	M
 	MOV	C, A
 	INX	H
-	MOV	A, L
-	CMP	E
-	JNZ	.LBB0_9
-; %bb.13:                               ;   in Loop: Header=BB0_9 Depth=1
-	MOV	A, H
-	CMP	D
+	MOV	A, M
+	STA	.LLo61_2+1
+	CMP	C
+	JNC	.LBB0_6
+; %bb.5:                                ;   in Loop: Header=BB0_4 Depth=2
+.LLo61_2:
+	MVI	A, 0
+	STAX	D
+	INX	D
+	MOV	A, C
+	STAX	D
+.LBB0_6:                                ;   in Loop: Header=BB0_4 Depth=2
+.LLo61_0:
+	MVI	A, 0
+	DCR	A
+	MOV	D, H
+	MOV	E, L
+	JNZ	.LBB0_4
+; %bb.7:                                ;   in Loop: Header=BB0_3 Depth=1
+.LLo61_1:
+	MVI	A, 0
+	DCR	A
+	JNZ	.LBB0_3
+; %bb.8:
+	MVI	E, 0
+	LXI	H, __v6c_a.main
+	MVI	A, 0x10
+.LBB0_9:                                ; =>This Inner Loop Header: Depth=1
+	MOV	D, A
+	MOV	A, E
+	ADD	M
+	MOV	E, A
+	MOV	A, D
+	INX	H
+	DCR	A
 	JNZ	.LBB0_9
 ; %bb.10:
-	MOV	A, C
+	MOV	A, E
 	OUT	0xed
 	HLT
                                         ; -- End function

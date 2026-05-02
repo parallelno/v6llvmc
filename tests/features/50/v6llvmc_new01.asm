@@ -44,6 +44,8 @@ sum4_array:                             ; @sum4_array
 	MOV	E, L
 	;--- V6C_INX16 ---
 	INX	D
+	INX	D
+	INX	D
 	;--- V6C_LOAD8_P ---
 	LDAX	D
 	;--- V6C_ADD_M_P ---
@@ -58,8 +60,6 @@ sum4_array:                             ; @sum4_array
 	ADD	M
 	XCHG
 	;--- V6C_INX16 ---
-	INX	H
-	INX	H
 	INX	H
 	;--- V6C_ADD_M_P ---
 	ADD	M

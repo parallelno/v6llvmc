@@ -3,6 +3,25 @@
 *Inspired by jacobly0 `Z80MachineLateOptimization` RegVal tracking.*
 *Detailed analysis: [llvm_z80_analysis.md](llvm_z80_analysis.md) §S1.*
 
+## Rejected
+O53 verification: largely obsolete
+The plan was inspired by jacobly0's RegVal struct. Walking through each proposed pattern against actual -O3 and -Os output (o53_test.c, o53_test.asm, o53_test_os.asm):
+
+Plan pattern	Status	Where
+MVI A,0 → XRA A (flags dead)	✅ Done	O55 in V6CPeephole.cpp:918 — test_mvi_zero emits XRA A
+XRI 0FFH → CMA	✅ Done	Direct ISel/tablegen — test_not_u8 (~x) emits a single CMA
+ORA A redundant after ALU	✅ Done	O17 V6CRedundantFlagElim.cpp
+CPI imm redundant	✅ Done	O17 + O36 branch-implied propagation; test_redundant_cpi collapses to one ORA A; RNZ
+ANI n; ANI n → ANI n	✅ Done	InstCombine at IR — test_double_and emits one ANI 0xf
+Sub-reg composition (H,L known → HL known)	✅ Done	DAGCombine merges to single LXI — test_subreg_compose emits LXI H,0x3412; SHLD buf
+Immediate ±1, same-value	✅ Done	O13 V6CLoadImmCombine.cpp
+GlobalAddress + offset tracking	⚠️ Partial	O02 V6CLoadStoreOpt.cpp does this, but cost-gated by MaxDelta
+The one observable gap is in test_ga_offset (sum of arr[0..2]):
+
+-Os (MaxDelta=3): LXI H,arr; LDA arr+1; ADD M; INX H; INX H; ADD M ✅
+-O3 (MaxDelta=1): LXI H,arr; LDA arr+1; ADD M; LXI H,arr+2; ADD M — second LXI not folded (Δ=2 > 1)
+This is a 1-byte regression at speed mode and is a tuning issue in O02, not a missing pass. The full RegVal rewrite (200–300 LOC, flag bitmap, etc.) the plan proposes would yield essentially zero additional savings beyond what's already in tree.
+
 ## Problem
 
 O13 (Load-Immediate Combining) tracks only **immediate constants** per

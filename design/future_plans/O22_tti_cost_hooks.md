@@ -90,8 +90,37 @@ use these costs.
 
 ## Risk
 
-Low. These are cost hints — wrong values produce suboptimal code, not
-incorrect code. Can be tuned incrementally.
+Low for correctness — these are cost hints, wrong values produce
+suboptimal code, not incorrect code. **However, the regression risk is
+real**: changing TTI costs perturbs the input IR seen by every
+downstream codegen pass (unroller, inliner, SLP, LSR, IR-level CSE/LICM
+trade-offs). On a small target like i8080 a single bad cost choice can
+shift the regression corpus by hundreds of bytes in either direction.
+
+### Opt-out flag (mandatory)
+
+Implementation **must** add a hidden `cl::opt` to disable the new hooks
+wholesale, mirroring the existing `-v6c-lsr-strategy` pattern:
+
+```cpp
+static cl::opt<bool> EnableV6CTTICosts(
+    "v6c-tti-cost-hooks",
+    cl::desc("Enable V6C-specific TTI cost hooks (arith/mem/cmp/scaling). "
+             "Disable to fall back to BasicTTI defaults."),
+    cl::init(true), cl::Hidden);
+```
+
+Each hook checks the flag first and falls back to `BaseT::...` when off.
+This lets us:
+
+1. Bisect regressions per-function via `-mllvm -v6c-tti-cost-hooks=0`.
+2. Disable globally if a corpus-wide regression is found late.
+3. A/B compare on the regression suite without rebuilding.
+
+Consider also per-hook flags
+(`-v6c-tti-cost-arith`, `-v6c-tti-cost-mem`, `-v6c-tti-cost-cmp`,
+`-v6c-tti-cost-scaling`) so individual hooks can be toggled when
+narrowing down a regression.
 
 ## Dependencies
 
