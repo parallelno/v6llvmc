@@ -738,6 +738,23 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       return true;
     }
 
+    // DE = DE + DE. Preserve HL with XCHG; DAD H; XCHG (18cc, 3B),
+    // instead of the general A-byte chain (24cc, 6B). The second XCHG
+    // restores old HL; if it was undef, mark the XCHG implicit reads as
+    // undef for the MIR verifier.
+    if (DstReg == V6C::DE && LhsReg == V6C::DE && RhsReg == V6C::DE) {
+      bool HLLive = isRegLiveBefore(MBB, MI.getIterator(), V6C::HL, &RI);
+      MachineInstr *FirstXchg = BuildMI(MBB, MI, DL, get(V6C::XCHG)).getInstr();
+      BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(V6C::HL);
+      MachineInstr *SecondXchg = BuildMI(MBB, MI, DL, get(V6C::XCHG)).getInstr();
+      if (!HLLive) {
+        markXchgUseUndef(FirstXchg, V6C::HL);
+        markXchgUseUndef(SecondXchg, V6C::DE);
+      }
+      MI.eraseFromParent();
+      return true;
+    }
+
     // DE = DE + BC. Preserve HL with XCHG; DAD B; XCHG (20cc, 3B),
     // instead of the general A-byte chain. This is valid even when old HL
     // is live because the second XCHG restores it. If old HL is undef, mark

@@ -43,12 +43,9 @@ add_de_de:                              ; @add_de_de
 	;  arg1 = DE
 ; %bb.0:
 	;--- V6C_ADD16 ---
-	MOV	A, E
-	ADD	E
-	MOV	E, A
-	MOV	A, D
-	ADC	D
-	MOV	D, A
+	XCHG
+	DAD	H
+	XCHG
 	;--- V6C_ADD16 ---
 	DAD	D
 	RET
@@ -114,14 +111,9 @@ main:                                   ; @main
 	;--- V6C_LOAD16_G ---
 	XCHG
 	LHLD	i_p+2
-	XCHG
 	;--- V6C_ADD16 ---
-	MOV	A, E
-	ADD	E
-	MOV	E, A
-	MOV	A, D
-	ADC	D
-	MOV	D, A
+	DAD	H
+	XCHG
 	;--- V6C_ADD16 ---
 	DAD	D
 	MOV	A, L
