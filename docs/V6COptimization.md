@@ -101,6 +101,58 @@ touched on every iteration. Verify with the A/B procedure documented
 in `result_bsort.txt` before committing to it. For everything else
 the default (`regs-first`) is the safer choice.
 
+## TTI Cost Hooks (`-v6c-tti-cost-*`)
+
+V6C overrides four `TargetTransformInfo` hooks to feed the generic
+LLVM IR optimizers (LSR, IndVarSimplify, LoopUnroll, SLP, …) numbers
+that reflect i8080 reality instead of BasicTTI's "everything costs 1"
+defaults. The hooks bias the optimizers toward i8 IVs and away from
+i32 ops in hot loops.
+
+| Hook                     | i1/i8 | i16 | i32 | What it influences                                  |
+|--------------------------|------:|----:|----:|------------------------------------------------------|
+| `getArithmeticInstrCost` |     1 |   6 |  20 | IV widening, SLP, LoopUnroll, IndVarSimplify        |
+| `getMemoryOpCost`        |     2 |   4 |   8 | Load/store hoisting, IV-rewrite to memory pointer    |
+| `getCmpSelInstrCost`     |     1 |   2 |   8 | Loop-exit IV choice, branch threading                |
+| `getScalingFactorCost`   |  legal: 0/1; otherwise invalid | | | LSR addressing-mode legality |
+
+**Master flag.** `-mllvm -v6c-tti-cost-hooks=0` disables all four at once.
+Falls back to BasicTTI defaults (mostly 1 for everything). Default ON.
+
+**Per-hook flags** (all default ON, all `cl::Hidden`):
+
+* `-v6c-tti-cost-arith=0` — disable `getArithmeticInstrCost` override.
+* `-v6c-tti-cost-mem=0` — disable `getMemoryOpCost` override.
+* `-v6c-tti-cost-cmp=0` — disable `getCmpSelInstrCost` override.
+* `-v6c-tti-cost-scaling=0` — disable `getScalingFactorCost` override.
+
+**Why opt-out exists.** The arith hook is the dominant lever — it drives
+LSR/IndVarSimplify to keep i8 IVs and refuse to widen them to i16. On
+benchmarks this is large-win/small-loss:
+
+| Benchmark | hooks ON | hooks OFF | Δ      |
+|-----------|---------:|----------:|-------:|
+| bsort     | 21,372 cc| 39,084 cc | **−45%** |
+| sieve     | 90,556 cc| 84,904 cc |   +6.7% |
+| fib_crc   | 67,324 cc| 67,324 cc |    0%  |
+
+Bisection (`-v6c-tti-cost-arith=0` only) confirms both the bsort win
+and the sieve loss come from the arithmetic hook alone — the mem,
+cmp, and scaling hooks are inert on this benchmark set but kept for
+correctness on i32 / non-trivial addressing.
+
+**When to opt out.** If a workload has a hot i8 loop where:
+
+* the i8 IV is decremented (`DCR A`-style), AND
+* the same loop body uses A for a memory load / accumulator / I/O,
+
+the IV-narrowing decision can force a stash/unstash through a second
+register every iteration (sieve `count_set` pattern). Try
+`-mllvm -v6c-tti-cost-arith=0` for that translation unit; verify with
+v6emul cycle counts before committing.
+
+For most code, leave the defaults alone.
+
 ## Pass Pipeline Order
 
 1. **IR-level** (in `addIRPasses()`): V6CLoopPointerInduction → V6CTypeNarrowing

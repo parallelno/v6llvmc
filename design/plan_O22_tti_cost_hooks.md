@@ -510,6 +510,28 @@ corpus-wide regressions.
 * Add `getInterleavedMemoryOpCost` to discourage SLP from interleaving
   (V6C has no scatter/gather).
 * Once O11 lands, reuse its byte/cycle tables instead of magic numbers.
+* **A-pressure-aware IV-narrowing veto (post-LSR / pre-RA).** The
+  arithmetic hook gives a +45% win on `bsort` but a −6.7% loss on
+  `sieve::count_set` (see [docs/V6COptimization.md](../docs/V6COptimization.md)).
+  Bisection confirmed both come from `getArithmeticInstrCost` alone —
+  there is no sub-flag toggle that recovers sieve without losing bsort,
+  because they are two faces of the same IV-narrowing decision. A
+  structural fix is a small MachineFunction pass that runs after LSR
+  and before register allocation. It would detect the regression
+  pattern:
+    1. an i8 IV decremented via `DCR A` in the loop latch, AND
+    2. another A-using instruction in the same loop body (`MOV A,M`,
+       `ORA`, `ADD r`, `OUT`, `CMP r`, …),
+  and rewrite the i8 down-counter as a pointer-end compare on an
+  existing in-loop pointer (`CMP L; JNZ; CMP H; JNZ`). When no in-loop
+  pointer exists, fall back to leaving the IV alone.
+
+  **Status: not recommended yet.** Cross-layer heuristics like this are
+  fragile — every change in ISel, peephole, or regalloc can invalidate
+  the trigger. The opt-out flag (`-mllvm -v6c-tti-cost-arith=0`) is
+  sufficient as an escape hatch for the single known regression.
+  Revisit if a second independent benchmark hits the same pattern, or
+  if the corpus shows ≥3 regressions traceable to A-pressure on i8 IVs.
 
 ---
 

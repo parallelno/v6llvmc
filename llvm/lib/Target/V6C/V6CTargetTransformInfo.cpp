@@ -231,11 +231,14 @@ InstructionCost V6CTTIImpl::getCmpSelInstrCost(
   // i1 / i8: single CMP r (4cc).
   if (BW <= 8)
     return 1;
-  // i16: BR_CC16 expansion is multi-instruction (CMP/CMP/Jcc/...).
+  // i16: byte-pair compare (~CMP/Jcc/CMP/Jcc, ~2-3 i8 cmps worth). Keeping
+  // this close to the i8 cost prevents LSR from rewriting cheap i16 pointer
+  // /end-bound compares into i8 down-counters that round-trip through A
+  // (sieve count_set regression, see plan_O22_tti_cost_hooks.md).
   if (BW <= 16)
-    return 4;
+    return 2;
   if (BW <= 32)
-    return 10;
+    return 8;
   return BaseT::getCmpSelInstrCost(Opcode, ValTy, CondTy, VecPred,
                                    CostKind, I);
 }

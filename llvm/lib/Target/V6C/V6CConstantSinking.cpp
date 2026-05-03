@@ -96,17 +96,27 @@ bool V6CConstantSinking::runOnMachineFunction(MachineFunction &MF) {
           CanSink = false;
           break;
         }
-        // For PHI uses, verify the operand comes from MBB.
+        // For PHI uses, verify the operand comes from MBB and that the
+        // same PHI does not also use DstReg from a different predecessor.
+        // Sinking past a critical-edge split only places the def on the
+        // MBB->SuccMBB path; any PHI input of DstReg from another
+        // predecessor would lose its definition (PR/find_idx miscompile:
+        // MachineCSE can legally merge two MVIr -1 defs into one whose
+        // value reaches a PHI from multiple preds via dominance, and we
+        // must not sink such a def).
         if (UseMI.isPHI()) {
           bool FromMBB = false;
+          bool FromOtherPred = false;
           for (unsigned i = 1, e = UseMI.getNumOperands(); i < e; i += 2) {
-            if (UseMI.getOperand(i).getReg() == DstReg &&
-                UseMI.getOperand(i + 1).getMBB() == MBB) {
+            if (UseMI.getOperand(i).getReg() != DstReg)
+              continue;
+            MachineBasicBlock *Pred = UseMI.getOperand(i + 1).getMBB();
+            if (Pred == MBB)
               FromMBB = true;
-              break;
-            }
+            else
+              FromOtherPred = true;
           }
-          if (!FromMBB) {
+          if (!FromMBB || FromOtherPred) {
             CanSink = false;
             break;
           }
