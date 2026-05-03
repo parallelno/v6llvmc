@@ -3,6 +3,9 @@
 *From plan_dual_cost_model.md Future Enhancements.*
 *Extension of O11 (Dual Cost Model) with MachineInstr-level cost queries.*
 
+## Rejected
+ its goals are already met in practice. Revisit only if a future pass needs to compare arbitrary MachineInstr sequences (e.g., a generic peephole framework). Keep V6CInstrCost.h as-is; pre-defined constants are sufficient.
+
 ## Problem
 
 O11 introduced `V6CInstrCost` with pre-defined constants (e.g.,

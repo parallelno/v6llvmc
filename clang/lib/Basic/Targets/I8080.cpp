@@ -36,6 +36,7 @@ ArrayRef<Builtin::Info> I8080TargetInfo::getTargetBuiltins() const {
 
 ArrayRef<const char *> I8080TargetInfo::getGCCRegNames() const {
   static const char *const GCCRegNames[] = {
-      "A", "B", "C", "D", "E", "H", "L", "SP", "FLAGS"};
+      "A", "B", "C", "D", "E", "H", "L", "SP", "FLAGS",
+      "BC", "DE", "HL", "PSW"};
   return llvm::ArrayRef(GCCRegNames);
 }

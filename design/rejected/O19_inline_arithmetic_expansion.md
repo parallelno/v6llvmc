@@ -3,6 +3,9 @@
 *Inspired by llvm-z80 `Z80ExpandPseudo` inline multiply and divide.*
 *Detailed analysis: [llvm_z80_analysis.md](llvm_z80_analysis.md) §S9.*
 
+## Rejected
+Inlining mul funcs doesn't justify the extra memory usage.
+
 ## Problem
 
 V6C uses library calls (`__mulqi3`, `__divqi3`, etc.) for all multiply and

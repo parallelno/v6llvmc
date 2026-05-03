@@ -164,7 +164,7 @@
 13. ~~**O28** — branch threading through JMP-only blocks, 3B+10cc, synergy with O27, ~25 lines~~ ✅
 14. ~~**O35** — conditional return over RET (Jcc-over-RET → Rcc), 3B per instance, ~20 lines~~ ✅
 15. ~~**O36** — branch-implied value propagation, 12cc+3B per instance, extends O13 seeding, ~50 lines~~ ✅
-16. **O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines
+16. ~~**O26** — cost model getInstrCost/copyCost infra, extends O11, ~70 lines~~ ✅
 17. ~~**O29** — cross-BB immediate propagation, 1B+7cc per redundant MVI, ~30 lines~~ ✅
 18. ~~**O30** — conditional return peephole (Jcc RET → Rcc), 3B per instance, ~30 lines~~ ✅
 19. ~~**O31** — dead PHI-constant elimination, 9-11B+40-60cc, eliminates LXI+shuffle, ~70 lines~~ ✅
@@ -208,7 +208,7 @@
 27. ~~**O7** — TTI for Loop Strength Reduction, existing LLVM pass just needs cost info~~ ✅
 28. ~~**O22** — TTI cost hooks (arithmetic, memory, cmp costs), extends O7~~ ✅
 29. ~~**O10** — static stack allocation for non-reentrant functions, supersedes O8 T2~~ ✅
-30. **O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls
+30. ~~**O19** — inline arithmetic expansion for mul/div, 2-3× faster than libcalls~~ ✅
 31. **O52** — index IV rewriting, narrow 16-bit loop indices to 8-bit via SCEV, ~80 lines
 
 **Phase 5 — Advanced (High complexity)**:

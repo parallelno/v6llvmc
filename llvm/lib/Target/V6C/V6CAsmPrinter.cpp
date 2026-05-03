@@ -134,9 +134,17 @@ bool V6CAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
 
   const MachineOperand &MO = MI->getOperand(OpNum);
   switch (MO.getType()) {
-  case MachineOperand::MO_Register:
-    O << V6CInstPrinter::getRegisterName(MO.getReg(), V6C::NoRegAltName);
+  case MachineOperand::MO_Register: {
+    // V6CAsmParser rejects long-form pair names HL/DE/BC; print them as
+    // their 8080-canonical first-half (H/D/B) instead so inline-asm output
+    // round-trips through the integrated assembler.
+    Register Reg = MO.getReg();
+    unsigned AltIdx = V6C::NoRegAltName;
+    if (V6C::GR16AllRegClass.contains(Reg))
+      AltIdx = V6C::Pair8080;
+    O << V6CInstPrinter::getRegisterName(Reg, AltIdx);
     return false;
+  }
   case MachineOperand::MO_Immediate:
     O << MO.getImm();
     return false;
