@@ -33,7 +33,7 @@ define void @costs(i8 %a, i16 %b, i32 %c, ptr %p, ptr %q) {
 ; ON:       cost of 2 for instruction:   %la = load i8
 ; ON:       cost of 4 for instruction:   %lb = load i16
 ; ON:       cost of 1 for instruction:   %ca = icmp eq i8
-; ON:       cost of 4 for instruction:   %cb = icmp eq i16
+; ON:       cost of 2 for instruction:   %cb = icmp eq i16
 
 ; --- Hooks OFF (BasicTTI fallback) ------------------------------------------
 ; OFF-LABEL: function 'costs':

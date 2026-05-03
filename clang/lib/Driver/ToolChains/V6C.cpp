@@ -72,6 +72,23 @@ static std::string findV6CRuntimeFile(const ToolChain &TC, StringRef Filename) {
   return findFirstExisting({std::string(Installed), std::string(DevTree)});
 }
 
+/// O70: locate a V6C runtime header (v6c_arith.h) by name.
+/// Search order:
+///   1. <ResourceDir>/lib/v6c/include/<filename>                    (installed)
+///   2. <bin>/../../compiler-rt/lib/builtins/v6c/include/<filename> (workspace dev tree)
+/// Returns empty string if not found — driver omits -include in that case.
+static std::string findV6CHeader(const ToolChain &TC, StringRef Filename) {
+  StringRef Dir = TC.getDriver().Dir;
+  llvm::SmallString<256> Installed(TC.getDriver().ResourceDir);
+  llvm::sys::path::append(Installed, "lib", "v6c", "include", Filename);
+
+  llvm::SmallString<256> DevTree(Dir);
+  llvm::sys::path::append(DevTree, "..", "..", "compiler-rt", "lib");
+  llvm::sys::path::append(DevTree, "builtins", "v6c", "include", Filename);
+
+  return findFirstExisting({std::string(Installed), std::string(DevTree)});
+}
+
 void v6c::Linker::ConstructJob(Compilation &C, const JobAction &JA,
                                 const InputInfo &Output,
                                 const InputInfoList &Inputs,
@@ -109,6 +126,13 @@ void v6c::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   // Forward user-supplied -T (in case both default and user scripts coexist;
   // ld.lld concatenates SECTIONS from multiple -T scripts).
   Args.AddAllArgs(CmdArgs, options::OPT_T);
+
+  // Dead-strip unreferenced functions. addClangTargetOptions enables
+  // -ffunction-sections by default so each function lives in its own
+  // .text.<name> section, making this safe and effective. Lets the
+  // O70 header-only runtime ship every libcall in every TU without
+  // ROM bloat — only the ones actually referenced survive.
+  CmdArgs.push_back("--gc-sections");
 
   // crt0.o (suppressed by -nostartfiles or -nostdlib).
   bool UseStartFiles = !Args.hasArg(options::OPT_nostartfiles,
@@ -181,6 +205,17 @@ void V6CToolChain::addClangTargetOptions(
                          options::OPT_fno_function_sections,
                          /*Default=*/true))
     CC1Args.push_back("-ffunction-sections");
+
+  // O70: auto-include v6c_arith.h so libcall symbols (__mulhi3 etc.) are
+  // defined in every TU. -fno-v6c-auto-include suppresses (user takes
+  // responsibility for supplying every routine the backend may emit).
+  if (!DriverArgs.hasArg(options::OPT_fno_v6c_auto_include)) {
+    std::string Hdr = findV6CHeader(*this, "v6c_arith.h");
+    if (!Hdr.empty()) {
+      CC1Args.push_back("-include");
+      CC1Args.push_back(DriverArgs.MakeArgString(Hdr));
+    }
+  }
 }
 
 /// Locate the V6C resource-dir include directory that ships

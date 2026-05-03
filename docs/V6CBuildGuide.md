@@ -454,10 +454,11 @@ Forced-live escapes when the relocation route is impractical:
 ```bash
 # Single-command build of a C program for V6C.
 # The driver finds crt0.o under <resource-dir>/lib/v6c/ (or the
-# compiler-rt dev tree), runs ld.lld with v6c.ld, and converts the
-# linked ELF to a flat ROM via llvm-objcopy.
-llvm-build/bin/clang -target i8080-unknown-v6c -O2 \
-    main.c -Wl,--gc-sections -o out.rom
+# compiler-rt dev tree), runs ld.lld with v6c.ld (and --gc-sections),
+# and converts the linked ELF to a flat ROM via llvm-objcopy.
+# Auto-includes v6c_arith.h for the math runtime (suppress with
+# -fno-v6c-auto-include).
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 main.c -o out.rom
 ```
 
 No `-nostartfiles`, `-nodefaultlibs`, or `-Wl,--defsym=_start=main`

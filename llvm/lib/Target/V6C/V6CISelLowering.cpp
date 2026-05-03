@@ -55,8 +55,9 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
 
   // --- Operation actions for i8 ---
 
-  // Multiply, divide: no hardware support → Promote to i16 (which uses libcall).
-  setOperationAction(ISD::MUL,   MVT::i8, Promote);
+  // O70: i8 multiply has its own libcall (__mulqi3 — 8 iterations vs.
+  // __mulhi3's 16). Divide stays Promote-to-i16 to share the i16 routine.
+  setOperationAction(ISD::MUL,   MVT::i8, LibCall);
   setOperationAction(ISD::SDIV,  MVT::i8, Promote);
   setOperationAction(ISD::UDIV,  MVT::i8, Promote);
   setOperationAction(ISD::SREM,  MVT::i8, Promote);
@@ -143,8 +144,8 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
   setOperationAction(ISD::UDIV,  MVT::i16, Expand);
   setOperationAction(ISD::SREM,  MVT::i16, Expand);
   setOperationAction(ISD::UREM,  MVT::i16, Expand);
-  setOperationAction(ISD::SDIVREM, MVT::i16, Expand);
-  setOperationAction(ISD::UDIVREM, MVT::i16, Expand);
+  setOperationAction(ISD::SDIVREM, MVT::i16, LibCall);
+  setOperationAction(ISD::UDIVREM, MVT::i16, LibCall);
 
   // Shifts: Custom (unrolled for constant, libcall for variable).
   setOperationAction(ISD::SHL,   MVT::i16, Custom);
@@ -173,13 +174,22 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
   setOperationAction(ISD::UMUL_LOHI, MVT::i16, Expand);
 
   // --- Runtime library call names ---
-  // LLVM defaults match GCC convention (__mulhi3, __divhi3, etc.) but set
-  // explicitly for clarity.  These are implemented in compiler-rt/lib/builtins/v6c/.
+  // O70: implementations live in compiler-rt/lib/builtins/v6c/include/v6c_arith.h
+  // (header-only, auto-included by the V6C driver). Each routine compiles
+  // to a per-TU `static` definition so ISel-emitted CALLs resolve via the
+  // assembler's same-TU symbol matching, and IPRA recovers the actual
+  // clobber set per call site.
+  setLibcallName(RTLIB::MUL_I8,   "__mulqi3");
   setLibcallName(RTLIB::MUL_I16,  "__mulhi3");
   setLibcallName(RTLIB::SDIV_I16, "__divhi3");
   setLibcallName(RTLIB::UDIV_I16, "__udivhi3");
   setLibcallName(RTLIB::SREM_I16, "__modhi3");
   setLibcallName(RTLIB::UREM_I16, "__umodhi3");
+  // O70 Step 3.5: fused divmod libcalls. LLVM's UDIVREM/SDIVREM ISD nodes
+  // collapse a `q=a/b; r=a%b;` pair into a single libcall when both ops
+  // share operands — saves one full CALL when the user wants both.
+  setLibcallName(RTLIB::UDIVREM_I16, "__udivmodhi4");
+  setLibcallName(RTLIB::SDIVREM_I16, "__divmodhi4");
   setLibcallName(RTLIB::SHL_I16,  "__ashlhi3");
   setLibcallName(RTLIB::SRL_I16,  "__lshrhi3");
   setLibcallName(RTLIB::SRA_I16,  "__ashrhi3");

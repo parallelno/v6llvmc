@@ -1,0 +1,181 @@
+O70 — Header-only V6C Math Runtime
+====================================
+
+Goal
+----
+Replace the libgcc-style `compiler-rt/lib/builtins/v6c/*.s` runtime with
+a header-only one (`v6c_arith.h`), auto-included by the V6C driver. Each
+routine becomes per-TU `static noinline used` so:
+  * IPRA recovers the actual clobber set per call site
+    (V6C's `getCallPreservedMask` is empty — no callee-saves)
+  * `--gc-sections` (now passed by the driver) prunes unused builtins
+  * No multi-definition link errors across multi-TU programs
+  * No external `.a` to ship — single header, end-user-friendly
+
+Headline win: `i8 MUL` was previously `Promote`-d to i16 and lowered to
+`__mulhi3` (16 shift-add iterations). It now lowers to `__mulqi3`
+(8 iterations) — ~2× faster.
+
+Bonus: SDIVREM_I16 / UDIVREM_I16 are now bound to `__divmodhi4` /
+`__udivmodhi4`. When ISel sees `udiv`+`urem` of identical operands,
+they fuse to a single CALL.
+
+
+Test sources
+------------
+v6llvmc.c (and equivalent c8080.c):
+
+    #include <stdint.h>
+
+    volatile uint8_t  g_u8a, g_u8b, g_u8r;
+    volatile uint16_t g_u16a, g_u16b, g_u16r;
+
+    uint8_t  mul_u8 (uint8_t  a, uint8_t  b) { return a * b; }
+    uint16_t mul_u16(uint16_t a, uint16_t b) { return a * b; }
+    uint16_t div_u16(uint16_t a, uint16_t b) { return a / b; }
+    uint16_t mod_u16(uint16_t a, uint16_t b) { return a % b; }
+    uint16_t shl_u16(uint16_t a, uint8_t  n) { return a << n; }
+
+    int main(void) {
+        g_u8r  = mul_u8 (g_u8a,  g_u8b);
+        g_u16r = mul_u16(g_u16a, g_u16b);
+        g_u16r = div_u16(g_u16a, g_u16b);
+        g_u16r = mod_u16(g_u16a, g_u16b);
+        g_u16r = shl_u16(g_u16a, g_u8a);
+        return 0;
+    }
+
+
+c8080 reference (i8080 mnemonics, only main + key callees)
+----------------------------------------------------------
+mul_u8:
+        ld   (__a_2_mul_u8), a       ; spill b
+        ld   a, (__a_1_mul_u8)       ; reload a
+        ld   d, a
+        ld   a, (__a_2_mul_u8)
+        jp   __o_mul_u8              ; tail-call to runtime mul
+
+main (excerpt):
+        ld   a, (g_u8a) / ld (__a_1_mul_u8), a / ld a, (g_u8b) / call mul_u8
+        ld (g_u8r), a
+        ld   hl, (g_u16a) / ld (__a_1_mul_u16), hl / ld hl, (g_u16b) / call mul_u16
+        ld (g_u16r), hl
+        ; ... similar for div, mod, shl ...
+        ld   hl, 0 / ret
+
+c8080 stats (indicative, static-stack ABI)
+------------------------------------------
+mul_u8 wrapper       : 5 instrs + tail to __o_mul_u8 (16-bit kernel)
+mul_u16 wrapper      : 4 instrs + tail to __o_mul_u16
+main                 : ~30 instrs, all i16 args spilled to per-callee static slots
+Cycle profile dominated by static-stack spill traffic (LD (mem), HL).
+
+
+v6llvmc — BASELINE (pre-O70: i8 MUL = Promote, no header)
+---------------------------------------------------------
+v6llvmc_old.asm — `mul_u8`:
+
+    mul_u8:
+            MOV  H, A      ; widen via Promote (broken — duplicates op)
+            MOV  L, B
+            MOV  D, A
+            MOV  E, A
+            CALL __mulhi3  ; 16-iteration kernel
+            MOV  A, L
+            RET
+
+7 instructions, calls __mulhi3 (~720 cycles for the kernel itself).
+The Promote also widens both i8 operands incorrectly into HL/DE register
+pairs. (The bug was silently masked because `(u8)` cares only about the
+low byte of the i16 result.)
+
+mul_u16/div_u16/mod_u16/shl_u16: thin shims (3-6 instrs) + JMP libcall.
+main: 19 instrs (loads + 5 libcall sites + spills).
+
+
+v6llvmc — O70 (auto-include header, MUL_I8 = LibCall to __mulqi3)
+-----------------------------------------------------------------
+v6llvmc_new02.asm — `mul_u8`:
+
+    mul_u8:
+            MOV  L, A
+            MOV  A, B
+            MOV  B, L
+            JMP  __mulqi3  ; 8-iteration kernel
+
+4 instructions (down from 7), tail-jumps to __mulqi3 (8 iterations,
+~370 cycles for the kernel — about half the old i16 path).
+
+mul_u16: unchanged (still uses __mulhi3 by design).
+div_u16, mod_u16: bare `JMP __udivhi3` / `JMP __umodhi3` (1 instr each).
+shl_u16: 4 instrs + JMP __ashlhi3.
+
+main: 19 instrs, identical layout — only mul_u8 saves cycles per call.
+
+Per-call cycle counts (kernel only, worst case)
+-----------------------------------------------
+mul_u8   : __mulqi3   ~370 cy  (was __mulhi3 ~720 cy   — about 0.5×)
+mul_u16  : __mulhi3   ~720 cy  (unchanged)
+div_u16  : __udivhi3 ~1100 cy  (PUSH/POP counter, 16-iter divmod)
+mod_u16  : __umodhi3 ~1100 cy
+shl_u16  : __ashlhi3 ~150 cy   (5 shifts, n=4)
+
+Static size (ROM, after `--gc-sections`)
+----------------------------------------
+v6llvmc.rom = 235 bytes (typical hello-style program with all 5 ops).
+Without --gc-sections it would be 421 bytes (every routine in the header
+gets emitted, then GC'd).
+
+
+What changed (compiler/driver)
+------------------------------
+1. `compiler-rt/lib/builtins/v6c/include/v6c_arith.h` (new):
+   - 11 routines as `static __attribute__((noinline, used, naked))`.
+   - Bodies ported from the existing .s files.
+   - Internal helpers `__v6c_udivmod16_body`, `__v6c_neg_hl_body`, etc.
+   - New: `__udivmodhi4`, `__divmodhi4` for fused divmod.
+
+2. `llvm/lib/Target/V6C/V6CISelLowering.cpp`:
+   - `MUL i8` : Promote → LibCall.
+   - `setLibcallName(RTLIB::MUL_I8,   "__mulqi3")`.
+   - `SDIVREM/UDIVREM i16` : Expand → LibCall.
+   - `setLibcallName(RTLIB::UDIVREM_I16, "__udivmodhi4")` (+SDIVREM).
+
+3. `clang/lib/Driver/ToolChains/V6C.cpp`:
+   - `findV6CHeader()` helper alongside `findV6CRuntimeFile()`.
+   - `addClangTargetOptions` now emits `-include v6c_arith.h`.
+   - `Linker::ConstructJob` now passes `--gc-sections` to ld.lld
+     (works with the existing `-ffunction-sections`).
+
+4. `clang/include/clang/Driver/Options.td`:
+   - `-fno-v6c-auto-include` to suppress auto-inclusion (advanced users
+     who supply their own runtime).
+
+5. ISel + libcall test coverage:
+   - `llvm/test/CodeGen/V6C/i8_mul_libcall.ll`     — i8 MUL → __mulqi3.
+   - `llvm/test/CodeGen/V6C/divmod-fusion.ll`      — udiv+urem fuse.
+   - `llvm/test/CodeGen/V6C/mul-shift-i8.ll`       — updated (CHECK __mulqi3).
+   - `clang/test/Driver/v6c-auto-include.c`        — driver flag check.
+   - `tests/v6c_lib/linkage_smoke.c`               — links cleanly with
+       all 5 operators present (518 bytes; 235 with --gc-sections).
+   - `tests/v6c_lib/divmod_combined.c`             — runtime divmod check.
+   - `tests/v6c_lib/optout.c`                      — confirms
+       `-fno-v6c-auto-include` produces ld.lld undefined-symbol errors.
+
+
+Why this works (linkage discipline)
+-----------------------------------
+Each header routine becomes a per-TU `static` symbol (no external
+linkage). When ISel emits `CALL __mulqi3`, the assembler resolves the
+symbol against the same TU's `.text.__mulqi3` section. IPRA then walks
+the local definition and recovers the precise clobber set, so callers
+do not have to assume the empty `getCallPreservedMask` blasts every
+register.  Multiple TUs each get their own copy; `--gc-sections` prunes
+the unused ones and the linker's same-section ICF could fold duplicates
+(not required for correctness).
+
+
+Regression
+----------
+129 / 129 lit + 16 / 16 golden pass.
+fib_crc benchmark: no observable cycle delta (does not use i8 MUL).

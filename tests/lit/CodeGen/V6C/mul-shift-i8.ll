@@ -1,10 +1,11 @@
 ; RUN: llc -mtriple=i8080-unknown-v6c -verify-machineinstrs < %s | FileCheck %s
 
-; Test that i8 multiply (promoted to i16) emits __mulhi3
+; O70: i8 multiply now uses its own libcall (__mulqi3, 8 iterations)
+; instead of being promoted to i16's __mulhi3 (16 iterations).
 
 define i8 @test_mul_i8(i8 %a, i8 %b) {
 ; CHECK-LABEL: test_mul_i8:
-; CHECK: CALL __mulhi3
+; CHECK: {{(CALL|JMP)}} __mulqi3
   %r = mul i8 %a, %b
   ret i8 %r
 }
