@@ -1,0 +1,285 @@
+# O71: V6C_LOAD16_P Redesign
+
+## Status
+
+Proposed.
+
+## Background
+
+`V6C_LOAD16_P` is the generic 16-bit load-through-pointer pseudo:
+
+```tablegen
+let mayLoad = 1 in
+def V6C_LOAD16_P : V6CPseudo<(outs GR16:$dst), (ins GR16:$addr),
+    "# LOAD16P $dst, ($addr)",
+    [(set i16:$dst, (load i16:$addr))]>;
+```
+
+It declares **no `Defs`**. The intent is that the pseudo behaves as a
+pure 16-bit load: it produces `$dst` and preserves every other
+register the caller cares about. The post-RA expander is responsible
+for emitting whatever address-shuffling and preservation code is
+needed to honour that contract for the chosen `(addr, dst)` physreg
+pair.
+
+The current expander does not always honour the contract. Some shapes
+emit code that genuinely clobbers `A` or leaves `HL` pointing at
+`orig + 1`, while the pseudo continues to claim everything is
+preserved. RA and downstream passes trust the pseudo and miscompile.
+
+## Problem
+
+### Concrete correctness bugs
+
+1. **`addr=HL, dst=HL` silently corrupts `A`.**
+   Expansion: `MOV A,M; INX H; MOV H,M; MOV L,A`. `A` is destroyed
+   and not reflected in `Defs`.
+
+2. **`addr=HL, dst∈{BC,DE}` lies about `HL`.**
+   Expansion: `MOV lo,M; INX H; MOV hi,M`. After it runs,
+   `HL = orig_HL + 1`. RA is told HL is unchanged.
+
+3. **`addr=DE, dst=DE` produces wrong values in HL and DE.**
+   Expansion: `XCHG; MOV E,M; INX H; MOV D,M; XCHG`. Trace:
+   - `XCHG` → HL=ptr, DE=old_HL
+   - inner load deposits result in DE (= old_HL after first XCHG)
+   - trailing `XCHG` swaps that result into HL while pushing old_HL
+     out into DE — both registers end up wrong.
+
+   Observed in `temp\asm_inline\custom_cc.s`:
+
+   ```asm
+   ;--- V6C_ADD16 ---       HL = sum
+   DAD     B
+   ;--- V6C_LOAD16_P ---    addr=DE, dst=DE
+   XCHG
+   MOV     E, M
+   INX     H
+   MOV     D, M
+   XCHG                     ; HL = loaded (wrong), DE = ptr+1 (wrong)
+   ;--- V6C_ADD16 ---
+   DAD     D                ; HL = loaded + (ptr+1)  -- WRONG
+   ```
+
+4. **`addr=BC` with `HLDead` skips PUSH/POP and leaks
+   `HL = orig_BC + 1`.** Benign while `HLDead` truly means dead, but
+   fragile — any later liveness recompute that re-reads the pseudo's
+   declared `Defs` (none) will not see the HL clobber.
+
+5. **`addr=BC, dst=HL` silently corrupts `A`** for the same reason as
+   bug 1.
+
+### Why a single blanket `Defs` is not the answer
+
+This backend's dominant cost is register pressure: spills account for
+a large fraction of generated code. `A` lives in a 1-element pressure
+class. Marking the pseudo `Defs = [HL, A]` (or worse, `Defs = [HL, A,
+FLAGS]`) would close the correctness holes but force RA to spill `A`
+across *every* 16-bit pointer load, even shapes like
+`addr=HL, dst=BC/DE` whose actual code is `MOV r,M; INX H; MOV r,M`
+and preserves `A` perfectly.
+
+Per-shape pseudos with honest pre-RA `Defs` would be more precise
+than one union, but still worse than the design below: RA cannot
+emit `DCX rp` to undo an increment, and cannot pick a dead GR8 as a
+temp at expansion time. Both of those are key cost levers on this
+ISA.
+
+## Solution
+
+Keep `V6C_LOAD16_P` as a single pseudo with **no `Defs` declared**,
+and fix the expander to truthfully preserve every register that is
+live across the pseudo, using whichever cheapest mechanism is
+available at the expansion point.
+
+### Design rules
+
+1. **No `Defs`.** The pseudo defines only `$dst`. Pre-RA passes
+   (CSE, LICM, scheduling) and RA itself see the load as preserving
+   every other register. This is what they want for the pressure
+   model.
+
+2. **Honest preservation in the expander.** After RA, the expander
+   computes post-RA liveness for both 8-bit and 16-bit registers at
+   the pseudo's location. For each register that the chosen shape
+   would otherwise clobber and that is live across the pseudo, the
+   expander emits cheap recovery code.
+
+3. **Cheap-first preservation policy.** Preference order, cheapest
+   first:
+   1. **Pick a dead spare GR8** for the low-byte temporary instead
+      of `A`. Any GR8 dead at the pseudo works (there are seven to
+      choose from). This avoids clobbering `A` entirely.
+   2. **`DCX rp` to undo `INX rp`** when the address pointer is live
+      across the pseudo. 1 byte / 5 cc, no flag effects.
+   3. **`PUSH PSW` / `POP PSW`** wrap when the temp must be `A` and
+      `A` is live across the pseudo. 2 bytes / 23 cc, last resort
+      for the temp.
+   4. **`PUSH H` / `POP H`** wrap when HL must hold the address
+      mid-pseudo and HL is live across the pseudo and cannot be
+      recovered by `DCX` (i.e. `addr=BC` cases, where HL was
+      overwritten rather than incremented). 2 bytes / 22 cc.
+
+### Per-shape expansion table
+
+`SpareR` denotes a GR8 that is dead at the pseudo location; `A` is
+the fallback if no GR8 is dead.
+
+| Case | addr | dst   | expansion                                                              | preservation knobs                                  |
+|------|------|-------|------------------------------------------------------------------------|-----------------------------------------------------|
+| 1    | HL   | HL    | `MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR`                           | optional `DCX H` if HL live; if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
+| 2    | HL   | BC/DE | `MOV lo,M; INX H; MOV hi,M`                                            | optional `DCX H` if HL live                         |
+| 3a   | DE   | BC    | `XCHG; MOV C,M; INX H; MOV B,M; XCHG`                                  | optional `DCX D` if DE live                         |
+| 3b   | DE   | HL    | `XCHG; MOV E,M; INX H; MOV D,M; XCHG`                                  | optional `DCX D` if DE live (old HL was dead — it is the dst) |
+| 4    | DE   | DE    | `XCHG; MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR; XCHG`               | optional `DCX D` if DE live; if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
+| 5    | BC   | BC/DE | `MOV H,B; MOV L,C; MOV lo,M; INX H; MOV hi,M`                          | wrap `PUSH H` / `POP H` if HL live                  |
+| 6    | BC   | HL    | `MOV H,B; MOV L,C; MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR`         | wrap `PUSH H` / `POP H` if HL live; if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A`|
+
+Notes on case 3b (`addr=DE, dst=HL`): `dst=HL` means the old HL value
+is dead at the pseudo by construction. The first `XCHG` parks old HL
+in DE, the inner load overwrites DE with the loaded bytes, and the
+trailing `XCHG` delivers the loaded value into HL. The trailing XCHG
+is mandatory — it is the delivery, not just preservation. DE
+recovery via `DCX D` is needed only when the original `addr=DE`
+value is live across the pseudo. No `A` is ever needed here.
+
+Notes on case 4 (`addr=DE, dst=DE`): the old HL value swapped in by
+the first XCHG is dead (no caller asked for HL to be defined or
+preserved as anything but its own value, which the trailing XCHG
+restores). The inner load must use a non-HL temp because the high
+byte must be sourced via `M` *after* `INX H`, while the low byte
+must already have been written. Trailing XCHG places the loaded
+value into DE and restores HL to its original.
+
+### Why this is faster than honest pre-RA `Defs`
+
+| Scenario                              | Pre-RA `Defs` (RA must spill / re-route)          | Expander preservation (this design)         |
+|---------------------------------------|---------------------------------------------------|----------------------------------------------|
+| HL load, original HL pointer live     | Copy HL→other GR16 or spill: ≥+2B/+8cc, often ~6B/+44cc when both BC and DE taken | `DCX H`: **+1B / +5cc**                      |
+| `_HL_HL` load, A live                 | Spill A to memory: ~6B / ~26cc                    | Use any dead GR8: **+0B / +0cc**; else `PUSH PSW`/`POP PSW`: +2B / +23cc |
+| DE load, DE pointer live              | Spill DE: ≥+2B/+8cc, often memory: ~6B/+44cc      | `DCX D`: **+1B / +5cc**                      |
+| BC load, HL live                      | RA cannot rename HL (only one GR16Ptr); forced to memory: ~6B / +44cc | `PUSH H`/`POP H`: **+2B / +22cc**            |
+
+The expander wins in every preservation case. The reason is
+structural:
+
+- `DCX rp`-after-`INX rp` is unavailable to RA. RA operates at vreg
+  granularity and cannot insert "undo the increment" code; it must
+  arrange for the value to live somewhere else across the def. On a
+  3-element GR16 set, "somewhere else" usually means memory.
+- A dead GR8 chosen at expansion time is unavailable to RA. RA
+  commits before the pseudo splits into individual ops, so it must
+  reserve a worst-case clobber slot per declared `Defs` whether or
+  not the particular instance needs it.
+
+
+## Correctness Conditions
+
+- Expander must compute post-RA liveness of GR8 and GR16 registers
+  at the pseudo's location.
+- For every register the chosen expansion would otherwise clobber
+  (other than `$dst` itself), if the register is live across the
+  pseudo, the expander must emit preservation code.
+- Cases 1, 4 and 6 need a GR8 temp because `INX rp` can carry from
+  the low byte into the high byte, so the high byte must be
+  sourced after `INX` while the low byte must already be saved
+  somewhere outside the address pair.
+- `dst=HL` cases (3b, 6) start with old HL dead by definition; the
+  expander must not emit any HL-preservation code in those cases.
+- `addr=BC` cases (5, 6) destroy HL while computing the address.
+  HL preservation requires `PUSH H`/`POP H` (no `DCX` recovery is
+  possible since HL was overwritten, not incremented).
+- The `DCX` recovery is conditioned on the *address-pair* being
+  live after the pseudo, not on HL specifically. For case 3 the
+  conditional is "DE live"; for cases 1/2 it is "HL live"; for
+  case 4 it is "DE live".
+
+## Implementation Sketch
+
+In `V6CInstrInfo::expandPostRAPseudo` for `V6C::V6C_LOAD16_P`:
+
+1. Read `DstReg`, `AddrReg`, then their lo/hi sub-regs.
+2. Compute `AddrPairLiveAfter` and `HLLiveAfter` using the existing
+   `isRegDeadAtMI` helper (or a lightweight forward scan inside the
+   block) for the relevant GR16s.
+3. For shapes that need a GR8 temp (cases 1, 4, 6), find a dead GR8
+   at the pseudo by scanning live regs at MI. If none, set
+   `SpareR = A` and remember to wrap `PUSH PSW; POP PSW` only if
+   `A` is itself live.
+4. Emit the body for the matched `(AddrReg, DstReg)` row from the
+   table.
+5. Emit the conditional preservation code (`DCX rp`,
+   `PUSH H`/`POP H`, `PUSH PSW`/`POP PSW`) per the table's
+   "preservation knobs" column.
+6. Erase the pseudo.
+
+A small helper, e.g. `findDeadGR8AtMI(MI, MBB, &RI)`, is the only
+new machinery required.
+
+## Expected Effects
+
+- Bug 1 fixed: `addr=HL, dst=HL` no longer leaks `A` because the
+  expander uses a dead GR8 (or wraps with `PUSH PSW`).
+- Bug 2 fixed: `addr=HL, dst∈{BC,DE}` now emits `DCX H` whenever HL
+  is live across the pseudo.
+- Bug 3 fixed: `addr=DE, dst=DE` is implemented via the case-4 row,
+  not the broken `MOV E,M; …; MOV D,M; XCHG` pattern.
+- Bug 4 fixed: `addr=BC, *` always emits `PUSH H`/`POP H` when HL
+  is live, regardless of pseudo-level `Defs`.
+- Bug 5 fixed: `addr=BC, dst=HL` uses a dead GR8 (or `PUSH PSW`)
+  instead of silently clobbering `A`.
+- Pressure unchanged in the common path. RA continues to see
+  `V6C_LOAD16_P` as preserving everything except `$dst`, so it
+  does not insert spills around pointer loads.
+
+## Tests
+
+- Lit test exercising each row of the table, with both
+  "address-pair live after" and "address-pair dead after"
+  variants. Verify the expected asm: `DCX rp` present iff pointer
+  live, `PUSH H`/`POP H` present iff case 5/6 with HL live,
+  `PUSH PSW`/`POP PSW` present iff GR8 spare unavailable and `A`
+  live.
+- Regression test for bug 3 derived from
+  `temp\asm_inline\custom_cc.c`: `DAD B; <16-bit load via DE
+  pointer to DE>; DAD D` must compute `sum + loaded`, not
+  `loaded + (ptr + 1)`.
+- Regression test for bug 1: a value live in `A` across an
+  `addr=HL, dst=HL` load must be preserved.
+- Regression test for bug 2: the original pointer in HL must be
+  recoverable across an `addr=HL, dst=BC` load.
+- Regression test for bug 5: a value live in `A` across an
+  `addr=BC, dst=HL` load must be preserved.
+- End-to-end runtime guard: `temp\asm_inline\custom_cc.c`.
+
+## Risk
+
+Low-medium. The change is local to the post-RA expansion of one
+pseudo plus a small `findDeadGR8AtMI` helper. The pseudo's td
+declaration does not change, so isel patterns and pre-RA passes are
+untouched. Main risk is missing a live-reg case in the
+preservation logic — guarded by per-shape lit and runtime tests.
+
+## Dependencies
+
+- Existing `V6C_LOAD16_P` post-RA expansion entry point.
+- Existing `isRegDeadAtMI` helper from O42.
+- New `findDeadGR8AtMI` helper (this plan).
+
+## Out of Scope
+
+The nominal preservation overhead is paid only on *unbroken
+chains*. Two existing or planned peepholes cancel it when chains
+are unbroken:
+
+- **`XCHG; XCHG` cancellation.** Two adjacent `XCHG` instructions
+  are identity. When two `addr=DE` loads abut, the trailing `XCHG`
+  of the first cancels the leading `XCHG` of the second.
+- **`DCX rp; INX rp` cancellation.** `DCX rp` immediately before
+  `INX rp` on the same pair is identity. When an address is loaded
+  and immediately re-incremented (e.g. struct field walks), the
+  preservation `DCX` of the first load cancels the next walker
+  step.
+- `V6C_STORE16_P` redesign. Same structural problem, parallel fix.
+- `V6C_LOAD16_G` / `V6C_STORE16_G` global-address variants. Same
+  shape-conflation pattern, follow-up.
