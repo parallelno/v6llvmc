@@ -8,14 +8,30 @@
  *
  * Linkage strategy
  * ----------------
- * Each routine is `static __attribute__((noinline, used))`:
+ * Each routine is `static __attribute__((noinline, used, naked))`:
  *   - static: per-TU local symbol; no multi-definition link errors.
- *   - noinline + used: guaranteed out-of-line copy in the .o so an
- *     ISel-emitted `CALL __mulqi3` (etc.) resolves to it via the
- *     assembler's same-TU symbol matching.
+ *   - noinline + used: prevents mid-level DCE/inlining before ISel
+ *     gets a chance to emit `CALL __mulqi3` etc. The `used` attribute
+ *     keeps the IR definition alive across `-O2` even when no source
+ *     statement directly mentions the symbol (libcalls are inserted
+ *     *after* the IR optimization pipeline, in the CodeGen stage).
+ *     `--gc-sections` then prunes the unused copies at link time
+ *     (combined with `-ffunction-sections`, on by default for V6C).
+ *   - naked: no compiler-emitted prologue/epilogue. The body is exactly
+ *     the inline-asm we write — no STA/LDA for arg/return promotion,
+ *     no stack frame setup. Needed because we hand-place every byte
+ *     of the algorithm and rely on the V6C CC having the operands
+ *     already in the registers we name. Naked also forbids any C
+ *     statement in the body (only `__asm__` is allowed).
  *
- * IPRA recovers each routine's actual clobber set, so V6C's empty
- * getCallPreservedMask does not force callers to spill HL/DE/BC.
+ * IPRA + `--gc-sections`
+ * ----------------------
+ * For non-naked V6C functions, IPRA recovers each callee's actual
+ * register clobber set. Because these routines are `naked`, IPRA
+ * scans the inline-asm string for register mentions and uses that
+ * (a coarser, but still useful, approximation). Even so, having the
+ * routine in the same TU lets the V6C peephole/MIR passes see the
+ * call edge and reason about it; a separate `.s` library could not.
  *
  * Calling convention
  * ------------------
