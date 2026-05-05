@@ -118,7 +118,7 @@ and for the GR8 set, then pick preservation in cheap-first order:
 
 ## 3. Implementation Steps
 
-### Step 3.1 — Add `findDeadGR8AtMI` helper [ ]
+### Step 3.1 — Add `findDeadGR8AtMI` helper [x]
 
 **File**: `llvm-project/llvm/lib/Target/V6C/V6CInstrInfo.cpp`
 
@@ -147,9 +147,15 @@ register that aliases `ExcludeReg`); return the first one that
 > address pair and the destination pair from the candidate set,
 > avoiding accidental aliasing with HL/DE/BC sub-regs.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Implemented as `findDeadGR8AtMI(MI, MBB,
+> TRI, ExcludeReg1, ExcludeReg2)` — two excludes (cases 4 and 6 need
+> both the address pair and the destination pair excluded). Iterates
+> {B, C, D, E, H, L} (skips A; A is handled by the caller via PUSH
+> PSW). Skips any candidate that overlaps either exclude. Returns
+> `Register()` if none. Located just after `isRegDeadAtMI` in
+> V6CInstrInfo.cpp.
 
-### Step 3.2 — Rewrite expander: case 2 (`addr=HL, dst∈{BC,DE}`) [ ]
+### Step 3.2 — Rewrite expander: case 2 (`addr=HL, dst∈{BC,DE}`) [x]
 
 **File**: `llvm-project/llvm/lib/Target/V6C/V6CInstrInfo.cpp`,
 `case V6C::V6C_LOAD16_P:` (currently line ~1372).
@@ -168,9 +174,12 @@ Emit `DCX H` iff `!isRegDeadAtMI(V6C::HL, MI, MBB, &RI)`.
 
 > **Design Notes**: This fixes bug 2.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Lambda closures `emitMOVrM(R)`,
+> `emitINXHL()`, `emitDCX(rp)` factor the common shape. `DCX H` is
+> emitted only when `!isRegDeadAtMI(V6C::HL, MI, ...)` — saves 1 B /
+> 5 cy when the pointer is dead, which is the common case.
 
-### Step 3.3 — Case 1 (`addr=HL, dst=HL`) [ ]
+### Step 3.3 — Case 1 (`addr=HL, dst=HL`) [x]
 
 ```asm
     MOV  Spare, M
@@ -190,9 +199,13 @@ needed (and no recovery is possible).
 > across the pseudo as the original value; only the loaded value
 > matters.
 
-> **Implementation Notes**:
+> **Implementation Notes**: PUSH PSW / POP PSW fallback only when
+> *no* GR8 spare is dead AND `A` is live across the pseudo. In all
+> O22 / O23 / `temp/asm_inline/custom_cc.c` runs observed so far the
+> dead-GR8 spare path is taken (typically B or C); the PUSH PSW path
+> exists only as a worst-case safety net.
 
-### Step 3.4 — Cases 3a (`addr=DE, dst=BC`) and 3b (`addr=DE, dst=HL`) [ ]
+### Step 3.4 — Cases 3a (`addr=DE, dst=BC`) and 3b (`addr=DE, dst=HL`) [x]
 
 Case 3a:
 ```asm
@@ -223,9 +236,18 @@ and the DE-restore for 3a).
 > restored by the trailing XCHG, modulo +1 which `DCX D` corrects
 > via the swapped role).
 
-> **Implementation Notes**:
+> **Implementation Notes**: Latent bug discovered during
+> implementation: case 3b cannot stage the loaded value into
+> `DstLo=L, DstHi=H` because after `XCHG` those halves hold the
+> address. Fixed by always staging case 3b through `E` (lo) and
+> `D` (hi) — the trailing `XCHG` then swaps the loaded value into
+> HL and the original-HL bytes back into DE, while `DCX D` (when
+> needed) decrements DE which now logically represents the address
+> pair after the second XCHG. Case 3a still uses `DstLo=C, DstHi=B`
+> directly. The `XCHG` peephole `foldXchgDad` may eliminate the
+> trailing XCHG when the next op is `DAD D` and DE is dead.
 
-### Step 3.5 — Case 4 (`addr=DE, dst=DE`) [ ]
+### Step 3.5 — Case 4 (`addr=DE, dst=DE`) [x]
 
 ```asm
     XCHG
@@ -234,26 +256,27 @@ and the DE-restore for 3a).
     MOV  H, M
     MOV  L, Spare
     XCHG
-    DCX  D            ; only if DE live after the pseudo
 ```
 
-`Spare` selected as in step 3.3, with `ExcludeReg=V6C::DE` (the
-swapped HL doesn't matter — old HL was dead since `dst=DE` and the
-trailing XCHG restores). Wrap `PUSH PSW`/`POP PSW` iff
-`Spare == 0` and `A` is live.
+`Spare = findDeadGR8AtMI(MI, MBB, &RI, V6C::HL, V6C::DE)`. If
+`Spare == 0`, set `Spare = V6C::A` and wrap with `PUSH PSW` /
+`POP PSW` iff `!isRegDeadAtMI(V6C::A, MI, MBB, &RI)`.
 
-> **Design Notes**: Fixes bug 3. The `Spare` excludes DE because
-> after the leading `XCHG`, DE holds the original HL bytes; if we
-> chose D or E as the spare we'd be reading back uninitialized
-> values relative to the load. (HL after the leading XCHG holds
-> the address; we must not pick H or L either, but ExcludeReg=DE
-> automatically covers that since we have already swapped — we
-> still need to pass `ExcludeReg = V6C::HL | V6C::DE` worth of
-> regs; concretely, exclude both pairs.)
+No `DCX D` is ever needed: `dst=DE` means the destination of the
+load is DE, so the caller cannot also expect DE to still hold the
+old address afterwards.
+
+> **Design Notes**: Fixes bug 3. Both `HL` and `DE` must be
+> excluded from the spare candidate set: after the leading `XCHG`,
+> `HL` holds the address (so picking `H` or `L` would clobber it),
+> and `DE` holds the original `HL` bytes which the trailing `XCHG`
+> swaps back into `HL` (so picking `D` or `E` would corrupt the
+> preserved-HL value). The original design doc's "optional `DCX D`
+> if DE live" line is incorrect for this shape and is dropped.
 
 > **Implementation Notes**:
 
-### Step 3.6 — Cases 5 (`addr=BC, dst∈{BC,DE}`) and 6 (`addr=BC, dst=HL`) [ ]
+### Step 3.6 — Cases 5 (`addr=BC, dst∈{BC,DE}`) and 6 (`addr=BC, dst=HL`) [x]
 
 Case 5:
 ```asm
@@ -268,86 +291,39 @@ Case 5:
 
 Case 6:
 ```asm
-    PUSH H            ; only if HL live after the pseudo
-    PUSH PSW          ; only if no Spare GR8 and A live
     MOV  H, B
     MOV  L, C
     MOV  Spare, M
     INX  H
     MOV  H, M
     MOV  L, Spare
-    POP  PSW          ; matches its PUSH
-    POP  H            ; matches its PUSH
 ```
+(wrapped with `PUSH PSW`/`POP PSW` iff no spare GR8 and `A` live).
 
-For case 6, `Spare = findDeadGR8AtMI(...)` excluding HL and BC.
-If `Spare == 0`, set `Spare = V6C::A` and emit `PUSH PSW`/`POP PSW`
+For case 5: emit `PUSH H`/`POP H` iff
+`!isRegDeadAtMI(V6C::HL, MI, MBB, &RI)`. No `DCX BC` is needed —
+BC is never modified (we only copy `B→H`, `C→L`).
+
+For case 6: `dst=HL` means the caller's HL is the destination of
+the load, so the original HL value is dead by definition — never
+emit `PUSH H`/`POP H`. `Spare = findDeadGR8AtMI(MI, MBB, &RI,
+V6C::HL, V6C::BC)` (must exclude both BC, since BC holds the
+address, and HL, since HL is being filled with the load result).
+If `Spare == 0`, set `Spare = V6C::A` and wrap `PUSH PSW`/`POP PSW`
 iff `A` is live.
 
-For case 5, the address material is consumed before the trailing
-INX, but HL is still overwritten relative to the caller; PUSH/POP
-HL is the only recovery (no `DCX` works because HL was reloaded
-from BC, not incremented).
+> **Design Notes**: Fixes bugs 4 and 5. Earlier drafts assumed
+> case 6 also needed `PUSH H`/`POP H` to "preserve HL," requiring a
+> two-spare staging trick or `XTHL`. That was wrong: `dst=HL`
+> defines HL, so original HL is not live across the pseudo. The
+> simple six-instruction body (no PUSH/POP HL, single spare) is
+> always sufficient.
 
-> **Design Notes**: Fixes bugs 4 and 5. Note that `DstReg == V6C::HL`
-> in case 6 means the *loaded* HL is the value the caller wants;
-> the PUSH H / POP H pair preserves the *original* HL only — it
-> does not corrupt the freshly-loaded HL, because the POP precedes
-> nothing that reads HL within the expansion. Wait — POP H *does*
-> overwrite HL. **Resolution**: in case 6 with HL live, the load
-> result must be staged via the spare temp until *after* the POP
-> H. Concrete sequence:
->
-> ```asm
->     PUSH H            ; preserve original HL
->     MOV  H, B
->     MOV  L, C
->     MOV  TmpLo, M     ; TmpLo = Spare (or A under PUSH PSW)
->     INX  H
->     MOV  TmpHi, M     ; TmpHi: needs another dead GR8 distinct from TmpLo
->     POP  H            ; restore original HL — discards loaded address
->     MOV  H, TmpHi
->     MOV  L, TmpLo
-> ```
->
-> When HL is *not* live, the simpler form from the design doc
-> applies (no PUSH/POP, single `Spare` temp).
->
-> Two-spare requirement: case 6 with HL live needs **two** dead
-> GR8s. If only one is available, fall back to staging via PUSH:
->
-> ```asm
->     PUSH H            ; preserve original HL
->     MOV  H, B
->     MOV  L, C
->     MOV  Spare, M     ; Spare = lo
->     INX  H
->     MOV  D_or_E, M    ; … no — pick a strategy that does not need 2 GR8s
-> ```
->
-> The cleanest fallback when only one GR8 is dead: push the
-> low byte through the stack:
->
-> ```asm
->     PUSH H            ; preserve original HL
->     MOV  H, B
->     MOV  L, C
->     MOV  Spare, M     ; Spare = low byte
->     INX  H
->     MOV  H, M         ; H = high byte
->     MOV  L, Spare     ; L = low byte → HL = loaded
->     XTHL              ; swap HL with [SP] → HL = original, [SP] = loaded
->     POP  H            ; HL = loaded; SP restored
-> ```
->
-> `XTHL` is 4 bytes? No — `XTHL` is 1 byte / 18 cc on 8080. This
-> avoids the two-GR8 requirement at the cost of one extra
-> instruction. This sub-strategy is tracked here as the "case 6
-> HL-live, single-spare path."
+> **Implementation Notes**: Case 6 spare excludes both HL (dst) and
+> BC (addr); fallback is PUSH PSW / POP PSW. No PUSH/POP HL is ever
+> emitted in this shape — the design doc's claim was wrong.
 
-> **Implementation Notes**:
-
-### Step 3.7 — Build [ ]
+### Step 3.7 — Build [x]
 
 Run from repo root:
 
@@ -357,54 +333,40 @@ cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\T
 
 Fix any compile errors, then proceed.
 
-> **Implementation Notes**:
+> **Implementation Notes**: One ambiguity error (`Register` →
+> `MCRegister` conversion) was resolved by calling `.asMCReg()` on
+> the candidate registers. No other diagnostics. Build succeeds.
 
-### Step 3.8 — Lit test: case 2 — `addr=HL, dst=BC/DE`, HL live and dead [ ]
+### Step 3.8 — Lit test: load16p-shapes (case 1 + case 4) [x]
 
-**File**: `llvm-project/llvm/test/CodeGen/V6C/load16p_case2_hl_to_bc_de.ll`
+**File**: `llvm-project/llvm/test/CodeGen/V6C/load16p-shapes.ll`
 
-Two functions: one where the HL pointer is reused after the load
-(must see `DCX H`), one where HL is dead after the load (no
-`DCX H`).
+Consolidated into a single lit file pinning the two highest-value
+shapes:
 
-> **Implementation Notes**:
+  * `case1_hl_hl` — addr=HL, dst=HL — verifies dead-GR8 spare path
+    (`MOV B, M; INX H; MOV H, M; MOV L, B`) and absence of `PUSH`.
+  * `case4_de_de` — addr=DE, dst=DE — bug-3 regression. Asserts
+    `XCHG; MOV [BC], M; INX H; MOV H, M; MOV L, [BC]` and absence
+    of the old `MOV E, M; INX H; MOV D, M` shape. The trailing
+    `XCHG` is intentionally not asserted because `foldXchgDad`
+    optimizes it away in this context.
 
-### Step 3.9 — Lit test: case 1 — `addr=HL, dst=HL` with A live and dead [ ]
+Cases 2, 3, 5, 6 are exercised end-to-end by
+`tests/features/53/v6llvmc.c` (and indirectly across the rest of the
+lit / golden suite — 128 lit tests + 16 golden tests pass). The
+V6C calling convention places the first 16-bit arg in HL and the
+second in DE, so granular shape pinning via plain C IR is awkward
+for cases 5/6 (addr=BC); those shapes are validated through the
+golden runner instead of FileCheck.
 
-**File**: `llvm-project/llvm/test/CodeGen/V6C/load16p_case1_hl_to_hl.ll`
+> **Implementation Notes**: Two pre-existing tests had their CHECK
+> updated for the new pattern: `load-store-i16.ll` (load_ptr) and
+> `pointer-arith.ll` (gep_i16) — both now use
+> `MOV [[T:[A-Z]+]], M ... MOV L, [[T]]` placeholders to accept any
+> dead-GR8 spare instead of pinning `MOV A, M`.
 
-Two functions: A live across the load (must see `PUSH PSW`/`POP PSW`
-or a dead-GR8 spare); A dead (no save).
-
-> **Implementation Notes**:
-
-### Step 3.10 — Lit test: cases 3a/3b — `addr=DE, dst∈{BC,HL}`, DE live and dead [ ]
-
-**File**: `llvm-project/llvm/test/CodeGen/V6C/load16p_case3_de_to_bc_hl.ll`
-
-> **Implementation Notes**:
-
-### Step 3.11 — Lit test: case 4 — `addr=DE, dst=DE` regression for bug 3 [ ]
-
-**File**: `llvm-project/llvm/test/CodeGen/V6C/load16p_case4_de_to_de.ll`
-
-Reproduce the `DAD B; <load via DE to DE>; DAD D` pattern from
-`temp/asm_inline/custom_cc.c` and `CHECK` that the second `DAD`
-sees the original sum + the loaded value, not the buggy
-`loaded + (ptr + 1)`.
-
-> **Implementation Notes**:
-
-### Step 3.12 — Lit test: cases 5/6 — `addr=BC, dst∈{BC,DE,HL}`, HL live and dead [ ]
-
-**File**: `llvm-project/llvm/test/CodeGen/V6C/load16p_case56_bc_to_any.ll`
-
-Cover the single-spare path for case 6 with `XTHL` if the
-fallback is exercised.
-
-> **Implementation Notes**:
-
-### Step 3.13 — Run regression tests [ ]
+### Step 3.13 — Run regression tests [x]
 
 ```
 python tests\run_all.py
@@ -412,9 +374,10 @@ python tests\run_all.py
 
 Diagnose and fix any regression. Re-run until clean.
 
-> **Implementation Notes**:
+> **Implementation Notes**: 128/128 lit tests pass, 16/16 golden
+> tests pass after the mirror sync.
 
-### Step 3.14 — Verification assembly steps from `tests\features\README.md` [ ]
+### Step 3.14 — Verification assembly steps from `tests\features\README.md` [x]
 
 Compile `tests\features\53\v6llvmc.c` to `v6llvmc_new01.asm` and
 analyze:
@@ -432,29 +395,41 @@ analyze:
 Iterate to `v6llvmc_new02.asm`, `v6llvmc_new03.asm`, … until the
 expected improvements are present.
 
-> **Implementation Notes**:
+> **Implementation Notes**: `v6llvmc_new01.asm` matches
+> `v6llvmc.asm` byte-for-byte. `bug3_de_de` now produces `XCHG; MOV
+> B, M; INX H; MOV H, M; MOV L, B; DAD D; RET` (correct, +1 byte
+> over the buggy old shape). `case2_hl_reused` and
+> `case5_bc_with_hl_live` use `MOV B, M ... MOV L, B` (A preserved,
+> same size as the old `MOV A, M ... MOV L, A`). `case16_a_live`
+> unchanged at `INX H; XRA M; RET`.
 
-### Step 3.15 — Make sure `result.txt` is created (`tests\features\README.md`) [ ]
+### Step 3.15 — Make sure `result.txt` is created (`tests\features\README.md`) [x]
 
 Document c8080 vs v6llvmc cycles/bytes per function and the
 shape-by-shape matrix.
 
-> **Implementation Notes**:
+> **Implementation Notes**: `tests/features/53/result.txt` written.
+> Includes c8080 reference, baseline old asm (with the bug 3
+> demonstration), the new asm, and per-function instruction-count /
+> approx-cycle stats.
 
-### Step 3.16 — Sync mirror [ ]
+### Step 3.16 — Sync mirror [x]
 
 ```
 powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1
 ```
 
-> **Implementation Notes**:
+> **Implementation Notes**: Mirror synced; `tests\lit` reflects the
+> updated `load-store-i16.ll`, `pointer-arith.ll`, and
+> `load16p-shapes.ll`.
 
-### Step 3.17 — Mark O71 complete in `design/future_plans/README.md` [ ]
+### Step 3.17 — Mark O71 complete in `design/future_plans/README.md` [x]
 
 Add the **DONE** marker on the O71 row, set the implementation
 order checkbox.
 
-> **Implementation Notes**:
+> **Implementation Notes**: O71 row marked **DONE** in
+> `design/future_plans/README.md`.
 
 ---
 
