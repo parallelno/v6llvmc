@@ -2,13 +2,6 @@
 
 `V6C_STORE16_P` is the generic 16-bit store-through-pointer pseudo:
 
-```tablegen
-let mayStore = 1, Defs = [HL, A] in
-def V6C_STORE16_P : V6CPseudo<(outs), (ins GR16:$val, GR16:$addr),
-    "# STORE16P $val, ($addr)",
-    [(store i16:$val, i16:$addr)]>;
-```
-
 ## Problem
 
 It has a problem - a single blanket `Defs = [HL, A]` that is over-declared in
@@ -86,25 +79,26 @@ Notes:
 ### Proposed truthful clobber model (mirror of O71)
 
 Drop `Defs` from the pseudo entirely; have the expander emit
-preservation in cheap-first order. Shapes are sorted by `addr`
-(BC, DE, HL) — the address pair is the primary determinant of
-which preservation mechanism is available.
+preservation in cheap-first order. The `addr` register selects the
+preservation strategy (`XCHG` for DE, `STAX` or `PUSH H`/`POP H`
+for BC, nothing for HL); `val` only affects details inside that
+strategy.
 
 `SpareR` denotes a GR8 dead at the pseudo location; `A` is the
 fallback if no GR8 spare is available, with `PUSH PSW`/`POP PSW`
 wrap if `A` is also live.
 
-| Case | addr | val   | expansion                                                                              | preservation knobs                                                              |
-|------|------|-------|----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------|
-| 1    | BC   | BC    | `MOV H,B; MOV L,C; MOV M,C; INX H; MOV M,B`                                            | wrap `PUSH H`/`POP H` if HL live after                                          |
-| 2    | BC   | DE    | `MOV H,B; MOV L,C; MOV M,E; INX H; MOV M,D`                                            | wrap `PUSH H`/`POP H` if HL live after                                          |
-| 3    | BC   | HL    | `MOV A,L; STAX B; INX B; MOV A,H; STAX B`                                              | wrap `PUSH PSW`/`POP PSW` if A live; emit `DCX B` if BC live after              |
-| 4    | DE   | BC    | `XCHG; MOV M,C; INX H; MOV M,B; XCHG`                                                  | emit `DCX D` if DE live after; HL preserved by construction                     |
-| 5    | DE   | DE    | `XCHG; MOV SpareR,H; MOV M,L; INX H; MOV M,SpareR; XCHG`                               | per-byte SpareR (see notes); emit `DCX D` if DE live after                      |
-| 6    | DE   | HL    | `XCHG; MOV M,E; INX H; MOV M,D; XCHG`                                                  | emit `DCX D` if DE live after; HL value delivered through XCHG (no `A` needed)  |
-| 7    | HL   | BC    | `MOV M,C; INX H; MOV M,B`                                                              | emit `DCX H` if HL live after                                                   |
-| 8    | HL   | DE    | `MOV M,E; INX H; MOV M,D`                                                              | emit `DCX H` if HL live after                                                   |
-| 9    | HL   | HL    | `MOV SpareR,H; MOV M,L; INX H; MOV M,SpareR`                                           | if no SpareR, wrap `PUSH PSW`/`POP PSW` and use `SpareR=A`; emit `DCX H` if HL live after |
+| Case | addr | val | expansion | preservation knobs |
+|---|------|-----|---------------------------------------------|-------------------------------------------------------|
+| 1    | BC   | BC    | `MOV H,B; MOV L,C; MOV M,C; INX H; MOV M,B`              | wrap `PUSH H`/`POP H` if HL live after                                          |
+| 2    | BC   | DE    | `MOV H,B; MOV L,C; MOV M,E; INX H; MOV M,D`              | wrap `PUSH H`/`POP H` if HL live after                                          |
+| 3    | BC   | HL    | `MOV A,L; STAX B; INX B; MOV A,H; STAX B`                | wrap `PUSH PSW`/`POP PSW` if A live; emit `DCX B` if BC live after              |
+| 4    | DE   | BC    | `XCHG; MOV M,C; INX H; MOV M,B; XCHG`                    | emit `DCX D` if DE live after; HL preserved by construction                     |
+| 5    | DE   | DE    | `XCHG; MOV SpareR,H; MOV M,L; INX H; MOV M,SpareR; XCHG` | per-byte SpareR (see notes); emit `DCX D` if DE live after                      |
+| 6    | DE   | HL    | `XCHG; MOV M,E; INX H; MOV M,D; XCHG`                    | emit `DCX D` if DE live after; HL value delivered through XCHG (no `A` needed)  |
+| 7    | HL   | BC    | `MOV M,C; INX H; MOV M,B`                                | emit `DCX H` if HL live after                                                   |
+| 8    | HL   | DE    | `MOV M,E; INX H; MOV M,D`                                | emit `DCX H` if HL live after                                                   |
+| 9    | HL   | HL    | `MOV SpareR,H; MOV M,L; INX H; MOV M,SpareR`             | if no SpareR, wrap `PUSH PSW`/`POP PSW` and use `SpareR=A`; emit `DCX H` if HL live after |
 
 #### Notes on case 3 (`addr=BC, val=HL`)
 
