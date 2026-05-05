@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed.
+Implemented. See [../plan_O71_V6C_LOAD16_P_redesign.md](../plan_O71_V6C_LOAD16_P_redesign.md).
 
 ## Background
 
@@ -127,13 +127,14 @@ the fallback if no GR8 is dead.
 
 | Case | addr | dst   | expansion                                                              | preservation knobs                                  |
 |------|------|-------|------------------------------------------------------------------------|-----------------------------------------------------|
-| 1    | HL   | HL    | `MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR`                           | optional `DCX H` if HL live; if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
+| 1    | HL   | HL    | `MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR`                           | if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
 | 2    | HL   | BC/DE | `MOV lo,M; INX H; MOV hi,M`                                            | optional `DCX H` if HL live                         |
 | 3a   | DE   | BC    | `XCHG; MOV C,M; INX H; MOV B,M; XCHG`                                  | optional `DCX D` if DE live                         |
 | 3b   | DE   | HL    | `XCHG; MOV E,M; INX H; MOV D,M; XCHG`                                  | optional `DCX D` if DE live (old HL was dead — it is the dst) |
-| 4    | DE   | DE    | `XCHG; MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR; XCHG`               | optional `DCX D` if DE live; if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
+| 4    | DE   | DE    | `XCHG; MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR; XCHG`               | if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
 | 5    | BC   | BC/DE | `MOV H,B; MOV L,C; MOV lo,M; INX H; MOV hi,M`                          | wrap `PUSH H` / `POP H` if HL live                  |
-| 6    | BC   | HL    | `MOV H,B; MOV L,C; MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR`         | wrap `PUSH H` / `POP H` if HL live; if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A`|
+| 6    | BC   | HL    | `MOV H,B; MOV L,C; MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR`         | if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
+
 
 Notes on case 3b (`addr=DE, dst=HL`): `dst=HL` means the old HL value
 is dead at the pseudo by construction. The first `XCHG` parks old HL
@@ -143,13 +144,33 @@ is mandatory — it is the delivery, not just preservation. DE
 recovery via `DCX D` is needed only when the original `addr=DE`
 value is live across the pseudo. No `A` is ever needed here.
 
-Notes on case 4 (`addr=DE, dst=DE`): the old HL value swapped in by
-the first XCHG is dead (no caller asked for HL to be defined or
-preserved as anything but its own value, which the trailing XCHG
-restores). The inner load must use a non-HL temp because the high
-byte must be sourced via `M` *after* `INX H`, while the low byte
-must already have been written. Trailing XCHG places the loaded
-value into DE and restores HL to its original.
+Notes on case 4 (`addr=DE, dst=DE`): `dst=DE` means DE is being
+redefined, so the address pair is by construction not preserved —
+The inner load must use a non-HL temp because the high byte must
+be sourced via `M` *after* `INX H`, while the low byte must already
+have been written. Trailing XCHG places the loaded value into DE and
+restores HL to its original.
+
+SpareR selection in this case is **per-byte**, not per-pair. After
+the leading `XCHG`, `HL` holds the address (so `H` and `L` are
+never candidates) and `DE` physically holds the original HL bytes
+(`D = H_orig`, `E = L_orig`). The trailing `XCHG` swaps `DE↔HL`
+again, so whatever value sits in `D` (resp. `E`) at that moment
+ends up in `H` (resp. `L`) post-load. Therefore:
+
+- `B` is a candidate iff `B` is dead across the pseudo.
+- `C` is a candidate iff `C` is dead across the pseudo.
+- `D` is a candidate iff **`H`** is dead across the pseudo
+  (using `D` would otherwise destroy `H_orig`).
+- `E` is a candidate iff **`L`** is dead across the pseudo
+  (using `E` would otherwise destroy `L_orig`).
+- `H`, `L` are never candidates.
+
+When `HL` is fully dead (e.g. tail position), `D` and `E` become valid
+spares and the `PUSH PSW` fallback is avoided.
+
+Notes on case 6 (`addr=BC, dst=HL`): a single GR8 spare (or `A` with `PUSH PSW`
+/ `POP PSW`) is sufficient.
 
 ### Why this is faster than honest pre-RA `Defs`
 
@@ -184,15 +205,15 @@ structural:
   the low byte into the high byte, so the high byte must be
   sourced after `INX` while the low byte must already be saved
   somewhere outside the address pair.
-- `dst=HL` cases (3b, 6) start with old HL dead by definition; the
-  expander must not emit any HL-preservation code in those cases.
 - `addr=BC` cases (5, 6) destroy HL while computing the address.
-  HL preservation requires `PUSH H`/`POP H` (no `DCX` recovery is
-  possible since HL was overwritten, not incremented).
+  HL preservation in case 5 requires `PUSH H`/`POP H`.
 - The `DCX` recovery is conditioned on the *address-pair* being
-  live after the pseudo, not on HL specifically. For case 3 the
-  conditional is "DE live"; for cases 1/2 it is "HL live"; for
-  case 4 it is "DE live".
+  live after the pseudo, **and** on the destination not already
+  redefining that pair. Specifically: case 2 conditions on "HL
+  live"; case 3 (a/b) conditions on "DE live";
+- Case 4 SpareR selection is per-byte: `D` is safe iff `H` is dead;
+  `E` is safe iff `L` is dead; `B`/`C` use their own liveness;
+  `H`/`L` are never safe.
 
 ## Implementation Sketch
 
@@ -224,8 +245,8 @@ new machinery required.
   is live across the pseudo.
 - Bug 3 fixed: `addr=DE, dst=DE` is implemented via the case-4 row,
   not the broken `MOV E,M; …; MOV D,M; XCHG` pattern.
-- Bug 4 fixed: `addr=BC, *` always emits `PUSH H`/`POP H` when HL
-  is live, regardless of pseudo-level `Defs`.
+- Bug 4 fixed: `addr=BC, *` honours HL liveness — case 5 emits
+  `PUSH H`/`POP H` when HL is live.
 - Bug 5 fixed: `addr=BC, dst=HL` uses a dead GR8 (or `PUSH PSW`)
   instead of silently clobbering `A`.
 - Pressure unchanged in the common path. RA continues to see
