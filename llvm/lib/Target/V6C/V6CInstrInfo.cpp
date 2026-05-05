@@ -499,6 +499,31 @@ static bool isRegDeadAtMI(unsigned Reg, const MachineInstr &MI,
   return true;
 }
 
+/// O71 — Find a GR8 register that is dead at MI, or Register() if none.
+/// Skips A (callers handle A specially via PUSH PSW / POP PSW). Skips
+/// any register aliased by Exclude1 / Exclude2 (typically the address
+/// pair and/or destination pair of a 16-bit load expansion).
+static Register findDeadGR8AtMI(const MachineInstr &MI,
+                                MachineBasicBlock &MBB,
+                                const TargetRegisterInfo *TRI,
+                                Register Exclude1 = Register(),
+                                Register Exclude2 = Register()) {
+  // GR8 minus A. Order is arbitrary; preferring the BC pair first leaves
+  // H/L (often live as pointer halves) for last.
+  static const unsigned Candidates[] = {
+      V6C::B, V6C::C, V6C::D, V6C::E, V6C::H, V6C::L,
+  };
+  for (unsigned R : Candidates) {
+    if (Exclude1 && TRI->regsOverlap(R, Exclude1))
+      continue;
+    if (Exclude2 && TRI->regsOverlap(R, Exclude2))
+      continue;
+    if (isRegDeadAtMI(R, MI, MBB, TRI))
+      return Register(R);
+  }
+  return Register();
+}
+
 /// O49 — Direct memory M-operand pseudo expansion helper.
 /// Emits any M-operand instruction (ADDM/SUBM/.../MVIM/INRM/DCRM) with
 /// appropriate HL/DE/BC address staging. `Emit` is a callable that
@@ -1370,53 +1395,163 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   //===------------------------------------------------------------------===//
 
   case V6C::V6C_LOAD16_P: {
-    // Load 16-bit value from address in register pair.
-    // addr=HL: load directly (dst must be DE or BC).
-    // addr=DE: XCHG; load into dst; XCHG (preserves HL, 4cc overhead).
-    // addr=BC: PUSH HL; MOV H,B; MOV L,C; load; POP HL (preserves HL).
-    Register DstReg = MI.getOperand(0).getReg();
+    // O71 — Honest per-shape preservation.
+    //
+    // The pseudo declares (outs GR16:$dst, ins GR16:$addr) with no Defs.
+    // Pre-RA passes treat the load as preserving every register except
+    // $dst. The expander dispatches on the (addr, dst) physreg pair and
+    // emits whatever cheap recovery code the shape needs to honour that
+    // contract for live registers (DCX rp to undo INX, dead-GR8 spare to
+    // avoid clobbering A, PUSH PSW / POP PSW or PUSH H / POP H as
+    // last-resort wrappers).
+    Register DstReg  = MI.getOperand(0).getReg();
     Register AddrReg = MI.getOperand(1).getReg();
 
     MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
     MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
 
-    // Helper: emit the MOVrM; INX HL; MOVrM load sequence.
-    auto emitLoad = [&]() {
-      if (DstLo == V6C::L || DstLo == V6C::H) {
-        // Dst overlaps HL — use A as temp for the low byte.
-        BuildMI(MBB, MI, DL, get(V6C::MOVrM), V6C::A);
-        BuildMI(MBB, MI, DL, get(V6C::INX), V6C::HL).addReg(V6C::HL);
-        BuildMI(MBB, MI, DL, get(V6C::MOVrM), DstHi);
-        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
-      } else {
-        BuildMI(MBB, MI, DL, get(V6C::MOVrM), DstLo);
-        BuildMI(MBB, MI, DL, get(V6C::INX), V6C::HL).addReg(V6C::HL);
-        BuildMI(MBB, MI, DL, get(V6C::MOVrM), DstHi);
-      }
+    // Helper closures. All emit at MI (replaced below by eraseFromParent).
+    auto emitDCX = [&](MCRegister Pair) {
+      BuildMI(MBB, MI, DL, get(V6C::DCX), Pair).addReg(Pair);
+    };
+    auto emitINXHL = [&]() {
+      BuildMI(MBB, MI, DL, get(V6C::INX), V6C::HL).addReg(V6C::HL);
+    };
+    auto emitMOVrM = [&](MCRegister Dst) {
+      BuildMI(MBB, MI, DL, get(V6C::MOVrM), Dst);
+    };
+    auto emitMOVrr = [&](MCRegister Dst, MCRegister Src) {
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), Dst).addReg(Src);
+    };
+    auto emitXCHG = [&]() {
+      BuildMI(MBB, MI, DL, get(V6C::XCHG));
     };
 
-    if (AddrReg == V6C::HL) {
-      // Addr already in HL — load directly.
-      emitLoad();
+    if (AddrReg == V6C::HL && DstReg == V6C::HL) {
+      // Case 1: addr=HL, dst=HL.
+      //   MOV Spare, M; INX H; MOV H, M; MOV L, Spare
+      // Spare candidate must avoid HL (its halves are the destination).
+      // No DCX H — dst=HL means original HL is being overwritten by
+      // definition; not live across the pseudo as the prior value.
+      Register Spare = findDeadGR8AtMI(MI, MBB, &RI, V6C::HL);
+      bool UseA = !Spare;
+      MCRegister Tmp = UseA ? MCRegister(V6C::A) : Spare.asMCReg();
+      bool ALive = UseA && !isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
+      emitMOVrM(Tmp);
+      emitINXHL();
+      emitMOVrM(V6C::H);
+      emitMOVrr(V6C::L, Tmp);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
+    } else if (AddrReg == V6C::HL) {
+      // Case 2: addr=HL, dst ∈ {BC, DE}.
+      //   MOV DstLo, M; INX H; MOV DstHi, M; (DCX H if HL live)
+      emitMOVrM(DstLo);
+      emitINXHL();
+      emitMOVrM(DstHi);
+      if (!isRegDeadAtMI(V6C::HL, MI, MBB, &RI))
+        emitDCX(V6C::HL);
+    } else if (AddrReg == V6C::DE && DstReg == V6C::DE) {
+      // Case 4: addr=DE, dst=DE.
+      //   XCHG; MOV Spare, M; INX H; MOV H, M; MOV L, Spare; XCHG
+      //
+      // Spare selection here is subtle. After the leading XCHG:
+      //   HL = address     (used by the load body, must not be clobbered)
+      //   DE = orig HL     (D = H_orig, E = L_orig)
+      // The trailing XCHG swaps DE↔HL again, restoring orig HL into HL
+      // and delivering *p (currently in HL) into DE. Whatever value is
+      // sitting in D (resp. E) at the moment of XCHG #2 ends up in H
+      // (resp. L) post-load. So the spare may be:
+      //   B  iff B is dead across MI
+      //   C  iff C is dead across MI
+      //   D  iff H is dead across MI   (using D clobbers H_orig)
+      //   E  iff L is dead across MI   (using E clobbers L_orig)
+      //   H, L — never (they hold the address mid-sequence)
+      // Falls back to A with PUSH PSW / POP PSW iff A is live.
+      // No DCX D — dst=DE means caller wanted DE redefined.
+      auto findCase4Spare = [&]() -> Register {
+        if (isRegDeadAtMI(V6C::B, MI, MBB, &RI)) return Register(V6C::B);
+        if (isRegDeadAtMI(V6C::C, MI, MBB, &RI)) return Register(V6C::C);
+        if (isRegDeadAtMI(V6C::H, MI, MBB, &RI)) return Register(V6C::D);
+        if (isRegDeadAtMI(V6C::L, MI, MBB, &RI)) return Register(V6C::E);
+        return Register();
+      };
+      Register Spare = findCase4Spare();
+      bool UseA = !Spare;
+      MCRegister Tmp = UseA ? MCRegister(V6C::A) : Spare.asMCReg();
+      bool ALive = UseA && !isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
+      emitXCHG();
+      emitMOVrM(Tmp);
+      emitINXHL();
+      emitMOVrM(V6C::H);
+      emitMOVrr(V6C::L, Tmp);
+      emitXCHG();
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
     } else if (AddrReg == V6C::DE) {
-      // XCHG to get addr into HL (preserves both via swap).
-      BuildMI(MBB, MI, DL, get(V6C::XCHG));
-      emitLoad();
-      BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      // Cases 3a / 3b: addr=DE, dst ∈ {BC, HL}.
+      //   XCHG; MOV LoadLo, M; INX H; MOV LoadHi, M; XCHG; (DCX D if DE live)
+      // For dst=BC: LoadLo=C, LoadHi=B (BC halves) — trailing XCHG just
+      //             restores HL from the DE-stashed orig-HL.
+      // For dst=HL: LoadLo=E, LoadHi=D — we cannot stage in H/L because
+      //             HL holds the address after the leading XCHG. Stage
+      //             in DE halves; the trailing XCHG then delivers
+      //             HL ← loaded, DE ← address+1.
+      MCRegister LoadLo, LoadHi;
+      if (DstReg == V6C::HL) {
+        LoadLo = V6C::E;
+        LoadHi = V6C::D;
+      } else {
+        LoadLo = DstLo;
+        LoadHi = DstHi;
+      }
+      emitXCHG();
+      emitMOVrM(LoadLo);
+      emitINXHL();
+      emitMOVrM(LoadHi);
+      emitXCHG();
+      if (!isRegDeadAtMI(V6C::DE, MI, MBB, &RI))
+        emitDCX(V6C::DE);
+    } else if (DstReg == V6C::HL) {
+      // Case 6: addr=BC, dst=HL.
+      //   MOV H,B; MOV L,C; MOV Spare, M; INX H; MOV H, M; MOV L, Spare
+      // No PUSH H / POP H — dst=HL means original HL is dead.
+      // No DCX BC — BC is never modified.
+      // Spare must exclude HL (destination) and BC (address).
+      Register Spare = findDeadGR8AtMI(MI, MBB, &RI, V6C::HL, V6C::BC);
+      bool UseA = !Spare;
+      MCRegister Tmp = UseA ? MCRegister(V6C::A) : Spare.asMCReg();
+      bool ALive = UseA && !isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
+      emitMOVrr(V6C::H, V6C::B);
+      emitMOVrr(V6C::L, V6C::C);
+      emitMOVrM(Tmp);
+      emitINXHL();
+      emitMOVrM(V6C::H);
+      emitMOVrr(V6C::L, Tmp);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
     } else {
-      // Addr=BC: preserve HL via PUSH/POP.
-      // O42: skip PUSH/POP HL when HL is dead after this instruction.
-      // Also skip when DstReg == HL: the load itself fully redefines HL,
-      // so the surrounding PUSH/POP would just clobber the loaded value.
-      bool HLDead =
-          DstReg == V6C::HL || isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+      // Case 5: addr=BC, dst ∈ {BC, DE}.
+      //   (PUSH H if HL live)
+      //   MOV H,B; MOV L,C; MOV DstLo, M; INX H; MOV DstHi, M
+      //   (POP H if HL live)
+      // BC is preserved automatically; HL is recovered via PUSH/POP.
+      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
       if (!HLDead)
         BuildMI(MBB, MI, DL, get(V6C::PUSH))
             .addReg(V6C::HL, RegState::Kill)
             .addReg(V6C::SP, RegState::ImplicitDefine);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::H).addReg(V6C::B);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::L).addReg(V6C::C);
-      emitLoad();
+      emitMOVrr(V6C::H, V6C::B);
+      emitMOVrr(V6C::L, V6C::C);
+      emitMOVrM(DstLo);
+      emitINXHL();
+      emitMOVrM(DstHi);
       if (!HLDead)
         BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
             .addReg(V6C::SP, RegState::ImplicitDefine);

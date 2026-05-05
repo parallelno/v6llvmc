@@ -236,16 +236,18 @@ and the DE-restore for 3a).
 > restored by the trailing XCHG, modulo +1 which `DCX D` corrects
 > via the swapped role).
 
-> **Implementation Notes**: Latent bug discovered during
-> implementation: case 3b cannot stage the loaded value into
-> `DstLo=L, DstHi=H` because after `XCHG` those halves hold the
-> address. Fixed by always staging case 3b through `E` (lo) and
-> `D` (hi) — the trailing `XCHG` then swaps the loaded value into
-> HL and the original-HL bytes back into DE, while `DCX D` (when
-> needed) decrements DE which now logically represents the address
-> pair after the second XCHG. Case 3a still uses `DstLo=C, DstHi=B`
-> directly. The `XCHG` peephole `foldXchgDad` may eliminate the
-> trailing XCHG when the next op is `DAD D` and DE is dead.
+> **Implementation Notes**: My first pass collapsed cases 3a and 3b
+> into a single shared body that staged the load through
+> `DstLo`/`DstHi`. That happens to work for 3a (`dst=BC` does not
+> overlap HL) but is wrong for 3b: after the leading `XCHG`, HL
+> holds the address, so writing into `DstLo=L` and `DstHi=H` would
+> clobber the address mid-sequence. The design doc was correct from
+> the start (it explicitly says `MOV E, M; INX H; MOV D, M`); my
+> implementation drifted from the spec, the test caught it, fixed
+> by branching on `DstReg == V6C::HL` and forcing `LoadLo=E`,
+> `LoadHi=D` for that branch. Case 3a still uses `DstLo=C, DstHi=B`
+> directly. The trailing `XCHG` is sometimes eliminated by
+> `foldXchgDad` when the next op is `DAD D` and DE is dead.
 
 ### Step 3.5 — Case 4 (`addr=DE, dst=DE`) [x]
 
@@ -266,15 +268,39 @@ No `DCX D` is ever needed: `dst=DE` means the destination of the
 load is DE, so the caller cannot also expect DE to still hold the
 old address afterwards.
 
-> **Design Notes**: Fixes bug 3. Both `HL` and `DE` must be
-> excluded from the spare candidate set: after the leading `XCHG`,
-> `HL` holds the address (so picking `H` or `L` would clobber it),
-> and `DE` holds the original `HL` bytes which the trailing `XCHG`
-> swaps back into `HL` (so picking `D` or `E` would corrupt the
-> preserved-HL value). The original design doc's "optional `DCX D`
-> if DE live" line is incorrect for this shape and is dropped.
+> **Design Notes**: Fixes bug 3. The spare-selection rule is
+> per-byte, not per-pair. After the leading `XCHG`, `HL` holds the
+> address, so `H` and `L` are off-limits unconditionally (the load
+> body would clobber the address). The trailing `XCHG` swaps DE↔HL
+> again — whatever value sits in `D` (resp. `E`) at that moment
+> ends up in `H` (resp. `L`) post-load. Since `D` physically holds
+> `H_orig` after `XCHG #1` and `E` holds `L_orig`, the rule is:
+>
+>   * `B` is a candidate iff `B` is dead across the pseudo.
+>   * `C` is a candidate iff `C` is dead across the pseudo.
+>   * `D` is a candidate iff **`H`** is dead across the pseudo.
+>   * `E` is a candidate iff **`L`** is dead across the pseudo.
+>   * `H`, `L` are never candidates.
+>
+> A blanket `Exclude=DE` would be safe but over-conservative:
+> when `HL` is fully dead, `D` and `E` become valid spares and we
+> avoid the `PUSH PSW` fallback. The original design doc's
+> "optional `DCX D` if DE live" line is incorrect for this shape
+> and is dropped — `dst=DE` means DE is being redefined, so the
+> address pair is by construction not preserved.
 
-> **Implementation Notes**:
+> **Implementation Notes**: First implementation used
+> `findDeadGR8AtMI(..., V6C::HL, V6C::DE)`, which excludes the
+> entire DE pair. Per the per-byte rule above, that
+> over-conservatively forces the `PUSH PSW` fallback whenever B
+> and C are both live, even though `D` (or `E`) might be safe.
+> Replaced with an inline `findCase4Spare` lambda that probes
+> {B, C} via `isRegDeadAtMI(R)` and {D, E} via
+> `isRegDeadAtMI(H)` / `isRegDeadAtMI(L)`. The bug-3 reproducer
+> (`tests/features/53/bug3_de_de`, where HL holds `sum` and is
+> live) still picks `B` as before, so `v6llvmc_new01.asm` is
+> byte-identical; the refinement only activates when HL is
+> partly or fully dead.
 
 ### Step 3.6 — Cases 5 (`addr=BC, dst∈{BC,DE}`) and 6 (`addr=BC, dst=HL`) [x]
 

@@ -18,11 +18,14 @@ define void @store_global(i16 %val) {
   ret void
 }
 
+; O71: case 1 (addr=HL, dst=HL) picks a dead GR8 spare (here: B) and
+; routes the low byte through it. Falls back to A under PUSH PSW only
+; if no dead GR8 exists.
 ; CHECK-LABEL: load_ptr:
-; CHECK:       MOV A, M
-; CHECK:       INX H
+; CHECK:       MOV [[T:[A-Z]+]], M
+; CHECK-NEXT:  INX H
 ; CHECK-NEXT:  MOV H, M
-; CHECK-NEXT:  MOV L, A
+; CHECK-NEXT:  MOV L, [[T]]
 define i16 @load_ptr(ptr %p) {
   %v = load i16, ptr %p
   ret i16 %v

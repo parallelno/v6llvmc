@@ -69,6 +69,8 @@
 | O68 | Wide Shift-Left / Rotate by 1 via `DAD H` (Phase 2: rotl i16, 1) | [O68_wide_shl_rotate_dad_h.md](O68_wide_shl_rotate_dad_h.md) | V6C |
 | O69 | Direct Frame-Index Memory Pseudos | [O69_lea_fi_pointer_use_folding.md](O69_lea_fi_pointer_use_folding.md) | V6C |
 | O70 | Header-only V6C Math Runtime (auto-included `v6c_arith.h`, `MUL_I8 = LibCall`, divmod fusion) — **DONE** | [O70_math_header.md](O70_math_header.md) | V6C |
+| O71 | V6C_LOAD16_P Per-Shape Redesign (honest preservation, dead-GR8 spare, fixes 5 correctness bugs) — **DONE** | [O71_V6C_LOAD16_P_redesign.md](O71_V6C_LOAD16_P_redesign.md) | V6C |
+| O72 | V6C_STORE16_P Per-Shape Redesign (companion to O71) | [O72_V6C_STORE16_P_redesign.md](O72_V6C_STORE16_P_redesign.md) | V6C |
 | O-LLD | Native ld.lld Linker (replaces Python `v6c_link.py`) | [../plan_O_LLD_native_linker.md](../plan_O_LLD_native_linker.md) | V6C |
 | O-AsmInterop | Asm-Interop Overhaul (i8080 mnemonics, free-list CC, MC AsmParser, V6C resource headers, retire libv6c-builtins) | [../plan_asm_interop_overhaul.md](../plan_asm_interop_overhaul.md) | V6C |
 ---

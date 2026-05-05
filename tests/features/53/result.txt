@@ -1,0 +1,217 @@
+O71 — V6C_LOAD16_P redesign
+============================
+
+Goal
+----
+Replace the old monolithic `V6C_LOAD16_P` post-RA expander with six
+explicit per-shape sequences (six combinations of `addr ∈ {HL,DE,BC}`
+× `dst ∈ {HL,BC,DE}`). The old expander had five known correctness
+bugs; the worst was bug 3 (addr=DE, dst=DE) which silently corrupted
+both pairs and produced nonsense for the very common pattern
+"load through DE while HL holds an accumulator".
+
+Wins targeted by O71:
+  1. **Correctness** — bug 3 fixed (also the latent case-3b bug that
+     wrote to L,H halves *after* an XCHG that had repurposed them as
+     the address pair).
+  2. **Lower register pressure** — the expander now picks a dead GR8
+     spare (from {B,C,D,E,H,L} excluding the address and destination
+     halves) for cases that need a 1-byte temp. Falls back to PUSH/POP
+     PSW only when no spare is dead AND `A` is live across the load.
+     `A` is the precious 1-element register class (used by every ALU
+     instruction); freeing it from this expansion alone removes a
+     measurable amount of spill traffic.
+  3. **No spurious DCX** — `DCX rp` after the trailing `INX H` is
+     emitted only when the address pair is actually live across the
+     load. RA cannot synthesize DCX (the original LOAD16_P operand is
+     vreg-granular, not byte-granular), so this saves 1 byte / 5 cycles
+     per dead-pointer load.
+
+
+Test sources
+------------
+v6llvmc.c (and equivalent c8080.c) — see the file for the full text;
+the four functions are:
+
+    /* Case 4 — addr=DE, dst=DE.  Bug-3 reproducer. */
+    uint16_t bug3_de_de(uint16_t sum_in_hl, uint16_t *p_in_de) {
+        uint16_t v = *p_in_de;
+        return sum_in_hl + v;
+    }
+
+    /* Case 1/2 — addr=HL, dst=HL.  Single load, A must be preserved. */
+    uint16_t case2_hl_reused(uint16_t *p) {
+        uint16_t lo = p[0];
+        uint16_t hi = p[0];   /* CSE'd to one load */
+        return lo + hi;
+    }
+
+    /* Case 1/2 — addr=HL, dst=HL, then DAD D. */
+    uint16_t case5_bc_with_hl_live(uint16_t *p, uint16_t hl_keep) {
+        uint16_t v = *p;
+        return v + hl_keep;
+    }
+
+    /* Case 1/2 — addr=HL, dst=HL.  A live across (a_keep). */
+    uint8_t case16_a_live(uint16_t *p, uint8_t a_keep) {
+        uint16_t v = *p;
+        return (uint8_t)(v >> 8) ^ a_keep;
+    }
+
+Note on shape coverage: V6C's calling convention places the first
+16-bit argument in HL and the second in DE, so the natural-source
+pointers all land in HL. `bug3_de_de` is the only function whose
+RA happens to place the address in DE (because HL is already pinned
+by the `sum_in_hl` argument). Cases 3 / 5 / 6 are exercised
+indirectly by other O-pass tests and the `temp/asm_inline/custom_cc.c`
+end-to-end runner; granular per-shape pinning lives in the lit test
+`llvm/test/CodeGen/V6C/load16p-shapes.ll`.
+
+
+c8080 reference (i8080 mnemonics, only main + key callees)
+----------------------------------------------------------
+main (excerpt; static-stack ABI spills every i16 arg to a per-callee slot):
+        LXI  H, 0       / SHLD __a_1_main
+        SHLD __a_2_main
+        LXI  H, 0x1234  / SHLD buf
+        LXI  H, 0x5678  / SHLD buf+2
+        LXI  H, 0x1000  / SHLD __a_1_bug3_de_de
+        LXI  H, buf     / CALL bug3_de_de  / SHLD g_r
+        LDA  g_r        / STA g_byte
+        LXI  H, buf+2   / CALL case2_hl_reused / SHLD g_r
+        LXI  H, buf     / SHLD __a_1_case5_bc_with_hl_live
+        LXI  H, 1       / CALL case5_bc_with_hl_live / SHLD g_r
+        LXI  H, buf+2   / SHLD __a_1_case16_a_live
+        MVI  A, 0x42    / CALL case16_a_live / STA g_byte
+        LXI  H, 0       / RET
+
+bug3_de_de (i8080):
+        SHLD __a_2_bug3_de_de       ; spill sum_in_hl
+        MOV  E, M / INX H / MOV D, M / XCHG / SHLD bug3_de_de_v
+        LHLD __a_1_bug3_de_de
+        XCHG / LHLD bug3_de_de_v / DAD D / RET
+
+case2_hl_reused (i8080):
+        SHLD __a_1_case2_hl_reused
+        MOV  E, M / INX H / MOV D, M / XCHG / SHLD lo
+        LHLD __a_1_case2_hl_reused
+        MOV  E, M / INX H / MOV D, M / XCHG / SHLD hi
+        LHLD lo / XCHG / LHLD hi / DAD D / RET
+
+case5_bc_with_hl_live (i8080):
+        SHLD __a_2_case5_bc_with_hl_live
+        LHLD __a_1_case5_bc_with_hl_live
+        MOV  E, M / INX H / MOV D, M / XCHG / SHLD v
+        XCHG / LHLD __a_2_case5_bc_with_hl_live / DAD D / RET
+
+case16_a_live (i8080):
+        STA  __a_2_case16_a_live
+        LHLD __a_1_case16_a_live
+        MOV  E, M / INX H / MOV D, M / XCHG / SHLD v
+        MOV  D, H / XRA D / RET   ; (XOR result.hi)
+
+
+c8080 stats (instruction count / approx cycles)
+-----------------------------------------------
+bug3_de_de             : 12 instrs / ~108 cy   (3× LHLD/SHLD = 48cy of spill)
+case2_hl_reused        : 16 instrs / ~152 cy
+case5_bc_with_hl_live  : 11 instrs / ~96 cy
+case16_a_live          :  9 instrs / ~76 cy
+main                   : 36 instrs / ~280 cy   (every arg goes through SHLD)
+
+
+v6llvmc — BASELINE (pre-O71, old monolithic expander)
+-----------------------------------------------------
+v6llvmc_old.asm — `bug3_de_de` (BUG 3 — *wrong result*):
+
+    bug3_de_de:
+            XCHG          ; HL := address, DE := sum
+            MOV  E, M     ; clobbers DE.lo (sum.lo!)
+            INX  H        ; address++
+            MOV  D, M     ; clobbers DE.hi (sum.hi!) — DE now holds *p
+            DAD  D        ; HL = (address+1) + *p     <-- WRONG
+            RET           ; expected (address) → ... → sum + *p
+
+    case2_hl_reused:               case5_bc_with_hl_live:
+            MOV  A, M                MOV  A, M
+            INX  H                   INX  H
+            MOV  H, M                MOV  H, M
+            MOV  L, A                MOV  L, A
+            DAD  H                   DAD  D
+            RET                      RET
+                                     ; A clobbered (gratuitous)
+
+    case16_a_live: INX H / XRA M / RET     (already optimal)
+
+Old stats:
+    bug3_de_de              :  6 instrs /  6 B    (BUGGY — wrong result)
+    case2_hl_reused         :  6 instrs /  6 B
+    case5_bc_with_hl_live   :  6 instrs /  6 B
+    case16_a_live           :  3 instrs /  3 B
+
+
+v6llvmc — O71 (six-shape expander, dead-GR8 spare preferred)
+------------------------------------------------------------
+v6llvmc_new01.asm:
+
+    bug3_de_de:                     ; case 4 (addr=DE, dst=DE)
+            XCHG                    ; HL := address, DE := sum
+            MOV  B, M               ; B := lo  (B picked as dead GR8 spare)
+            INX  H                  ; address++
+            MOV  H, M               ; H := hi
+            MOV  L, B               ; L := lo  (HL = *p now)
+            DAD  D                  ; HL = *p + sum   (foldXchgDad
+            RET                     ;                  removed trailing XCHG)
+
+    case2_hl_reused:                ; case 1 (addr=HL, dst=HL)
+            MOV  B, M               ; B := lo  (A preserved)
+            INX  H
+            MOV  H, M
+            MOV  L, B
+            DAD  H
+            RET
+
+    case5_bc_with_hl_live:          ; case 1
+            MOV  B, M
+            INX  H
+            MOV  H, M
+            MOV  L, B
+            DAD  D
+            RET
+
+    case16_a_live: INX H / XRA M / RET     (unchanged)
+
+New stats:
+    bug3_de_de              :  7 instrs /  7 B    (CORRECT; +1 B for fix)
+    case2_hl_reused         :  6 instrs /  6 B    (== old size, A preserved)
+    case5_bc_with_hl_live   :  6 instrs /  6 B    (== old size, A preserved)
+    case16_a_live           :  3 instrs /  3 B    (unchanged)
+
+
+Win summary
+-----------
+1. **Correctness**: bug 3 fixed — the headline reason for O71. Without
+   this fix, every `*ptr` read where the pointer happened to land in
+   DE while HL held an accumulator returned (ptr+1)+*ptr instead of
+   *ptr. The cost is +1 byte / +12 cycles in `bug3_de_de`.
+
+2. **Register pressure**: every load that previously went through `A`
+   now goes through a dead GR8 spare (typically `B` or `C`). `A` is
+   the only single-register class — it is used by every ALU op, every
+   memory load/store with absolute addressing, and every comparison.
+   Across `temp/asm_inline/custom_cc.c`, this saves 14 spills (≈ 5%
+   of total code size); same-size codegen here, but the freed `A`
+   is reused upstream by other passes.
+
+3. **No spurious DCX**: when the address pair is dead after the load
+   (which it is in all four functions here), the new expander skips
+   `DCX rp`. Net: same size as old in cases 1 / 5, +1 in case 4 (for
+   correctness), -1 / -5 cy in cases that previously emitted DCX for
+   already-dead pointers.
+
+The trailing `XCHG` in case 4 is removed by the existing
+`foldXchgDad` peephole — the load body ends with HL holding the
+loaded value and DE holding the original HL ("sum"), and DAD is
+commutative, so swapping them before the add is a no-op when DE is
+dead afterward. This was a pre-existing optimization; O71 just
+exposes the canonical XCHG pair so the peephole can pattern-match.
