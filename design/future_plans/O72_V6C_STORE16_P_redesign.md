@@ -44,17 +44,17 @@ else  # val ∈ {BC, DE}
 
 ### Per-shape expansion table (current behaviour vs. truthful clobbers)
 
-| #  | val | addr | current expansion                                                       | declared `Defs` | actual clobbers                                          | over / under-decl |
-|----|-----|------|-------------------------------------------------------------------------|------------------|-----------------------------------------------------------|-------------------|
-| 1  | HL  | HL   | `MOV A,H; MOV M,L; INX H; MOV M,A`                                      | HL, A            | A; HL = orig+1                                            | exact             |
-| 2  | HL  | DE   | `[PUSH D]; MOV A,L; STAX D; INX D; MOV A,H; STAX D; [POP D]`            | HL, A            | A; HL preserved; DE preserved (PUSH/POP elided iff DE dead) | over: HL          |
-| 3  | HL  | BC   | `[PUSH B]; MOV A,L; STAX B; INX B; MOV A,H; STAX B; [POP B]`            | HL, A            | A; HL preserved; BC preserved (PUSH/POP elided iff BC dead) | over: HL          |
-| 4  | BC  | HL   | `MOV M,C; INX H; MOV M,B`                                               | HL, A            | HL = orig+1; A preserved                                  | over: A           |
-| 5  | DE  | HL   | `MOV M,E; INX H; MOV M,D`                                               | HL, A            | HL = orig+1; A preserved                                  | over: A           |
-| 6  | BC  | BC   | `MOV H,B; MOV L,C; MOV M,C; INX H; MOV M,B`                             | HL, A            | HL fully overwritten; A preserved                         | over: A           |
-| 7  | BC  | DE   | `MOV H,D; MOV L,E; MOV M,C; INX H; MOV M,B`                             | HL, A            | HL fully overwritten; A preserved                         | over: A           |
-| 8  | DE  | BC   | `MOV H,B; MOV L,C; MOV M,E; INX H; MOV M,D`                             | HL, A            | HL fully overwritten; A preserved                         | over: A           |
-| 9  | DE  | DE   | `MOV H,D; MOV L,E; MOV M,E; INX H; MOV M,D`                             | HL, A            | HL fully overwritten; A preserved                         | over: A           |
+| #  | val | addr | current expansion | declared `Defs` | actual clobbers | over / under-decl |
+|----|-----|------|-------------------|-----------------|-----------------|-------------------|
+| 1  | HL  | HL   | `MOV A,H; MOV M,L; INX H; MOV M,A`  | HL, A    | A; HL = orig+1 | exact |
+| 2  | HL  | DE   | `[PUSH D]; MOV A,L; STAX D; INX D; MOV A,H; STAX D; [POP D]` | HL, A | A; HL preserved; DE preserved (PUSH/POP elided iff DE dead) | over: HL |
+| 3  | HL  | BC   | `[PUSH B]; MOV A,L; STAX B; INX B; MOV A,H; STAX B; [POP B]` | HL, A | A; HL preserved; BC preserved (PUSH/POP elided iff BC dead) | over: HL |
+| 5  | DE  | HL   | `MOV M,E; INX H; MOV M,D` | HL, A | HL = orig+1; A preserved | over: A |
+| 9  | DE  | DE   | `MOV H,D; MOV L,E; MOV M,E; INX H; MOV M,D` | HL, A | HL fully overwritten; A preserved | over: A |
+| 8  | DE  | BC   | `MOV H,B; MOV L,C; MOV M,E; INX H; MOV M,D` | HL, A | HL fully overwritten; A preserved | over: A |
+| 4  | BC  | HL   | `MOV M,C; INX H; MOV M,B`  | HL, A | HL = orig+1; A preserved | over: A |
+| 7  | BC  | DE   | `MOV H,D; MOV L,E; MOV M,C; INX H; MOV M,B` | HL, A | HL fully overwritten; A preserved | over: A |
+| 6  | BC  | BC   | `MOV H,B; MOV L,C; MOV M,C; INX H; MOV M,B` | HL, A | HL fully overwritten; A preserved | over: A |
 
 Notes:
 - Cases 4–9 never write `A`, but the blanket `Defs=[HL,A]` forces RA to
@@ -90,15 +90,15 @@ wrap if `A` is also live.
 
 | Case | addr | val | expansion | preservation knobs |
 |---|------|-----|---------------------------------------------|-------------------------------------------------------|
-| 1    | BC   | BC    | `MOV H,B; MOV L,C; MOV M,C; INX H; MOV M,B`              | wrap `PUSH H`/`POP H` if HL live after                                          |
-| 2    | BC   | DE    | `MOV H,B; MOV L,C; MOV M,E; INX H; MOV M,D`              | wrap `PUSH H`/`POP H` if HL live after                                          |
-| 3    | BC   | HL    | `MOV A,L; STAX B; INX B; MOV A,H; STAX B`                | wrap `PUSH PSW`/`POP PSW` if A live; emit `DCX B` if BC live after              |
-| 4    | DE   | BC    | `XCHG; MOV M,C; INX H; MOV M,B; XCHG`                    | emit `DCX D` if DE live after; HL preserved by construction                     |
-| 5    | DE   | DE    | `XCHG; MOV SpareR,H; MOV M,L; INX H; MOV M,SpareR; XCHG` | per-byte SpareR (see notes); emit `DCX D` if DE live after                      |
-| 6    | DE   | HL    | `XCHG; MOV M,E; INX H; MOV M,D; XCHG`                    | emit `DCX D` if DE live after; HL value delivered through XCHG (no `A` needed)  |
-| 7    | HL   | BC    | `MOV M,C; INX H; MOV M,B`                                | emit `DCX H` if HL live after                                                   |
-| 8    | HL   | DE    | `MOV M,E; INX H; MOV M,D`                                | emit `DCX H` if HL live after                                                   |
 | 9    | HL   | HL    | `MOV SpareR,H; MOV M,L; INX H; MOV M,SpareR`             | if no SpareR, wrap `PUSH PSW`/`POP PSW` and use `SpareR=A`; emit `DCX H` if HL live after |
+| 8    | HL   | DE    | `MOV M,E; INX H; MOV M,D`                                | emit `DCX H` if HL live after                                                   |
+| 7    | HL   | BC    | `MOV M,C; INX H; MOV M,B`                                | emit `DCX H` if HL live after                                                   |
+| 6    | DE   | HL    | `XCHG; MOV M,E; INX H; MOV M,D; XCHG`                    | emit `DCX D` if DE live after; HL value delivered through XCHG (no `A` needed)  |
+| 5    | DE   | DE    | `XCHG; MOV SpareR,H; MOV M,L; INX H; MOV M,SpareR; XCHG` | per-byte SpareR (see notes); emit `DCX D` if DE live after                      |
+| 4    | DE   | BC    | `XCHG; MOV M,C; INX H; MOV M,B; XCHG`                    | emit `DCX D` if DE live after; HL preserved by construction                     |
+| 3    | BC   | HL    | `MOV A,L; STAX B; INX B; MOV A,H; STAX B`                | wrap `PUSH PSW`/`POP PSW` if A live; emit `DCX B` if BC live after              |
+| 2    | BC   | DE    | `MOV H,B; MOV L,C; MOV M,E; INX H; MOV M,D`              | wrap `PUSH H`/`POP H` if HL live after                                          |
+| 1    | BC   | BC    | `MOV H,B; MOV L,C; MOV M,C; INX H; MOV M,B`              | wrap `PUSH H`/`POP H` if HL live after                                          |
 
 #### Notes on case 3 (`addr=BC, val=HL`)
 
