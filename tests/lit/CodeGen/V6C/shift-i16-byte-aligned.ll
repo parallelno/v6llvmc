@@ -23,7 +23,9 @@ target triple = "i8080-unknown-v6c"
 ; CHECK-NEXT: ; %bb.0:
 ; CHECK-NEXT:  MOV L, H
 ; CHECK-NEXT:  MVI H, 0
-; CHECK-NEXT:  MOV A, L
+; O72: store via DE pointer is now XCHG-wrapped (no STAX D / MOV A, L).
+; CHECK-NEXT:  XCHG
+; CHECK-NEXT:  MOV M, E
 ; CHECK-NOT:   RAR
 define void @srl8_i16(i16 %x, ptr %p) {
   %r = lshr i16 %x, 8

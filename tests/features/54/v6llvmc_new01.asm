@@ -418,84 +418,105 @@ __ashrhi3:                              ; -- Begin function __ashrhi3
 
 	;NO_APP
                                         ; -- End function
+	.section	.text.row3_de_hl,"ax",@progbits
+	.globl	row3_de_hl                      ; -- Begin function row3_de_hl
+row3_de_hl:                             ; @row3_de_hl
+; %bb.0:
+	XCHG
+	MOV	M, E
+	INX	H
+	MOV	M, D
+	XCHG
+	RET
+                                        ; -- End function
+	.section	.text.row2_hl_reused,"ax",@progbits
+	.globl	row2_hl_reused                  ; -- Begin function row2_hl_reused
+row2_hl_reused:                         ; @row2_hl_reused
+; %bb.0:
+	MOV	M, E
+	INX	H
+	MOV	M, D
+	XCHG
+	RET
+                                        ; -- End function
+	.section	.text.row5_bc_hl_a_live,"ax",@progbits
+	.globl	row5_bc_hl_a_live               ; -- Begin function row5_bc_hl_a_live
+row5_bc_hl_a_live:                      ; @row5_bc_hl_a_live
+; %bb.0:
+	XCHG
+	MOV	M, E
+	INX	H
+	MOV	M, D
+	XCHG
+	XRI	0x42
+	RET
+                                        ; -- End function
+	.section	.text.row6_bc_bc,"ax",@progbits
+	.globl	row6_bc_bc                      ; -- Begin function row6_bc_bc
+row6_bc_bc:                             ; @row6_bc_bc
+; %bb.0:
+	MOV	H, B
+	MOV	L, C
+	MOV	M, C
+	INX	H
+	MOV	M, B
+	RET
+                                        ; -- End function
+	.section	.text.row4_de_de,"ax",@progbits
+	.globl	row4_de_de                      ; -- Begin function row4_de_de
+row4_de_de:                             ; @row4_de_de
+; %bb.0:
+	XCHG
+	MOV	B, H
+	MOV	M, L
+	INX	H
+	MOV	M, B
+	XCHG
+	RET
+                                        ; -- End function
 	.section	.text.main,"ax",@progbits
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
 ; %bb.0:
-	LXI	H, INIT
-	LXI	D, __v6c_a.main
-	MVI	A, 0x10
-.LBB15_1:                               ; =>This Inner Loop Header: Depth=1
-	MOV	C, M
+	MVI	A, 0x55
+	OUT	0xde
+	LXI	H, 0x1234
 	PUSH	H
-	MOV	H, D
-	MOV	L, E
-	MOV	M, C
 	POP	H
-	INX	D
-	INX	H
-	DCR	A
-	JNZ	.LBB15_1
-; %bb.2:
-	MVI	A, 0xf
-.LBB15_3:                               ; =>This Loop Header: Depth=1
-                                        ;     Child Loop BB15_4 Depth 2
-	LXI	D, __v6c_a.main
-	STA	.LLo61_1+1
-	LXI	H, __v6c_a.main
-.LBB15_4:                               ;   Parent Loop BB15_3 Depth=1
-                                        ; =>  This Inner Loop Header: Depth=2
-	STA	.LLo61_0+1
-	LDAX	D
-	MOV	C, A
-	INX	H
-	MOV	A, M
-	STA	.LLo61_2+1
-	CMP	C
-	JNC	.LBB15_6
-; %bb.5:                                ;   in Loop: Header=BB15_4 Depth=2
-.LLo61_2:
-	MVI	A, 0
-	STAX	D
-	INX	D
-	MOV	A, C
-	STAX	D
-.LBB15_6:                               ;   in Loop: Header=BB15_4 Depth=2
-.LLo61_0:
-	MVI	A, 0
-	DCR	A
-	MOV	D, H
-	MOV	E, L
-	JNZ	.LBB15_4
-; %bb.7:                                ;   in Loop: Header=BB15_3 Depth=1
-.LLo61_1:
-	MVI	A, 0
-	DCR	A
-	JNZ	.LBB15_3
-; %bb.8:
-	MVI	E, 0
-	LXI	H, __v6c_a.main
-	MVI	A, 0x10
-.LBB15_9:                               ; =>This Inner Loop Header: Depth=1
-	MOV	D, A
-	MOV	A, E
-	ADD	M
-	MOV	E, A
-	MOV	A, D
-	INX	H
-	DCR	A
-	JNZ	.LBB15_9
-; %bb.10:
-	MOV	A, E
-	OUT	0xed
-	HLT
+	MOV	A, L
+	OUT	0xde
+	LXI	H, 0xdb
+	PUSH	H
+	LXI	H, 0xcafe
+	SHLD	main.buf+4
+	POP	H
+	MOV	A, L
+	OUT	0xde
+	LXI	H, main.buf
+	SHLD	main.buf
+	MOV	A, L
+	OUT	0xde
+	LXI	H, 0xbeef
+	PUSH	H
+	LXI	H, main.buf+2
+	SHLD	main.buf+2
+	POP	H
+	MOV	A, L
+	OUT	0xde
+	LXI	H, 0
+	RET
                                         ; -- End function
-	.section	.rodata.cst16,"aM",@progbits,16
-INIT:                                   ; @INIT
-	.ascii	"\r\310\007c*\001\372@\264\021X!\005\336d\233"
+	.local	main.buf                        ; @main.buf
+	.comm	main.buf,6,1
+	.section	.bss,"aw",@nobits
+	.globl	g_r                             ; @g_r
+g_r:
+	DW	0                               ; 0x0
 
-	.local	__v6c_a.main                    ; @__v6c_a.main
-	.comm	__v6c_a.main,16,1
+	.globl	g_a                             ; @g_a
+g_a:
+	DW	0                               ; 0x0
+
 	.addrsig
 	.addrsig_sym __mulqi3
 	.addrsig_sym __v6c_mulqihi3
@@ -512,4 +533,6 @@ INIT:                                   ; @INIT
 	.addrsig_sym __ashlhi3
 	.addrsig_sym __lshrhi3
 	.addrsig_sym __ashrhi3
-	.addrsig_sym __v6c_a.main
+	.addrsig_sym main.buf
+	.addrsig_sym g_r
+	.addrsig_sym g_a

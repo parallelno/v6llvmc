@@ -1562,64 +1562,209 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   }
 
   case V6C::V6C_STORE16_P: {
-    // Store 16-bit value to address in register pair.
-    Register ValReg = MI.getOperand(0).getReg();
+    // O72 — Honest per-shape preservation, mirroring O71's LOAD16_P
+    // redesign. The pseudo declares (ins GR16:$val, GR16:$addr) with no
+    // Defs. Pre-RA passes treat the store as preserving every register
+    // except memory. The expander dispatches on the (addr, val) physreg
+    // pair and emits whatever cheap recovery code each shape needs.
+    Register ValReg  = MI.getOperand(0).getReg();
     Register AddrReg = MI.getOperand(1).getReg();
 
     MCRegister ValLo = RI.getSubReg(ValReg, V6C::sub_lo);
     MCRegister ValHi = RI.getSubReg(ValReg, V6C::sub_hi);
 
-    if (ValReg == V6C::HL) {
-      // Value is in HL — can't just copy addr to HL (would clobber value).
-      if (AddrReg == V6C::HL) {
-        // Self-store: store HL to [HL]. Use A to save hi byte
-        // because INX HL might carry from L into H.
-        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::H);
-        BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(V6C::L);
-        BuildMI(MBB, MI, DL, get(V6C::INX), V6C::HL).addReg(V6C::HL);
-        BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(V6C::A);
-      } else if (AddrReg == V6C::DE) {
-        // Use STAX DE + PUSH/POP to preserve DE.
-        // O42: skip PUSH/POP DE when DE is dead after this instruction.
-        bool DEDead = isRegDeadAtMI(V6C::DE, MI, MBB, &RI);
-        if (!DEDead)
-          BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::DE);
-        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::L);
-        BuildMI(MBB, MI, DL, get(V6C::STAX))
-            .addReg(V6C::A).addReg(V6C::DE);
-        BuildMI(MBB, MI, DL, get(V6C::INX), V6C::DE).addReg(V6C::DE);
-        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::H);
-        BuildMI(MBB, MI, DL, get(V6C::STAX))
-            .addReg(V6C::A).addReg(V6C::DE);
-        if (!DEDead)
-          BuildMI(MBB, MI, DL, get(V6C::POP), V6C::DE);
-      } else {
-        // Addr=BC: use STAX BC + PUSH/POP to preserve BC.
-        // O42: skip PUSH/POP BC when BC is dead after this instruction.
-        bool BCDead = isRegDeadAtMI(V6C::BC, MI, MBB, &RI);
-        if (!BCDead)
-          BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::BC);
-        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::L);
-        BuildMI(MBB, MI, DL, get(V6C::STAX))
-            .addReg(V6C::A).addReg(V6C::BC);
-        BuildMI(MBB, MI, DL, get(V6C::INX), V6C::BC).addReg(V6C::BC);
-        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::H);
-        BuildMI(MBB, MI, DL, get(V6C::STAX))
-            .addReg(V6C::A).addReg(V6C::BC);
-        if (!BCDead)
-          BuildMI(MBB, MI, DL, get(V6C::POP), V6C::BC);
-      }
-    } else {
-      // Value is NOT in HL — safe to copy addr to HL.
-      if (AddrReg != V6C::HL) {
-        MCRegister AddrHi = RI.getSubReg(AddrReg, V6C::sub_hi);
-        MCRegister AddrLo = RI.getSubReg(AddrReg, V6C::sub_lo);
-        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::H).addReg(AddrHi);
-        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::L).addReg(AddrLo);
-      }
-      BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(ValLo);
+    auto emitDCX = [&](MCRegister Pair) {
+      BuildMI(MBB, MI, DL, get(V6C::DCX), Pair).addReg(Pair);
+    };
+    auto emitINXHL = [&]() {
       BuildMI(MBB, MI, DL, get(V6C::INX), V6C::HL).addReg(V6C::HL);
-      BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(ValHi);
+    };
+    auto emitINX = [&](MCRegister Pair) {
+      BuildMI(MBB, MI, DL, get(V6C::INX), Pair).addReg(Pair);
+    };
+    auto emitMOVMr = [&](MCRegister Src) {
+      BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(Src);
+    };
+    auto emitMOVrr = [&](MCRegister Dst, MCRegister Src) {
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), Dst).addReg(Src);
+    };
+    auto emitXCHG = [&]() {
+      BuildMI(MBB, MI, DL, get(V6C::XCHG));
+    };
+    auto emitSTAX = [&](MCRegister Pair) {
+      BuildMI(MBB, MI, DL, get(V6C::STAX)).addReg(V6C::A).addReg(Pair);
+    };
+
+    if (AddrReg == V6C::HL && ValReg == V6C::HL) {
+      // Row 1: addr=HL, val=HL.
+      //   MOV Spare, H; MOV M, L; INX H; MOV M, Spare; (DCX H if HL live)
+      // INX H may carry from L into H, so the high byte must be parked
+      // in a GR8 *before* INX. Spare candidate avoids HL (its halves are
+      // the value and the address).
+      Register Spare = findDeadGR8AtMI(MI, MBB, &RI, V6C::HL);
+      bool UseA = !Spare;
+      MCRegister Tmp = UseA ? MCRegister(V6C::A) : Spare.asMCReg();
+      bool ALive = UseA && !isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
+      emitMOVrr(Tmp, V6C::H);
+      emitMOVMr(V6C::L);
+      emitINXHL();
+      emitMOVMr(Tmp);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
+      if (!isRegDeadAtMI(V6C::HL, MI, MBB, &RI))
+        emitDCX(V6C::HL);
+    } else if (AddrReg == V6C::HL) {
+      // Row 2: addr=HL, val ∈ {BC, DE}.
+      //   MOV M, ValLo; INX H; MOV M, ValHi; (DCX H if HL live)
+      emitMOVMr(ValLo);
+      emitINXHL();
+      emitMOVMr(ValHi);
+      if (!isRegDeadAtMI(V6C::HL, MI, MBB, &RI))
+        emitDCX(V6C::HL);
+    } else if (AddrReg == V6C::DE && ValReg == V6C::DE) {
+      // Row 4: addr=DE, val=DE.
+      //   XCHG; MOV Spare, H; MOV M, L; INX H; MOV M, Spare; XCHG;
+      //   (DCX D if DE live)
+      // After leading XCHG: HL = orig DE = address (= value), DE = orig HL.
+      // The body stores the two halves of the address-which-is-the-value
+      // through HL. The trailing XCHG restores HL from DE; whatever sits
+      // in D / E at that moment ends up in H / L. So Spare candidates:
+      //   B  iff B dead;  C iff C dead;
+      //   D  iff H dead   (using D would otherwise destroy H_orig);
+      //   E  iff L dead   (using E would otherwise destroy L_orig);
+      //   A  iff A dead   (with PUSH PSW fallback);
+      //   H, L — never (they hold the address mid-sequence).
+      auto findRow4Spare = [&]() -> Register {
+        if (isRegDeadAtMI(V6C::B, MI, MBB, &RI)) return Register(V6C::B);
+        if (isRegDeadAtMI(V6C::C, MI, MBB, &RI)) return Register(V6C::C);
+        if (isRegDeadAtMI(V6C::H, MI, MBB, &RI)) return Register(V6C::D);
+        if (isRegDeadAtMI(V6C::L, MI, MBB, &RI)) return Register(V6C::E);
+        return Register();
+      };
+      Register Spare = findRow4Spare();
+      bool UseA = !Spare;
+      MCRegister Tmp = UseA ? MCRegister(V6C::A) : Spare.asMCReg();
+      bool ALive = UseA && !isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
+      emitXCHG();
+      emitMOVrr(Tmp, V6C::H);
+      emitMOVMr(V6C::L);
+      emitINXHL();
+      emitMOVMr(Tmp);
+      emitXCHG();
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
+      if (!isRegDeadAtMI(V6C::DE, MI, MBB, &RI))
+        emitDCX(V6C::DE);
+    } else if (AddrReg == V6C::DE) {
+      // Rows 3a/3b: addr=DE, val ∈ {HL, BC}.
+      //   XCHG; MOV M, lo; INX H; MOV M, hi; XCHG; (DCX D if DE live)
+      // For val=HL: after leading XCHG, HL = address, DE = orig HL.
+      //   Body stores mem[address] = E (= L_orig = lo of val),
+      //   mem[address+1] = D (= H_orig = hi of val). Trailing XCHG
+      //   restores HL = orig HL, leaves DE = address+1.
+      // For val=BC: BC is unaffected by XCHG. lo = C, hi = B.
+      MCRegister StoreLo, StoreHi;
+      if (ValReg == V6C::HL) {
+        StoreLo = V6C::E;
+        StoreHi = V6C::D;
+      } else {
+        StoreLo = ValLo;
+        StoreHi = ValHi;
+      }
+      emitXCHG();
+      emitMOVMr(StoreLo);
+      emitINXHL();
+      emitMOVMr(StoreHi);
+      emitXCHG();
+      if (!isRegDeadAtMI(V6C::DE, MI, MBB, &RI))
+        emitDCX(V6C::DE);
+    } else if (ValReg != V6C::BC) {
+      // Row 5: addr=BC, val ∈ {HL, DE}.
+      //   [MOV Spare, A | PUSH PSW]    if A live
+      //   MOV A, lo; STAX B; INX B; MOV A, hi; STAX B
+      //   [MOV A, Spare | POP PSW]
+      //   (DCX B if BC live)
+      // STAX rp only accepts A as source. The Spare exclusion set is
+      // {A, BC, ValReg}: the body reads both halves of the value via
+      // MOV A, lo / MOV A, hi, and writes/reads BC via STAX/INX, so the
+      // save target must survive the body unchanged.
+      bool ALive = !isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+      Register Spare;
+      if (ALive)
+        Spare = findDeadGR8AtMI(MI, MBB, &RI, V6C::BC, ValReg);
+      bool UsePush = ALive && !Spare;
+      if (Spare)
+        emitMOVrr(Spare.asMCReg(), V6C::A);
+      else if (UsePush)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
+      emitMOVrr(V6C::A, ValLo);
+      emitSTAX(V6C::BC);
+      emitINX(V6C::BC);
+      emitMOVrr(V6C::A, ValHi);
+      emitSTAX(V6C::BC);
+      if (Spare)
+        emitMOVrr(V6C::A, Spare.asMCReg());
+      else if (UsePush)
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
+      if (!isRegDeadAtMI(V6C::BC, MI, MBB, &RI))
+        emitDCX(V6C::BC);
+    } else {
+      // Row 6: addr=BC, val=BC. Three-tier dispatch on HL liveness and
+      // GR8 spare availability:
+      //   6a — HL dead: use HL as scratch, no restore.
+      //   6b — HL live, GR8 spare available: STAX-body with A saved into
+      //        the spare (HL untouched).
+      //   6c — HL live, no GR8 spare: PUSH H / scratch body / POP H.
+      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+      bool BCLive = !isRegDeadAtMI(V6C::BC, MI, MBB, &RI);
+
+      if (HLDead) {
+        // 6a — 5B / 40cc.
+        emitMOVrr(V6C::H, V6C::B);
+        emitMOVrr(V6C::L, V6C::C);
+        emitMOVMr(V6C::C);
+        emitINXHL();
+        emitMOVMr(V6C::B);
+        if (BCLive)
+          emitDCX(V6C::BC);
+      } else {
+        // HL live.  Body reads both halves of BC, so Spare must exclude
+        // BC. A is excluded automatically by findDeadGR8AtMI.
+        Register Spare = findDeadGR8AtMI(MI, MBB, &RI, V6C::BC);
+        if (Spare) {
+          // 6b — STAX body, save A into Spare. HL untouched.
+          bool ALive = !isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+          if (ALive)
+            emitMOVrr(Spare.asMCReg(), V6C::A);
+          emitMOVrr(V6C::A, V6C::C);
+          emitSTAX(V6C::BC);
+          emitINX(V6C::BC);
+          emitMOVrr(V6C::A, V6C::B);
+          emitSTAX(V6C::BC);
+          if (ALive)
+            emitMOVrr(V6C::A, Spare.asMCReg());
+          if (BCLive)
+            emitDCX(V6C::BC);
+        } else {
+          // 6c — PUSH H / scratch body / POP H.
+          BuildMI(MBB, MI, DL, get(V6C::PUSH))
+              .addReg(V6C::HL, RegState::Kill)
+              .addReg(V6C::SP, RegState::ImplicitDefine);
+          emitMOVrr(V6C::H, V6C::B);
+          emitMOVrr(V6C::L, V6C::C);
+          emitMOVMr(V6C::C);
+          emitINXHL();
+          emitMOVMr(V6C::B);
+          BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
+              .addReg(V6C::SP, RegState::ImplicitDefine);
+          if (BCLive)
+            emitDCX(V6C::BC);
+        }
+      }
     }
 
     MI.eraseFromParent();

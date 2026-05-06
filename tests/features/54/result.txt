@@ -1,0 +1,267 @@
+O72 — V6C_STORE16_P redesign, post-implementation results
+==========================================================
+
+Plan:     design/plan_O72_V6C_STORE16_P_redesign.md
+Design:   design/future_plans/O72_V6C_STORE16_P_redesign.md
+Lit test: llvm-project/llvm/test/CodeGen/V6C/store16p-shapes.ll
+          (mirrored to tests/lit/CodeGen/V6C/store16p-shapes.ll)
+
+Goal
+----
+Replace the old monolithic `V6C_STORE16_P` post-RA expander
+(blanket `Defs = [HL, A]`, A clobbered on 6 of 9 shapes) with
+a six-row dispatch keyed on (addr, val) ∈ {HL,DE,BC}². Each
+row preserves only what it must, with `DCX rp` recovery when
+the address pair is live afterwards.
+
+
+Test sources
+------------
+v6llvmc.c (and equivalent c8080.c) — five functions, one per
+shape of interest:
+
+    /* Row 3a — addr=DE, val=HL. */
+    void row3_de_hl(uint16_t v, uint16_t *p) { *p = v; }
+
+    /* Row 2 — addr=HL, val=DE, HL reused. */
+    uint16_t row2_hl_reused(uint16_t *p, uint16_t v) {
+        p[0] = v; return p[0];
+    }
+
+    /* Row 5 — addr=BC, val=HL, A live across. */
+    uint8_t row5_bc_hl_a_live(uint16_t v, uint8_t a_keep,
+                              uint16_t *p) {
+        *p = v; return a_keep ^ 0x42;
+    }
+
+    /* Row 6 — addr=BC, val=BC, HL dead (row 6a). */
+    void row6_bc_bc(uint16_t a, uint16_t b, uint16_t *p) {
+        (void)a; (void)b; *p = (uint16_t)(uintptr_t)p;
+    }
+
+    /* Row 4 — addr=DE, val=DE, HL_keep live. */
+    uint16_t row4_de_de(uint16_t hl_keep, uint16_t *p) {
+        *p = (uint16_t)(uintptr_t)p; return hl_keep;
+    }
+
+Note on shape coverage: V6C's calling convention places the
+first 16-bit argument in HL, second in DE, third in BC, so RA
+naturally lands the address in different pairs across the
+five functions. Granular per-row pinning lives in the lit
+test `store16p-shapes.ll`.
+
+
+c8080 reference (i8080 mnemonics, body only — RET excluded)
+-----------------------------------------------------------
+c8080 spills every i16 arg to a per-callee static slot, so
+each store goes through SHLD/LHLD around the body.
+
+row3_de_hl (i8080):
+        SHLD __a_2          ; spill p
+        LHLD __a_1          ; load v into HL
+        XCHG                ; HL=p side; DE=v
+        LHLD __a_2          ; HL=p
+        MOV  M, E
+        INX  H
+        MOV  M, D
+        LHLD __a_2          ; reload p for `g_r = p`
+        SHLD g_r
+        RET
+
+row2_hl_reused (i8080):
+        SHLD __a_2
+        XCHG
+        LHLD __a_1
+        MOV  M, E / INX H / MOV M, D
+        LHLD __a_1
+        MOV  E, M / INX H / MOV D, M
+        XCHG
+        RET
+
+row5_bc_hl_a_live (i8080):
+        SHLD __a_3
+        LHLD __a_1
+        XCHG
+        LHLD __a_3
+        MOV  M, E / INX H / MOV M, D
+        LDA  __a_2 / XRI 66
+        RET
+
+row6_bc_bc (i8080) — c8080 source also stores g_a=a, g_b=b:
+        SHLD __a_3
+        XCHG
+        LHLD __a_3
+        MOV  M, E / INX H / MOV M, D
+        LHLD __a_1 / SHLD g_a
+        LHLD __a_2 / SHLD g_b
+        RET
+
+row4_de_de (i8080):
+        SHLD __a_2
+        XCHG
+        LHLD __a_2
+        MOV  M, E / INX H / MOV M, D
+        LHLD __a_1
+        RET
+
+
+c8080 stats (worst-case cycles / bytes, body only)
+--------------------------------------------------
+    row3_de_hl              : 10 instr / 113 cy / 20 B
+    row2_hl_reused          : 12 instr / 104 cy / 18 B
+    row5_bc_hl_a_live       : 10 instr / 101 cy / 19 B
+    row6_bc_bc              : 11 instr / 129 cy / 23 B   (+ g_a, g_b store)
+    row4_de_de              :  8 instr /  81 cy / 14 B
+
+
+v6llvmc — BASELINE (pre-O72, old monolithic expander)
+-----------------------------------------------------
+v6llvmc_old.asm:
+
+    row3_de_hl:                       row2_hl_reused:
+            MOV  A, L                         MOV  M, E
+            STAX D                            INX  H
+            INX  D                            MOV  M, D
+            MOV  A, H                         XCHG
+            STAX D                            RET
+            RET                       ; A NOT clobbered (row 2)
+
+    row5_bc_hl_a_live:                row6_bc_bc:
+            MOV  C, A                         MOV  H, B
+            MOV  A, L                         MOV  L, C
+            STAX D                            MOV  M, C
+            INX  D                            INX  H
+            MOV  A, H                         MOV  M, B
+            STAX D                            RET
+            MOV  A, C
+            XRI  0x42
+            RET
+
+    row4_de_de:
+            MOV  B, H            ; save HL.high to B
+            MOV  C, L            ; save HL.low  to C
+            MOV  H, D            ; HL := address (full pair clobber)
+            MOV  L, E
+            MOV  M, E
+            INX  H
+            MOV  M, D
+            MOV  H, B            ; restore HL.high
+            MOV  L, C            ; restore HL.low
+
+Old stats (worst-case cycles / bytes, body only):
+    row3_de_hl              :  5 instr /  29 cy /  5 B   (A clobbered)
+    row2_hl_reused          :  4 instr /  23 cy /  4 B
+    row5_bc_hl_a_live       :  8 instr /  46 cy /  9 B   (A clobbered+saved via C)
+    row6_bc_bc              :  5 instr /  29 cy /  5 B   (HL clobber declared)
+    row4_de_de              :  9 instr /  49 cy /  9 B   (full B/C scratch)
+
+
+v6llvmc — O72 (six-row dispatch, truthful per-shape preserve)
+-------------------------------------------------------------
+v6llvmc_new01.asm:
+
+    row3_de_hl:                       row2_hl_reused:
+            XCHG                              MOV  M, E
+            MOV  M, E                         INX  H
+            INX  H                            MOV  M, D
+            MOV  M, D                         XCHG
+            XCHG                              RET
+            RET                       ; identical to old (already optimal)
+    ; A preserved, HL preserved.
+    ; (DCX D would have appeared if DE were live after.)
+
+    row5_bc_hl_a_live:                row6_bc_bc:                       (row 6a)
+            XCHG                              MOV  H, B
+            MOV  M, E                         MOV  L, C
+            INX  H                            MOV  M, C
+            MOV  M, D                         INX  H
+            XCHG                              MOV  M, B
+            XRI  0x42                         RET
+            RET
+    ; RA reassigned this call site to the row-3 shape (val ended up
+    ; in DE, addr in HL after RA, freed by `Defs=[HL,A]` removal).
+    ; A preserved — `MOV A, a_keep` step disappeared entirely.
+
+    row4_de_de:
+            XCHG                  ; HL := address, DE := orig HL
+            MOV  B, H             ; B := address.high (B picked as dead GR8)
+            MOV  M, L             ; mem[addr]   = address.low
+            INX  H
+            MOV  M, B             ; mem[addr+1] = address.high
+            XCHG                  ; HL := orig HL, DE := address+1
+
+New stats (worst-case cycles / bytes, body only):
+    row3_de_hl              :  5 instr /  27 cy /  5 B   (A preserved)
+    row2_hl_reused          :  4 instr /  23 cy /  4 B   (unchanged)
+    row5_bc_hl_a_live       :  6 instr /  34 cy /  7 B   (A preserved)
+    row6_bc_bc              :  5 instr /  29 cy /  5 B   (no Defs=[HL,A])
+    row4_de_de              :  6 instr /  32 cy /  7 B   (HL preserved)
+
+
+Side-by-side comparison (worst-case cycles, body only)
+------------------------------------------------------
+    function                c8080      v6c old    v6c new    Δ_old→new
+    --------                ----       -------    -------    ---------
+    row3_de_hl              113 cy     29 cy      27 cy      −2 cy   (A preserved)
+    row2_hl_reused          104 cy     23 cy      23 cy        0     (already optimal)
+    row5_bc_hl_a_live       101 cy     46 cy      34 cy      −12 cy  (A preserved, A-shuffle gone)
+    row6_bc_bc              129 cy     29 cy      29 cy        0     (body same; no Defs=[HL,A] for callers)
+    row4_de_de               81 cy     49 cy      32 cy      −17 cy  (XCHG path, single GR8 spare)
+
+                            bytes
+    function                c8080      v6c old    v6c new    Δ_old→new
+    --------                ----       -------    -------    ---------
+    row3_de_hl              20 B        5 B        5 B         0
+    row2_hl_reused          18 B        4 B        4 B         0
+    row5_bc_hl_a_live       19 B        9 B        7 B        −2 B
+    row6_bc_bc              23 B        5 B        5 B         0
+    row4_de_de              14 B        9 B        7 B        −2 B
+
+
+Win summary
+-----------
+1. Row 3 (addr=DE, val=HL): the legacy `MOV A, lo / STAX D / INX D
+   / MOV A, hi / STAX D` body clobbers `A` unconditionally. The new
+   XCHG-wrapped body (`XCHG; MOV M,E; INX H; MOV M,D; XCHG`) is
+   1 cy cheaper *and* preserves both `A` and `HL`.
+
+2. Row 5 (addr=BC, val=HL with A live): the legacy code spills A
+   into C with `MOV C, A` / … / `MOV A, C`. The new dispatcher
+   sees the addr is BC and val is HL and routes through row 3a
+   when XCHG is profitable (the row-5 STAX path remains for cases
+   where DE is already loaded). RA + the dropped `Defs=[HL,A]`
+   declaration let `a_keep` stay in `A` end-to-end → `MOV C, A` /
+   `MOV A, C` shuffle vanishes (−12 cy).
+
+3. Row 4 (addr=DE, val=DE): the legacy expander emitted a 4-byte
+   B/C scratch dance (`MOV B,H; MOV C,L; MOV H,D; MOV L,E; …; MOV
+   H,B; MOV L,C`). The new XCHG-wrapped per-byte spare body picks
+   one dead GR8 (B here) and uses the post-XCHG `H` as the source
+   directly — saves 17 cy and 2 bytes, HL preserved via XCHG
+   instead of B/C.
+
+4. Row 6 (addr=BC, val=BC): body is byte-identical, but dropping
+   the blanket `Defs=[HL,A]` from the pseudo means callers no
+   longer spill `A` and `HL` around it. The improvement is at
+   the call site, not the body.
+
+5. Row 2 (addr=HL, val={BC,DE}, HL reused): already optimal in
+   the old expander — left untouched. The redesign adds a `DCX H`
+   recovery slot for live-HL paths, but in this test HL is dead
+   after the store (RA used XCHG to move v into HL on the
+   read-back), so no `DCX H` is emitted.
+
+
+Regression
+----------
+Two pre-existing lit tests pinned the old `MOV A, L / STAX D`
+shape and had to be updated to the XCHG-wrapped body:
+    llvm-project/llvm/test/CodeGen/V6C/load-store-i16.ll          (store_ptr)
+    llvm-project/llvm/test/CodeGen/V6C/shift-i16-byte-aligned.ll  (srl8_i16)
+Mirror at tests/lit/CodeGen/V6C/ kept in sync via
+scripts/sync_llvm_mirror.ps1 (verified: identical size + mtime).
+
+New lit test added: store16p-shapes.ll (rows 1, 4, 6a) — present
+in both llvm-project/llvm/test/CodeGen/V6C/ and tests/lit/CodeGen/V6C/.
+
+Full regression suite: 130 / 130 PASS (lit + golden).

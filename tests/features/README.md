@@ -39,8 +39,10 @@ v6llvmc.c - test for this compiler
 - The C test case code.
 - c8080 asm, but only the main func and dependent funcs body converted from Z80 asm to i8080 asm.
 - c8080 stats: worst CPU cycles, length in bytes for each function.
-- v6llvmc asm.
-- v6llvmc stats: worst CPU cycles, length in bytes for each function.
+- v6llvmc old asm.
+- v6llvmc new asm.
+- Comparisen table for c8080, v6llvmc old, v6llvmc new that includes CPU cycles,
+length in bytes for each function
 
 
 ## After verification each folder must have:

@@ -88,17 +88,14 @@ strategy.
 fallback if no GR8 spare is available, with `PUSH PSW`/`POP PSW`
 wrap if `A` is also live.
 
-| # | addr | val | expansion | preservation knobs |
+| # | addr | val   | expansion | preservation knobs |
 |-|---|---|-----------------------------------|--------------------------|
-| 1    | HL   | HL    | `MOV SpareR,H; MOV M,L; INX H; MOV M,SpareR`| if no SpareR, wrap `PUSH PSW`/`POP PSW` and use `SpareR=A`; emit `DCX H` if HL live after |
-| 2    | HL   | DE    | `MOV M,E; INX H; MOV M,D`                   | emit `DCX H` if HL live after                                                   |
-| 3    | HL   | BC    | `MOV M,C; INX H; MOV M,B`                   | emit `DCX H` if HL live after                                                   |
-| 4    | DE   | HL    | `XCHG; MOV M,E; INX H; MOV M,D; XCHG`       | emit `DCX D` if DE live after |
-| 5    | DE   | DE    | `XCHG; MOV SpareR,H; MOV M,L; INX H; MOV M,SpareR; XCHG` | per-byte SpareR (see notes); emit `DCX D` if DE live after                      |
-| 6    | DE   | BC    | `XCHG; MOV M,C; INX H; MOV M,B; XCHG`       | emit `DCX D` if DE live after; HL preserved by construction                     |
-| 7    | BC   | HL    | `MOV A,L; STAX B; INX B; MOV A,H; STAX B`   | wrap `PUSH PSW`/`POP PSW` if A live; emit `DCX B` if BC live after              |
-| 8    | BC   | DE    | `MOV H,B; MOV L,C; MOV M,E; INX H; MOV M,D` | wrap `PUSH H`/`POP H` if HL live after                                          |
-| 9    | BC   | BC    | `MOV H,B; MOV L,C; MOV M,C; INX H; MOV M,B` | wrap `PUSH H`/`POP H` if HL live after                                          |
+| 1 | HL | HL    | `MOV SpareR,H; MOV M,L; INX H; MOV M,SpareR` | if no SpareR, wrap `PUSH PSW`/`POP PSW` and use `SpareR=A`; emit `DCX H` if HL live after |
+| 2 | HL | BC/DE | `MOV M,lo; INX H; MOV M,hi`                  | emit `DCX H` if HL live after |
+| 3 | DE | HL/BC | `XCHG; MOV M,lo; INX H; MOV M,hi; XCHG`      | emit `DCX D` if DE live after |
+| 4 | DE | DE    | `XCHG; MOV SpareR,H; MOV M,L; INX H; MOV M,SpareR; XCHG` | per-byte SpareR (see notes); if no SpareR, wrap inner body in `PUSH PSW`/`POP PSW` and use `SpareR=A`; emit `DCX D` if DE live after |
+| 5 | BC | HL/DE | `MOV A,lo; STAX B; INX B; MOV A,hi; STAX B`    | preserve `A` if live: prefer `MOV SpareR,A; <body>; MOV A,SpareR`, else wrap `PUSH PSW`/`POP PSW`. Emit `DCX B` if BC live after. |
+| 6 | BC | BC    | if HL dead: `MOV H,B; MOV L,C; MOV M,C; INX H; MOV M,B` (5B/40cc); else if SpareR: `MOV SpareR,A; MOV A,C; STAX B; INX B; MOV A,B; STAX B; MOV A,SpareR` (7B/56cc); else wrap `PUSH H` / `POP H` (7B/68cc) | emit `DCX B` if BC live after |
 
 
 #### Notes on case 1 (`addr=HL, val=HL`)
@@ -108,40 +105,31 @@ must be parked in a GR8 before `INX H`. Any GR8 dead at the pseudo
 works; `H` and `L` are not candidates because both halves are live
 across the relevant window.
 
-When no SpareR is dead, fall back to `SpareR=A` wrapped in `PUSH
-PSW`/`POP PSW`.
+#### Notes on case 3 (`addr=DE, val ∈ {HL, BC}`) — major win vs. today
 
-Note: a "FLAGS-dead" alternative without `SpareR` was considered
-(`MOV M,L; INX H; MOV M,H; DCR M`) but is **not correct**. After
-`INX H`, register `H` equals `H_orig + 1` only when `L_orig =
-0xFF`; otherwise it equals `H_orig`. `DCR M` therefore stores the
-right value only in the carry case and corrupts the high byte
-otherwise. There does not appear to be a branchless fallback that
-beats `SpareR=A + PUSH PSW`.
-
-#### Notes on case 4 (`addr=DE, val=HL`) — major win vs. today
-
-The current expander uses `STAX D` and clobbers `A`. The XCHG path
-preserves both `A` and `HL`:
+The current expander uses `STAX D` for `val=HL` and clobbers `A`.
+The XCHG path preserves both `A` and `HL`:
 
 ```
-XCHG          ; HL=address, DE=value
-MOV M,E       ; mem[address]   = E = lo(value)
+XCHG          ; HL=address, DE=value (or HL=address, DE=DE-orig if val=BC)
+MOV M,lo      ; mem[address]   = lo(value)
 INX H         ; HL = address+1
-MOV M,D       ; mem[address+1] = D = hi(value)
-XCHG          ; HL=value (= original HL), DE=address+1
+MOV M,hi      ; mem[address+1] = hi(value)
+XCHG          ; HL restored, DE = address+1
 [DCX D]       ; only if DE live after — recovers DE = address
 ```
 
-5B / 29cc + opt `DCX D` (1B/5cc) — vs current 7–9B and `A` clobber.
+5B / 32cc + opt `DCX D` (1B/8cc) — vs current `STAX D` path (7–9B and
+`A` clobber) for `val=HL`, and current `MOV H,D; MOV L,E; ...` path
+(5B / 40cc but unconditional HL clobber) for `val=BC`.
 
-#### Notes on case 5 (`addr=DE, val=DE`)
+#### Notes on case 4 (`addr=DE, val=DE`)
 
-`val=DE` and `addr=DE` coincide. The trailing `XCHG` is mandatory:
-the leading `XCHG` parks original `HL` in `DE`, and the trailing
-`XCHG` restores it. A GR8 temp is needed because `INX H` can carry
-from L into H, so the high byte of the value must be saved before
-`INX H`.
+Same structure as case 1 but wrapped in `XCHG`/`XCHG`. The leading
+`XCHG` parks original `HL` in `DE`, the body stores the value
+(which is now in `HL` after the swap), and the trailing `XCHG`
+restores both pairs. A GR8 temp is needed because `INX H` can
+carry from L into H.
 
 `SpareR` selection mirrors O71 case 4 (per-byte, not per-pair):
 after the leading `XCHG`, `HL` holds the address (so `H`, `L` are
@@ -158,34 +146,104 @@ bytes that the trailing `XCHG` will restore. Therefore:
 - `H`, `L` are never candidates.
 
 When no SpareR is available, fall back to `SpareR=A` wrapped in
-`PUSH PSW`/`POP PSW`.
+`PUSH PSW`/`POP PSW` (inside the XCHG pair). The same FLAGS-dead
+trick from case 1 is unavailable for the same reason.
 
-#### Notes on case 7 (`addr=BC, val=HL`)
+#### Notes on cases 5 and 6 (`addr=BC`)
 
-`STAX` is the only path: `MOV H,B; MOV L,C` would destroy the value
-in HL, and there is no XCHG-equivalent for BC. `STAX rp` only
-accepts `A` as the source register, so `A` is mandatory here.
+No XCHG-equivalent for BC, so HL must either be left untouched
+(`val=HL`, via `STAX B`) or used as scratch and restored
+(`val=BC/DE`, via `MOV H,B; MOV L,C` + body). Both subcases share
+the same cheap-first preservation policy: use a GR8 spare when
+available, otherwise PUSH/POP.
 
-A would-be alternative — `XCHG; MOV H,B; MOV L,C; MOV M,E; INX H;
-MOV M,D; XCHG` — preserves `A` but trades it for an unconditional
-DE clobber (DE was used to hold the value mid-expansion). For most
-inputs the `STAX` path (5B / 29cc + optional `DCX B` / `PUSH PSW`)
-is cheaper than the XCHG-via-DE path (7B / 37cc + the same opt knobs
-+ DE preservation if DE live).
+**Case 5 (`val ∈ {HL, DE}`).** `STAX rp` only accepts `A` as
+source, so `A` is mandatory. When `A` is live across the pseudo:
+
+1. **GR8 spare available** — save `A` into a dead GR8:
+
+   ```
+   MOV SpareR,A          ; 8cc
+   MOV A,lo; STAX B; INX B; MOV A,hi; STAX B   ; body, 40cc
+   MOV A,SpareR          ; 8cc
+   ```
+
+   Total 7B / 56cc. Candidates: any GR8 dead across the pseudo,
+   except `H` and `L` when `val=HL` (the body reads both halves
+   of HL, so the save target must survive the body unchanged);
+   for `val=DE` the candidate set excludes `D` and `E` for the
+   same reason.
+
+2. **No GR8 spare** — wrap the body in `PUSH PSW`/`POP PSW`:
+
+   ```
+   PUSH PSW              ; 16cc
+   <body>                ; 40cc
+   POP PSW               ; 12cc
+   ```
+
+   Total 7B / 68cc — 12cc more expensive than the SpareR path,
+   same byte count.
+
+A would-be XCHG alternative — `XCHG; MOV H,B; MOV L,C; MOV M,E;
+INX H; MOV M,D; XCHG` — preserves `A` but trades it for an
+unconditional DE clobber. For most inputs the `STAX` path (5B /
+40cc + optional `DCX B` / SpareR / `PUSH PSW`) is cheaper than the
+XCHG-via-DE path (7B / 48cc + the same opt knobs + DE preservation
+if DE live).
+
+**Case 6 (`val=BC`).** Strategy depends on whether `HL` is live
+across the pseudo. Three sub-cases ordered cheap-first:
+
+1. **HL dead at the pseudo** — use HL as scratch and don't
+   bother restoring:
+
+   ```
+   MOV H,B; MOV L,C; MOV M,C; INX H; MOV M,B   ; 40cc
+   ```
+
+   Total 5B / 40cc. This is the cheapest shape and the typical
+   case after RA has scheduled HL away.
+
+2. **HL live, GR8 spare available** — switch to the case-5 STAX
+   body (which never touches HL) and save `A` into the spare:
+
+   ```
+   MOV SpareR,A                                ; 8cc
+   MOV A,C; STAX B; INX B; MOV A,B; STAX B     ; body, 40cc
+   MOV A,SpareR                                ; 8cc
+   ```
+
+   Total 7B / 56cc. Candidates: any GR8 dead across the pseudo;
+   `B` and `C` are excluded (the body reads both halves of BC).
+
+3. **HL live, no GR8 spare** — wrap the scratch body in
+   `PUSH H`/`POP H`:
+
+   ```
+   PUSH H                                         ; 16cc
+   MOV H,B; MOV L,C; MOV M,C; INX H; MOV M,B      ; 40cc
+   POP H                                          ; 12cc
+   ```
+
+   Total 7B / 68cc — same cost as wrapping the STAX body in
+   `PUSH PSW`/`POP PSW`, picked here because the scratch body is
+   strictly simpler and avoids the `A` shuffle.
 
 ### Key wins vs. today
 
-- **`A` preserved on 6/9 shapes** (cases 2, 3, 4, 6, 8, 9). Only
-  case 7 (`addr=BC, val=HL`) unconditionally clobbers `A`; cases 1
-  and 5 preserve `A` on the common SpareR path and only touch it
-  in the no-spare fallback. RA no longer spills `A` across pointer
-  stores in the common case.
-- **`HL` preserved on 4/9 shapes** (cases 4, 5, 6, 7) — the
-  `addr ∈ {BC, DE}` shapes either never touch HL (`STAX` for case
-  7) or recover it via XCHG (cases 4–6).
+- **`A` preserved on every shape except case 5** (`addr=BC,
+  val=HL`), which unconditionally clobbers `A` because `STAX rp`
+  only accepts `A`. Cases 1 and 4 preserve `A` on the common
+  SpareR path and only touch it in the no-spare fallback. RA no
+  longer spills `A` across pointer stores in the common case.
+- **`HL` preserved on cases 3, 4, 5** — the `addr ∈ {BC, DE}`
+  shapes either never touch HL (`STAX` for case 5) or recover it
+  via XCHG (cases 3, 4).
 - **`DCX D`/`DCX B` replaces `PUSH/POP D`/`PUSH/POP B`** in cases
-  4, 5, 6, 7 whenever the address pair is live (1B/5cc vs
-  2B/22–23cc).
-- **`PUSH H`/`POP H` is needed only on cases 8, 9** — the only
-  shapes where HL is fully overwritten by `MOV H,addrHi; MOV
-  L,addrLo` and cannot be recovered by `DCX`.
+  3, 4, 5, 6 whenever the address pair is live (1B/8cc vs
+  2B/28cc).
+- **`PUSH H`/`POP H` is needed only on case 6** when HL is live
+  *and* no GR8 spare is available — the only shape where HL is
+  unavoidably scratched and there is no `A`-preserving STAX
+  detour.

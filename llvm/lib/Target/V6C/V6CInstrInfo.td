@@ -874,9 +874,12 @@ def V6C_STORE16_FI : V6CPseudo<(outs), (ins GR16Idx:$val, i16imm:$fi),
 }
 
 // 16-bit store to pointer (register pair).
-// Expands to: copy addr to HL, MOV M, lo; INX HL; MOV M, hi
-// A is clobbered when Val=HL (needs STAX path).
-let mayStore = 1, Defs = [HL, A] in
+// O72 — No Defs. The post-RA expander emits truthful per-shape
+// preservation (dead-GR8 spare, DCX rp recovery, XCHG for addr=DE,
+// PUSH PSW / PUSH H only as last-resort fallbacks). See
+// V6CInstrInfo::expandPostRAPseudo() and
+// design/future_plans/O72_V6C_STORE16_P_redesign.md.
+let mayStore = 1 in
 def V6C_STORE16_P : V6CPseudo<(outs), (ins GR16:$val, GR16:$addr),
     "# STORE16P $val, ($addr)",
     [(store i16:$val, i16:$addr)]>;

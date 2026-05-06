@@ -32,11 +32,12 @@ define i16 @load_ptr(ptr %p) {
 }
 
 ; CHECK-LABEL: store_ptr:
-; CHECK:       MOV A, L
-; CHECK-NEXT:  STAX D
-; CHECK-NEXT:  INX D
-; CHECK-NEXT:  MOV A, H
-; CHECK-NEXT:  STAX D
+; O72: addr=DE, val=HL → XCHG-wrapped; preserves both A and HL.
+; CHECK:       XCHG
+; CHECK-NEXT:  MOV M, E
+; CHECK-NEXT:  INX H
+; CHECK-NEXT:  MOV M, D
+; CHECK-NEXT:  XCHG
 ; CHECK-NEXT:  RET
 define void @store_ptr(i16 %val, ptr %p) {
   store i16 %val, ptr %p
