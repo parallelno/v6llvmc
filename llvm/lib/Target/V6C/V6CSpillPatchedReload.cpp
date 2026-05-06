@@ -228,6 +228,17 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
 
   bool Changed = false;
 
+  // Helper: emit a V6C_PSEUDO_COMMENT carrying the original pseudo's
+  // opcode so AsmPrinter can render `;--- <NAME> ---` headers above
+  // sequences this pass injects. Only fires under -mv6c-annotate-pseudos.
+  auto annotate = [&](MachineBasicBlock &MBB,
+                      MachineBasicBlock::iterator It,
+                      const DebugLoc &DL, unsigned OrigOpc) {
+    if (getV6CAnnotatePseudosEnabled())
+      BuildMI(MBB, It, DL, TII.get(V6C::V6C_PSEUDO_COMMENT))
+          .addImm(OrigOpc);
+  };
+
   // ---- i16 slots (Stages 1-3) ---------------------------------------
   for (auto &KV : Slots16) {
     PerFI &E = KV.second;
@@ -290,6 +301,7 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       Register SrcReg = Spill->getOperand(0).getReg();
       bool IsKill = Spill->getOperand(0).isKill();
       bool HLDead = isRegDeadAfterMI(V6C::HL, *Spill, *MBB, TRI);
+      annotate(*MBB, Spill, DL, V6C::V6C_SPILL16);
 
       if (SrcReg == V6C::HL) {
         // SHLD <Sym[i], MO_PATCH_IMM> per winner. Kill HL only on the
@@ -350,6 +362,7 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       MachineBasicBlock *MBB = PR->getParent();
       DebugLoc DL = PR->getDebugLoc();
       Register WinnerDst = PR->getOperand(0).getReg();
+      annotate(*MBB, PR, DL, V6C::V6C_RELOAD16);
       MachineInstrBuilder NewLxi =
           BuildMI(*MBB, PR, DL, TII.get(V6C::LXI))
               .addReg(WinnerDst, RegState::Define)
@@ -375,6 +388,7 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       DebugLoc DL = R->getDebugLoc();
       Register Dst = R->getOperand(0).getReg();
       bool HLLive = !isRegDeadAfterMI(V6C::HL, *R, *MBB, TRI);
+      annotate(*MBB, R, DL, V6C::V6C_RELOAD16);
 
       if (Dst == V6C::HL) {
         // LHLD <Syms[0], MO_PATCH_IMM>   (20cc, 3B)
@@ -483,6 +497,7 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       DebugLoc DL = Spill->getDebugLoc();
       Register SrcReg = Spill->getOperand(0).getReg();
       bool IsKill = Spill->getOperand(0).isKill();
+      annotate(*MBB, Spill, DL, V6C::V6C_SPILL8);
 
       if (SrcReg == V6C::A) {
         for (size_t si = 0; si < Syms.size(); ++si) {
@@ -508,6 +523,7 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       MachineBasicBlock *MBB = PR->getParent();
       DebugLoc DL = PR->getDebugLoc();
       Register WinnerDst = PR->getOperand(0).getReg();
+      annotate(*MBB, PR, DL, V6C::V6C_RELOAD8);
       MachineInstrBuilder NewMvi =
           BuildMI(*MBB, PR, DL, TII.get(V6C::MVIr))
               .addReg(WinnerDst, RegState::Define)
@@ -531,6 +547,7 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       MachineBasicBlock *MBB = R->getParent();
       DebugLoc DL = R->getDebugLoc();
       Register Dst = R->getOperand(0).getReg();
+      annotate(*MBB, R, DL, V6C::V6C_RELOAD8);
 
       if (Dst == V6C::A) {
         // LDA <Syms[0], MO_PATCH_IMM>   (16cc, 3B)
