@@ -125,15 +125,16 @@ available at the expansion point.
 `SpareR` denotes a GR8 that is dead at the pseudo location; `A` is
 the fallback if no GR8 is dead.
 
-| Case | addr | dst   | expansion                                                              | preservation knobs                                  |
-|------|------|-------|------------------------------------------------------------------------|-----------------------------------------------------|
-| 1    | HL   | HL    | `MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR`                           | if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
-| 2    | HL   | BC/DE | `MOV lo,M; INX H; MOV hi,M`                                            | optional `DCX H` if HL live                         |
-| 3a   | DE   | BC    | `XCHG; MOV C,M; INX H; MOV B,M; XCHG`                                  | optional `DCX D` if DE live                         |
-| 3b   | DE   | HL    | `XCHG; MOV E,M; INX H; MOV D,M; XCHG`                                  | optional `DCX D` if DE live (old HL was dead — it is the dst) |
-| 4    | DE   | DE    | `XCHG; MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR; XCHG`               | if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
-| 5    | BC   | BC/DE | `MOV H,B; MOV L,C; MOV lo,M; INX H; MOV hi,M`                          | wrap `PUSH H` / `POP H` if HL live                  |
-| 6    | BC   | HL    | `MOV H,B; MOV L,C; MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR`         | if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
+| Case | addr | dst   | expansion | preservation knobs |
+|------|------|-------|-----------|--------------------|
+| 1    | HL   | HL    | `MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR` | if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
+| 2    | HL   | BC/DE | `MOV lo,M; INX H; MOV hi,M`                  | optional `DCX H` if HL live                         |
+| 3a   | DE   | BC    | `XCHG; MOV C,M; INX H; MOV B,M; XCHG`        | optional `DCX D` if DE live                         |
+| 3b   | DE   | HL    | `XCHG; MOV E,M; INX H; MOV D,M; XCHG`        | optional `DCX D` if DE live (old HL was dead — it is the dst) |
+| 4    | DE   | DE    | `XCHG; MOV SpareR,M; INX H; MOV H,M; MOV L,SpareR; XCHG`| if no SpareR, wrap `PUSH PSW` / `POP PSW` and use `SpareR=A` |
+| 5a   | BC   | DE    | HL dead: `MOV H,B; MOV L,C; MOV E,M; INX H; MOV D,M`. HL live + A dead: `LDAX B; MOV E,A; INX B; LDAX B; MOV D,A`. HL live + A live + spare in {H,L} dead: same wrapped with `MOV S,A` / `MOV A,S`. Else: `PUSH H` wraps the M-staging form. | `DCX B` after the LDAX shape iff BC live; never needed for the M-staging form |
+| 5b   | BC   | BC    | Tier 1 (HL fully dead): `MOV H,B; MOV L,C; MOV C,M; INX H; MOV B,M`. Tier 2 (A dead AND a non-{B,C} GR8 spare dead): `LDAX B; MOV S,A; INX B; LDAX B; MOV B,A; MOV C,S`. Tier 3: `PUSH H; tier-1; POP H`. | no DCX (BC is the destination) |
+| 6    | BC   | HL    | Shape A (A live AND a GR8 spare excluding {HL,BC} is dead): `MOV H,B; MOV L,C; MOV S,M; INX H; MOV H,M; MOV L,S`. Shape B (otherwise): `[PUSH PSW] LDAX B; MOV L,A; INX B; LDAX B; MOV H,A [POP PSW]`. | `DCX B` after shape B iff BC live; never needed for shape A |
 
 
 Notes on case 3b (`addr=DE, dst=HL`): `dst=HL` means the old HL value
@@ -169,8 +170,39 @@ ends up in `H` (resp. `L`) post-load. Therefore:
 When `HL` is fully dead (e.g. tail position), `D` and `E` become valid
 spares and the `PUSH PSW` fallback is avoided.
 
-Notes on case 6 (`addr=BC, dst=HL`): a single GR8 spare (or `A` with `PUSH PSW`
-/ `POP PSW`) is sufficient.
+Notes on case 6 (`addr=BC, dst=HL`): two shapes compete. Shape A
+(`MOV H,B; MOV L,C; MOV S,M; INX H; MOV H,M; MOV L,S`, 6B/48cc) does
+not touch A and preserves BC, but burns 4 instructions on
+`MOV H,B; MOV L,C; ... MOV L,S` staging. Shape B
+(`LDAX B; MOV L,A; INX B; LDAX B; MOV H,A`, 5B/40cc) is shorter and
+faster but clobbers A and increments BC. Cost crossover:
+when A is dead, shape B is unconditionally cheaper (5B/40cc plus a
+1B/8cc DCX B if BC live). When A is live and a spare exists, shape
+A wins (6B/48cc with no wrap) over wrapped shape B
+(`MOV S,A; LDAX B; ...; MOV A,S` = 7B/56cc + DCX). When A is live
+and no spare exists, shape B with `PUSH PSW`/`POP PSW` (7B/68cc)
+beats the legacy A-as-spare shape A (8B/76cc).
+
+Notes on case 5a (`addr=BC, dst=DE`): four-way dispatch by
+(HL liveness, A liveness, spare availability). The M-staging form
+(`MOV H,B; MOV L,C; MOV E,M; INX H; MOV D,M`) wins whenever HL is
+dead — 5B/40cc with no preservation overhead. When HL is live, the
+LDAX form (5B/40cc + DCX-if-BC-live) avoids the PUSH H/POP H pair
+(saving 22cc) at the cost of going through A. Spare for the cheap
+`MOV S,A` wrap can only come from {H,L} (S must avoid A,B,C,D,E)
+under the case-4 per-byte rule: H is candidate iff H is dead; L is
+candidate iff L is dead. PUSH H / POP H around the M-staging form
+remains the worst-case fallback (7B/68cc).
+
+Notes on case 5b (`addr=BC, dst=BC`): the destination IS the
+address pair, so we can never write a loaded byte into B or C
+before completing both reads. The M-staging form sidesteps this by
+copying BC→HL first and using the HL alias as the address pair,
+freeing B and C to receive the loaded bytes. The LDAX-based tier 2
+buffers the low byte in a non-{B,C} spare across `INX B` so the
+second LDAX still reads from the (now incremented) original
+address. No DCX BC is ever emitted since BC is intentionally
+redefined.
 
 ### Why this is faster than honest pre-RA `Defs`
 
@@ -179,7 +211,7 @@ Notes on case 6 (`addr=BC, dst=HL`): a single GR8 spare (or `A` with `PUSH PSW`
 | HL load, original HL pointer live     | Copy HL→other GR16 or spill: ≥+2B/+8cc, often ~6B/+44cc when both BC and DE taken | `DCX H`: **+1B / +5cc**                      |
 | `_HL_HL` load, A live                 | Spill A to memory: ~6B / ~26cc                    | Use any dead GR8: **+0B / +0cc**; else `PUSH PSW`/`POP PSW`: +2B / +23cc |
 | DE load, DE pointer live              | Spill DE: ≥+2B/+8cc, often memory: ~6B/+44cc      | `DCX D`: **+1B / +5cc**                      |
-| BC load, HL live                      | RA cannot rename HL (only one GR16Ptr); forced to memory: ~6B / +44cc | `PUSH H`/`POP H`: **+2B / +22cc**            |
+| BC load, HL live                      | RA cannot rename HL (only one GR16Ptr); forced to memory: ~6B / +44cc | LDAX-based shape (`LDAX B; MOV r,A; INX B; LDAX B; MOV r,A`): **+0B / +0cc** when A dead and BC dead, +1B/+8cc DCX B when BC live, +2B/+16cc MOV-wrap when A live + spare. Worst case `PUSH H`/`POP H`: +2B / +22cc |
 
 The expander wins in every preservation case. The reason is
 structural:
@@ -245,10 +277,14 @@ new machinery required.
   is live across the pseudo.
 - Bug 3 fixed: `addr=DE, dst=DE` is implemented via the case-4 row,
   not the broken `MOV E,M; …; MOV D,M; XCHG` pattern.
-- Bug 4 fixed: `addr=BC, *` honours HL liveness — case 5 emits
-  `PUSH H`/`POP H` when HL is live.
-- Bug 5 fixed: `addr=BC, dst=HL` uses a dead GR8 (or `PUSH PSW`)
-  instead of silently clobbering `A`.
+- Bug 4 fixed: `addr=BC, *` honours HL liveness — case 5a falls
+  back to `PUSH H`/`POP H` when HL is live and no cheaper LDAX-shape
+  variant is applicable; case 5b uses tier 3's `PUSH H` wrap; case 6
+  never needs HL preservation (HL is the dst).
+- Bug 5 fixed: `addr=BC, dst=HL` uses a dead GR8 (shape A), the
+  cheap LDAX shape (shape B with A dead), or `PUSH PSW`/`POP PSW`
+  (shape B with A live and no spare) instead of silently clobbering
+  `A`.
 - Pressure unchanged in the common path. RA continues to see
   `V6C_LOAD16_P` as preserving everything except `$dst`, so it
   does not insert spills around pointer loads.

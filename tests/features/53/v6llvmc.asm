@@ -2,6 +2,9 @@
 	.section	.text.__mulqi3,"ax",@progbits
 __mulqi3:                               ; -- Begin function __mulqi3
                                         ; @__mulqi3
+	;=== char __mulqi3(char arg0, char arg1) ===
+	;  arg0 = A
+	;  arg1 = E
 ; %bb.0:
 	;APP
 	MOV	E, B
@@ -26,6 +29,9 @@ __mulqi3:                               ; -- Begin function __mulqi3
 	.section	.text.__v6c_mulqihi3,"ax",@progbits
 __v6c_mulqihi3:                         ; -- Begin function __v6c_mulqihi3
                                         ; @__v6c_mulqihi3
+	;=== int __v6c_mulqihi3(char arg0, char arg1) ===
+	;  arg0 = A
+	;  arg1 = E
 ; %bb.0:
 	;APP
 	MOV	E, B
@@ -49,6 +55,9 @@ __v6c_mulqihi3:                         ; -- Begin function __v6c_mulqihi3
 	.section	.text.__mulhi3,"ax",@progbits
 __mulhi3:                               ; -- Begin function __mulhi3
                                         ; @__mulhi3
+	;=== int __mulhi3(int arg0, int arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
 ; %bb.0:
 	;APP
 	XCHG
@@ -85,6 +94,7 @@ __mulhi3:                               ; -- Begin function __mulhi3
 	.section	.text.__v6c_udivmod16_body,"ax",@progbits
 __v6c_udivmod16_body:                   ; -- Begin function __v6c_udivmod16_body
                                         ; @__v6c_udivmod16_body
+	;=== void __v6c_udivmod16_body(void) ===
 ; %bb.0:
 	;APP
 	MOV	A, D
@@ -134,6 +144,9 @@ __v6c_udivmod16_body:                   ; -- Begin function __v6c_udivmod16_body
 	.section	.text.__udivhi3,"ax",@progbits
 __udivhi3:                              ; -- Begin function __udivhi3
                                         ; @__udivhi3
+	;=== int __udivhi3(int arg0, int arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
 ; %bb.0:
 	;APP
 	CALL	__v6c_udivmod16_body
@@ -145,6 +158,9 @@ __udivhi3:                              ; -- Begin function __udivhi3
 	.section	.text.__umodhi3,"ax",@progbits
 __umodhi3:                              ; -- Begin function __umodhi3
                                         ; @__umodhi3
+	;=== int __umodhi3(int arg0, int arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
 ; %bb.0:
 	;APP
 	CALL	__v6c_udivmod16_body
@@ -158,6 +174,10 @@ __umodhi3:                              ; -- Begin function __umodhi3
 	.section	.text.__udivmodhi4,"ax",@progbits
 __udivmodhi4:                           ; -- Begin function __udivmodhi4
                                         ; @__udivmodhi4
+	;=== int __udivmodhi4(int arg0, int arg1, void* arg2) ===
+	;  arg0 = HL
+	;  arg1 = DE
+	;  arg2 = BC
 ; %bb.0:
 	;APP
 	PUSH	B
@@ -176,6 +196,10 @@ __udivmodhi4:                           ; -- Begin function __udivmodhi4
 	.section	.text.__divmodhi4,"ax",@progbits
 __divmodhi4:                            ; -- Begin function __divmodhi4
                                         ; @__divmodhi4
+	;=== int __divmodhi4(int arg0, int arg1, void* arg2) ===
+	;  arg0 = HL
+	;  arg1 = DE
+	;  arg2 = BC
 ; %bb.0:
 	;APP
 	PUSH	B
@@ -227,6 +251,7 @@ __divmodhi4:                            ; -- Begin function __divmodhi4
 	.section	.text.__v6c_neg_hl_body,"ax",@progbits
 __v6c_neg_hl_body:                      ; -- Begin function __v6c_neg_hl_body
                                         ; @__v6c_neg_hl_body
+	;=== void __v6c_neg_hl_body(void) ===
 ; %bb.0:
 	;APP
 	MOV	A, L
@@ -246,6 +271,7 @@ __v6c_neg_hl_body:                      ; -- Begin function __v6c_neg_hl_body
 	.section	.text.__v6c_neg_de_body,"ax",@progbits
 __v6c_neg_de_body:                      ; -- Begin function __v6c_neg_de_body
                                         ; @__v6c_neg_de_body
+	;=== void __v6c_neg_de_body(void) ===
 ; %bb.0:
 	;APP
 	MOV	A, E
@@ -265,6 +291,9 @@ __v6c_neg_de_body:                      ; -- Begin function __v6c_neg_de_body
 	.section	.text.__divhi3,"ax",@progbits
 __divhi3:                               ; -- Begin function __divhi3
                                         ; @__divhi3
+	;=== int __divhi3(int arg0, int arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
 ; %bb.0:
 	;APP
 	MOV	A, H
@@ -294,6 +323,9 @@ __divhi3:                               ; -- Begin function __divhi3
 	.section	.text.__modhi3,"ax",@progbits
 __modhi3:                               ; -- Begin function __modhi3
                                         ; @__modhi3
+	;=== int __modhi3(int arg0, int arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
 ; %bb.0:
 	;APP
 	MOV	A, H
@@ -323,6 +355,9 @@ __modhi3:                               ; -- Begin function __modhi3
 	.section	.text.__ashlhi3,"ax",@progbits
 __ashlhi3:                              ; -- Begin function __ashlhi3
                                         ; @__ashlhi3
+	;=== int __ashlhi3(int arg0, char arg1) ===
+	;  arg0 = HL
+	;  arg1 = E
 ; %bb.0:
 	;APP
 	MOV	A, E
@@ -348,6 +383,9 @@ __ashlhi3:                              ; -- Begin function __ashlhi3
 	.section	.text.__lshrhi3,"ax",@progbits
 __lshrhi3:                              ; -- Begin function __lshrhi3
                                         ; @__lshrhi3
+	;=== int __lshrhi3(int arg0, char arg1) ===
+	;  arg0 = HL
+	;  arg1 = E
 ; %bb.0:
 	;APP
 	MOV	A, E
@@ -381,6 +419,9 @@ __lshrhi3:                              ; -- Begin function __lshrhi3
 	.section	.text.__ashrhi3,"ax",@progbits
 __ashrhi3:                              ; -- Begin function __ashrhi3
                                         ; @__ashrhi3
+	;=== int __ashrhi3(int arg0, char arg1) ===
+	;  arg0 = HL
+	;  arg1 = E
 ; %bb.0:
 	;APP
 	MOV	A, E
@@ -421,51 +462,73 @@ __ashrhi3:                              ; -- Begin function __ashrhi3
 	.section	.text.bug3_de_de,"ax",@progbits
 	.globl	bug3_de_de                      ; -- Begin function bug3_de_de
 bug3_de_de:                             ; @bug3_de_de
+	;=== int bug3_de_de(int arg0, void* arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
 ; %bb.0:
+	;--- V6C_LOAD16_P ---
 	XCHG
 	MOV	B, M
 	INX	H
 	MOV	H, M
 	MOV	L, B
+	XCHG
+	;--- V6C_ADD16 ---
 	DAD	D
 	RET
                                         ; -- End function
 	.section	.text.case2_hl_reused,"ax",@progbits
 	.globl	case2_hl_reused                 ; -- Begin function case2_hl_reused
 case2_hl_reused:                        ; @case2_hl_reused
+	;=== int case2_hl_reused(void* arg0) ===
+	;  arg0 = HL
 ; %bb.0:
+	;--- V6C_LOAD16_P ---
 	MOV	B, M
 	INX	H
 	MOV	H, M
 	MOV	L, B
+	;--- V6C_ADD16 ---
 	DAD	H
 	RET
                                         ; -- End function
 	.section	.text.case5_bc_with_hl_live,"ax",@progbits
 	.globl	case5_bc_with_hl_live           ; -- Begin function case5_bc_with_hl_live
 case5_bc_with_hl_live:                  ; @case5_bc_with_hl_live
+	;=== int case5_bc_with_hl_live(void* arg0, int arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
 ; %bb.0:
+	;--- V6C_LOAD16_P ---
 	MOV	B, M
 	INX	H
 	MOV	H, M
 	MOV	L, B
+	;--- V6C_ADD16 ---
 	DAD	D
 	RET
                                         ; -- End function
 	.section	.text.case16_a_live,"ax",@progbits
 	.globl	case16_a_live                   ; -- Begin function case16_a_live
 case16_a_live:                          ; @case16_a_live
+	;=== char case16_a_live(void* arg0, char arg1) ===
+	;  arg0 = HL
+	;  arg1 = E
 ; %bb.0:
+	;--- V6C_INX16 ---
 	INX	H
+	;--- V6C_XRA_M_P ---
 	XRA	M
 	RET
                                         ; -- End function
 	.section	.text.main,"ax",@progbits
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
+	;=== int main(void) ===
 ; %bb.0:
 	LXI	H, 0x2234
 	PUSH	H
+	;--- V6C_LOAD16_G ---
 	POP	H
 	MOV	A, L
 	STA	g_byte
@@ -473,11 +536,13 @@ main:                                   ; @main
 	OUT	0xde
 	LXI	H, 0xacf0
 	PUSH	H
+	;--- V6C_LOAD16_G ---
 	POP	H
 	MOV	A, L
 	OUT	0xde
 	LXI	H, 0x1235
 	PUSH	H
+	;--- V6C_LOAD16_G ---
 	POP	H
 	MOV	A, L
 	OUT	0xde

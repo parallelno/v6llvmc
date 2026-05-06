@@ -215,3 +215,28 @@ loaded value and DE holding the original HL ("sum"), and DAD is
 commutative, so swapping them before the add is a no-op when DE is
 dead afterward. This was a pre-existing optimization; O71 just
 exposes the canonical XCHG pair so the peephole can pattern-match.
+
+
+Phase 4 — addr=BC LDAX-Based Refinement
+=========================================
+
+The original O71 expander handled cases 5 (addr=BC, dst=BC/DE) and 6
+(addr=BC, dst=HL) with a single `MOV H,B; MOV L,C; ...` template
+that clobbered HL (recovered by `PUSH H`/`POP H` when HL was
+live). Phase 4 adds a per-shape decision tree using V6C's `LDAX rp`;
+for most BC-addr live-sets the LDAX template is strictly cheaper.
+
+This test (v6llvmc.c) does not naturally exercise addr=BC because the
+V6C ABI places i16/ptr arguments 1 and 2 in HL and DE. None of the
+functions here changes asm output as a result of Phase 4. Per-shape
+verification of the new sequences lives in the lit tests:
+
+    llvm-project/llvm/test/CodeGen/V6C/load16p-shapes.ll
+      * case6_bc_hl_simple:  `LDAX B; MOV L,A; INX B; LDAX B; MOV H,A` (5B/40cc)
+      * case5a_bc_de:        `LDAX B; MOV E,A; INX B; LDAX B; MOV D,A` (5B/40cc)
+
+The full Phase 4 dispatch is documented in
+design/future_plans/O71_V6C_LOAD16_P_redesign.md (per-shape table
+rows 5a, 5b, 6) and design/plan_O71_V6C_LOAD16_P_redesign.md
+(Phase 4 — addr=BC LDAX-Based Refinement).
+

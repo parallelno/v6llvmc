@@ -40,3 +40,39 @@ define i16 @case4_de_de(i16 %sum, ptr %p) {
   %s = add i16 %sum, %v
   ret i16 %s
 }
+
+; Case 6 — addr=BC, dst=HL, A dead. Must use the new LDAX-based shape:
+;   LDAX B; MOV L,A; INX B; LDAX B; MOV H,A
+; (5B / 40cc, no PUSH, no MOV H,B; MOV L,C; staging.)
+; CHECK-LABEL: case6_bc_hl_simple:
+; CHECK:       LDAX B
+; CHECK-NEXT:  MOV L, A
+; CHECK-NEXT:  INX B
+; CHECK-NEXT:  LDAX B
+; CHECK-NEXT:  MOV H, A
+; CHECK-NOT:   PUSH PSW
+; CHECK-NOT:   MOV H, B
+define i16 @case6_bc_hl_simple(i16 %x, i16 %y, ptr %p) {
+  %v = load i16, ptr %p
+  ret i16 %v
+}
+
+; Case 5a — addr=BC, dst=DE, HL live (holds x for the tail call), A dead.
+; Must use the LDAX shape with dst halves D,E:
+;   LDAX B; MOV E,A; INX B; LDAX B; MOV D,A
+; HL is preserved automatically (LDAX doesn't touch HL); BC is dead
+; after the load (no callee BC arg) so no DCX B.
+declare void @sink2(i16, i16)
+; CHECK-LABEL: case5a_bc_de:
+; CHECK:       LDAX B
+; CHECK-NEXT:  MOV E, A
+; CHECK-NEXT:  INX B
+; CHECK-NEXT:  LDAX B
+; CHECK-NEXT:  MOV D, A
+; CHECK-NOT:   PUSH H
+; CHECK-NOT:   MOV H, B
+define void @case5a_bc_de(i16 %x, i16 %y, ptr %p) {
+  %v = load i16, ptr %p
+  call void @sink2(i16 %x, i16 %v)
+  ret void
+}

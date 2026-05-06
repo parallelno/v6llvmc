@@ -548,6 +548,128 @@ correct.
 
 ---
 
+## 6. Phase 4 — `addr=BC` LDAX-Based Refinement [x]
+
+The original O71 expander always used the `MOV H,B; MOV L,C; MOV r,M;
+INX H; ...` template for `addr=BC` (cases 5 and 6). That shape is
+free of A traffic but always pays at least 5B/40cc and adds a
+PUSH/POP HL pair (+28cc, +2B) when HL is live across the load.
+For most `addr=BC` shapes the V6C `LDAX rp` instruction (8cc) makes
+a strictly cheaper template available — at the cost of clobbering
+A and incrementing BC. Phase 4 adds a per-shape decision tree that
+picks whichever template is cheapest for the live-set at the load.
+
+### Step 4.1 — Replace case 6 (`addr=BC, dst=HL`) with two-shape dispatch [x]
+
+```
+Shape A (M-staging) — used iff A is live AND a non-{HL,BC} GR8 spare
+                      is dead:
+    MOV H,B; MOV L,C; MOV S,M; INX H; MOV H,M; MOV L,S
+    6B / 48cc, no A traffic, BC preserved.
+
+Shape B (LDAX) — otherwise:
+    [PUSH PSW] LDAX B; MOV L,A; INX B; LDAX B; MOV H,A [POP PSW]
+    [DCX B if BC live]
+    A dead:                  5B / 40cc (+1B/8cc if BC live)
+    A live, no spare:        7B / 68cc (+1B/8cc if BC live)
+```
+
+> **Implementation Notes**: When A is live and a spare is available,
+> shape A wins on both bytes and cycles (6B/48cc) over a wrapped
+> shape B (`MOV S,A; LDAX B; ...; MOV A,S` = 7B/56cc + DCX). When A
+> is dead, shape B is unconditionally cheaper; when A is live and no
+> spare exists, shape B with `PUSH PSW`/`POP PSW` (7B/68cc) beats
+> the previous A-using shape A (8B/76cc).
+
+### Step 4.2 — Split case 5 into `dst=DE` (5a) and `dst=BC` (5b) [x]
+
+The two halves have very different constraints:
+
+* `dst=DE` keeps the LDAX-shape template option, gated on HL liveness.
+* `dst=BC` cannot use the naive LDAX template — `MOV C,A` mid-sequence
+  would corrupt the address pair before the second `LDAX`. A
+  three-tier dispatch covers it cleanly without any DCX BC (BC is
+  the destination).
+
+### Step 4.3 — Implement case 5a (`addr=BC, dst=DE`) four-way dispatch [x]
+
+```
+1. HL dead — current shape (5B / 40cc, BC preserved):
+     MOV H,B; MOV L,C; MOV E,M; INX H; MOV D,M
+
+2. HL live, A dead — LDAX (5B / 40cc, +1B/8cc if BC live):
+     LDAX B; MOV E,A; INX B; LDAX B; MOV D,A; (DCX B if BC live)
+
+3. HL live, A live, spare in {H,L} dead — LDAX with cheap MOV-wrap
+   A-preservation (7B / 56cc, +1B/8cc if BC live):
+     MOV S,A; LDAX B; MOV E,A; INX B; LDAX B; MOV D,A; MOV A,S
+     (DCX B if BC live)
+
+4. Otherwise — PUSH H wraps the current shape (7B / 68cc, BC
+   preserved):
+     PUSH H; MOV H,B; MOV L,C; MOV E,M; INX H; MOV D,M; POP H
+```
+
+> **Implementation Notes**: Shape 3's spare must avoid {A,B,C,D,E}
+> so it can only come from {H,L}. We're already in the HL-live
+> branch, so use a per-byte rule (case 4 style): H is candidate iff
+> H is dead at MI; L is candidate iff L is dead at MI. If neither
+> half is dead we fall through to shape 4.
+
+### Step 4.4 — Implement case 5b (`addr=BC, dst=BC`) three-tier dispatch [x]
+
+```
+Tier 1 — HL fully dead (5B / 40cc):
+     MOV H,B; MOV L,C; MOV C,M; INX H; MOV B,M
+
+Tier 2 — A dead AND a non-{B,C} GR8 spare is dead (6B / 48cc).
+         The spare buffers the low byte across INX B so we never
+         write into the address pair before the second LDAX:
+     LDAX B; MOV S,A; INX B; LDAX B; MOV B,A; MOV C,S
+
+Tier 3 — fallback (7B / 68cc):
+     PUSH H; tier-1; POP H
+```
+
+No DCX BC in any tier — BC is the destination of the load and is
+intentionally redefined.
+
+> **Implementation Notes**: A naive `LDAX B; MOV C,A; INX B; ...`
+> sequence would be incorrect — overwriting C between the two LDAXs
+> would corrupt the address pair. Tier 2 staging via a non-BC GR8
+> spare (S ∈ {D,E,H,L} dead at MI) is the cheapest correct LDAX
+> shape. Note that we don't need to wrap with PUSH PSW for tier 2
+> because the tier requires A dead.
+
+### Step 4.5 — Lit test coverage [x]
+
+Added two tests to `llvm-project/llvm/test/CodeGen/V6C/load16p-shapes.ll`:
+
+* `case6_bc_hl_simple` — 3-arg function (`ptr` in BC by ABI),
+  returns the loaded value (dst=HL, A dead, BC dead). Pins the
+  new shape B sequence: `LDAX B; MOV L,A; INX B; LDAX B; MOV H,A`.
+* `case5a_bc_de` — 3-arg function with HL live across the load
+  (HL holds `%x`, used by a tail call sink). Pins the case-5a
+  shape-2 sequence: `LDAX B; MOV E,A; INX B; LDAX B; MOV D,A`.
+
+Both are naturally generated — no inline asm or ABI tricks needed.
+
+### Step 4.6 — Build, regress, sync [x]
+
+* Build: `ninja -C llvm-build clang llc` — clean.
+* Regression: `python tests\run_all.py` — 130 lit + 16 golden pass.
+* Mirror sync: `powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1`.
+
+> **Implementation Notes**: No existing tests changed asm output —
+> the old `addr=HL` and `addr=DE` paths are untouched, and the
+> existing asm corpus didn't naturally hit `addr=BC` (the V6C ABI
+> places i16/ptr args 1 and 2 in HL and DE; only the rare
+> 3rd-arg-pointer pattern, or LSR-derived addr=BC patterns, exercise
+> cases 5/6).
+
+
+---
+
 ## 7. Future Enhancements
 
 - **O72 — `V6C_STORE16_P` redesign** along the same template.

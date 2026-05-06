@@ -1517,44 +1517,153 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       if (!isRegDeadAtMI(V6C::DE, MI, MBB, &RI))
         emitDCX(V6C::DE);
     } else if (DstReg == V6C::HL) {
-      // Case 6: addr=BC, dst=HL.
-      //   MOV H,B; MOV L,C; MOV Spare, M; INX H; MOV H, M; MOV L, Spare
+      // Case 6: addr=BC, dst=HL. Two shapes; pick whichever is cheapest.
+      //
+      //   Shape A — M-staging (used when A is live AND a non-HL/BC GR8
+      //   spare is dead, i.e. spare ∈ {D,E}). 6B / 48cc, no A traffic,
+      //   BC preserved automatically:
+      //     MOV H,B; MOV L,C; MOV S,M; INX H; MOV H,M; MOV L,S
+      //
+      //   Shape B — LDAX (otherwise). A is the staging temp; BC is
+      //   corrupted by INX B and recovered with DCX B if live:
+      //     [A-preserve]; LDAX B; MOV L,A; INX B; LDAX B; MOV H,A;
+      //     [A-restore]; (DCX B if BC live)
+      //   A-preserve = none (A dead) | PUSH PSW / POP PSW (A live, no spare).
+      //   With A dead: 5B / 40cc (+1B/8cc if DCX B). With A live + no
+      //   spare: 7B / 68cc (+1B/8cc if DCX B).
+      //
       // No PUSH H / POP H — dst=HL means original HL is dead.
-      // No DCX BC — BC is never modified.
-      // Spare must exclude HL (destination) and BC (address).
+      bool ADead = isRegDeadAtMI(V6C::A, MI, MBB, &RI);
       Register Spare = findDeadGR8AtMI(MI, MBB, &RI, V6C::HL, V6C::BC);
-      bool UseA = !Spare;
-      MCRegister Tmp = UseA ? MCRegister(V6C::A) : Spare.asMCReg();
-      bool ALive = UseA && !isRegDeadAtMI(V6C::A, MI, MBB, &RI);
-      if (ALive)
-        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
-      emitMOVrr(V6C::H, V6C::B);
-      emitMOVrr(V6C::L, V6C::C);
-      emitMOVrM(Tmp);
-      emitINXHL();
-      emitMOVrM(V6C::H);
-      emitMOVrr(V6C::L, Tmp);
-      if (ALive)
-        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
-    } else {
-      // Case 5: addr=BC, dst ∈ {BC, DE}.
-      //   (PUSH H if HL live)
-      //   MOV H,B; MOV L,C; MOV DstLo, M; INX H; MOV DstHi, M
-      //   (POP H if HL live)
-      // BC is preserved automatically; HL is recovered via PUSH/POP.
+      if (!ADead && Spare) {
+        // Shape A.
+        MCRegister Tmp = Spare.asMCReg();
+        emitMOVrr(V6C::H, V6C::B);
+        emitMOVrr(V6C::L, V6C::C);
+        emitMOVrM(Tmp);
+        emitINXHL();
+        emitMOVrM(V6C::H);
+        emitMOVrr(V6C::L, Tmp);
+      } else {
+        // Shape B.
+        bool APushPop = !ADead;
+        if (APushPop)
+          BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
+        BuildMI(MBB, MI, DL, get(V6C::LDAX), V6C::A).addReg(V6C::BC);
+        emitMOVrr(V6C::L, V6C::A);
+        BuildMI(MBB, MI, DL, get(V6C::INX), V6C::BC).addReg(V6C::BC);
+        BuildMI(MBB, MI, DL, get(V6C::LDAX), V6C::A).addReg(V6C::BC);
+        emitMOVrr(V6C::H, V6C::A);
+        if (APushPop)
+          BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
+        if (!isRegDeadAtMI(V6C::BC, MI, MBB, &RI))
+          emitDCX(V6C::BC);
+      }
+    } else if (DstReg == V6C::BC) {
+      // Case 5b: addr=BC, dst=BC. Three-tier dispatch (no DCX BC needed
+      // since BC is the destination):
+      //
+      //   Tier 1 — HL fully dead (5B / 40cc):
+      //     MOV H,B; MOV L,C; MOV C,M; INX H; MOV B,M
+      //
+      //   Tier 2 — A dead AND a GR8 spare (excluding BC) is dead
+      //   (6B / 48cc). The spare buffers the low byte across INX B so we
+      //   never write into the address pair before the second LDAX:
+      //     LDAX B; MOV S,A; INX B; LDAX B; MOV B,A; MOV C,S
+      //
+      //   Tier 3 — worst case (7B / 68cc): PUSH H wraps tier-1 body.
       bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
-      if (!HLDead)
-        BuildMI(MBB, MI, DL, get(V6C::PUSH))
-            .addReg(V6C::HL, RegState::Kill)
-            .addReg(V6C::SP, RegState::ImplicitDefine);
-      emitMOVrr(V6C::H, V6C::B);
-      emitMOVrr(V6C::L, V6C::C);
-      emitMOVrM(DstLo);
-      emitINXHL();
-      emitMOVrM(DstHi);
-      if (!HLDead)
-        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
-            .addReg(V6C::SP, RegState::ImplicitDefine);
+      if (HLDead) {
+        emitMOVrr(V6C::H, V6C::B);
+        emitMOVrr(V6C::L, V6C::C);
+        emitMOVrM(V6C::C);
+        emitINXHL();
+        emitMOVrM(V6C::B);
+      } else {
+        bool ADead = isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+        Register Spare =
+            ADead ? findDeadGR8AtMI(MI, MBB, &RI, V6C::BC) : Register();
+        if (Spare) {
+          MCRegister Tmp = Spare.asMCReg();
+          BuildMI(MBB, MI, DL, get(V6C::LDAX), V6C::A).addReg(V6C::BC);
+          emitMOVrr(Tmp, V6C::A);
+          BuildMI(MBB, MI, DL, get(V6C::INX), V6C::BC).addReg(V6C::BC);
+          BuildMI(MBB, MI, DL, get(V6C::LDAX), V6C::A).addReg(V6C::BC);
+          emitMOVrr(V6C::B, V6C::A);
+          emitMOVrr(V6C::C, Tmp);
+        } else {
+          BuildMI(MBB, MI, DL, get(V6C::PUSH))
+              .addReg(V6C::HL, RegState::Kill)
+              .addReg(V6C::SP, RegState::ImplicitDefine);
+          emitMOVrr(V6C::H, V6C::B);
+          emitMOVrr(V6C::L, V6C::C);
+          emitMOVrM(V6C::C);
+          emitINXHL();
+          emitMOVrM(V6C::B);
+          BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
+              .addReg(V6C::SP, RegState::ImplicitDefine);
+        }
+      }
+    } else {
+      // Case 5a: addr=BC, dst=DE. Four-way dispatch:
+      //
+      //   HL dead (any A) — current shape (5B / 40cc, BC preserved):
+      //     MOV H,B; MOV L,C; MOV E,M; INX H; MOV D,M
+      //
+      //   HL live, A dead — LDAX shape (5B/40cc + 1B/8cc DCX if BC live):
+      //     LDAX B; MOV E,A; INX B; LDAX B; MOV D,A; (DCX B if BC live)
+      //
+      //   HL live, A live, spare ∈ {H,L} dead — LDAX shape with cheap
+      //   MOV-wrap A-preservation (7B / 56cc + DCX if BC live). Spare
+      //   must be ≠ A, B, C, D, E so it can only come from {H, L}, and
+      //   we already know one of H/L is live so the other half must be
+      //   the candidate (case-4-style per-byte rule).
+      //
+      //   Otherwise (HL fully live, A live) — PUSH H wraps current shape
+      //   (7B / 68cc, BC preserved).
+      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+      if (HLDead) {
+        emitMOVrr(V6C::H, V6C::B);
+        emitMOVrr(V6C::L, V6C::C);
+        emitMOVrM(V6C::E);
+        emitINXHL();
+        emitMOVrM(V6C::D);
+      } else {
+        bool ADead = isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+        auto findCase5aSpare = [&]() -> Register {
+          if (isRegDeadAtMI(V6C::H, MI, MBB, &RI)) return Register(V6C::H);
+          if (isRegDeadAtMI(V6C::L, MI, MBB, &RI)) return Register(V6C::L);
+          return Register();
+        };
+        Register Spare = ADead ? Register() : findCase5aSpare();
+        if (ADead || Spare) {
+          MCRegister Tmp;
+          if (!ADead) {
+            Tmp = Spare.asMCReg();
+            emitMOVrr(Tmp, V6C::A);
+          }
+          BuildMI(MBB, MI, DL, get(V6C::LDAX), V6C::A).addReg(V6C::BC);
+          emitMOVrr(V6C::E, V6C::A);
+          BuildMI(MBB, MI, DL, get(V6C::INX), V6C::BC).addReg(V6C::BC);
+          BuildMI(MBB, MI, DL, get(V6C::LDAX), V6C::A).addReg(V6C::BC);
+          emitMOVrr(V6C::D, V6C::A);
+          if (!ADead)
+            emitMOVrr(V6C::A, Tmp);
+          if (!isRegDeadAtMI(V6C::BC, MI, MBB, &RI))
+            emitDCX(V6C::BC);
+        } else {
+          BuildMI(MBB, MI, DL, get(V6C::PUSH))
+              .addReg(V6C::HL, RegState::Kill)
+              .addReg(V6C::SP, RegState::ImplicitDefine);
+          emitMOVrr(V6C::H, V6C::B);
+          emitMOVrr(V6C::L, V6C::C);
+          emitMOVrM(V6C::E);
+          emitINXHL();
+          emitMOVrM(V6C::D);
+          BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
+              .addReg(V6C::SP, RegState::ImplicitDefine);
+        }
+      }
     }
 
     MI.eraseFromParent();
