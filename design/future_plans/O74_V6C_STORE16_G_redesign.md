@@ -364,11 +364,6 @@ and a one-line isel pattern repoint. The main risks are:
 
 ## Out of Scope
 
-- `V6C_LOAD16_G` global-address-load variant. Already covered
-  by [O73](O73_V6C_LOAD16_G_redesign.md).
-- `V6C_LOAD16_P` / `V6C_STORE16_P` through-pointer variants.
-  Already covered by [O71](O71_V6C_LOAD16_P_redesign.md) and
-  [O72](O72_V6C_STORE16_P_redesign.md).
 - Sequential `V6C_STORE16_G` peepholes (e.g. two adjacent
   global stores at `addr` / `addr+2` reusing a single
   HL-walk via `SHLD addr; LXI H, val2; SHLD addr+2`, or two
