@@ -145,7 +145,7 @@ Three coordinated changes:
 
 ## 3. Implementation Steps
 
-### Step 3.1 — TD changes: drop `Defs`, repoint isel pattern [ ]
+### Step 3.1 — TD changes: drop `Defs`, repoint isel pattern [x]
 
 **File**: `llvm-project/llvm/lib/Target/V6C/V6CInstrInfo.td`,
 near lines 897–913.
@@ -175,7 +175,7 @@ def : Pat<(store i16:$val, (V6Cwrapper tglobaladdr:$addr)),
 
 > **Implementation Notes**: <to be filled>
 
-### Step 3.2 — Expander: rewrite `V6C_STORE16_G` arm [ ]
+### Step 3.2 — Expander: rewrite `V6C_STORE16_G` arm [x]
 
 **File**: `llvm-project/llvm/lib/Target/V6C/V6CInstrInfo.cpp`,
 `case V6C::V6C_STORE16_G:` (currently line ~1968).
@@ -264,7 +264,7 @@ case V6C::V6C_STORE16_G: {
 
 > **Implementation Notes**: <to be filled>
 
-### Step 3.3 — Build [ ]
+### Step 3.3 — Build [x]
 
 ```
 cmd /c "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"" -arch=amd64 >nul 2>&1 && ninja -C llvm-build clang llc 2>&1"
@@ -274,7 +274,7 @@ Fix any compile errors, then proceed.
 
 > **Implementation Notes**: <to be filled>
 
-### Step 3.4 — Lit test: store16g-shapes.ll [ ]
+### Step 3.4 — Lit test: store16g-shapes.ll [x]
 
 **File**: `llvm-project/llvm/test/CodeGen/V6C/store16g-shapes.ll`
 
@@ -373,7 +373,7 @@ define i16 @case3c_val_bc_a_live(i16 %hl_keep, i16 %unused_de, i16 %v, i8 %a_kee
 
 > **Implementation Notes**: <to be filled>
 
-### Step 3.5 — Run lit tests [ ]
+### Step 3.5 — Run lit tests [x]
 
 ```
 cd llvm-project
@@ -386,7 +386,7 @@ need updates.
 
 > **Implementation Notes**: <to be filled>
 
-### Step 3.6 — Run regression tests [ ]
+### Step 3.6 — Run regression tests [x]
 
 ```
 python tests\run_all.py
@@ -396,7 +396,7 @@ Diagnose and fix any regression. Re-run until clean.
 
 > **Implementation Notes**: <to be filled>
 
-### Step 3.7 — Verification assembly steps from `tests\features\README.md` [ ]
+### Step 3.7 — Verification assembly steps from `tests\features\README.md` [x]
 
 Compile `tests\features\56\v6llvmc.c` to `v6llvmc_new01.asm`
 and analyse:
@@ -412,14 +412,14 @@ Iterate to `v6llvmc_new02.asm`, … if needed.
 
 > **Implementation Notes**: <to be filled>
 
-### Step 3.8 — Make sure `result.txt` is created (`tests\features\README.md`) [ ]
+### Step 3.8 — Make sure `result.txt` is created (`tests\features\README.md`) [x]
 
 Document c8080 vs v6llvmc cycles/bytes per function, plus the
 shape-by-shape dispatch matrix.
 
 > **Implementation Notes**: <to be filled>
 
-### Step 3.9 — Sync mirror [ ]
+### Step 3.9 — Sync mirror [x]
 
 ```
 powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1
@@ -427,7 +427,7 @@ powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1
 
 > **Implementation Notes**: <to be filled>
 
-### Step 3.10 — Mark O74 complete in `design/future_plans/README.md` [ ]
+### Step 3.10 — Mark O74 complete in `design/future_plans/README.md` [x]
 
 Add the **DONE** marker on the O74 row.
 

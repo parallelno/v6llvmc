@@ -893,8 +893,12 @@ def V6C_LOAD16_G : V6CPseudo<(outs GR16:$dst), (ins imm16:$addr),
     "# LOAD16G $dst, $addr", []>;
 
 // 16-bit store to global address.
-// Pseudo: LXI HL, addr; MOV M, lo; INX HL; MOV M, hi
-let mayStore = 1, Defs = [HL] in
+// No Defs=[HL] — the post-RA expander dispatches per val class
+// (HL/DE/BC) and observable HL/A liveness, preserving HL when needed
+// via XCHG round-trip, STA-pair (when A is dead), or PUSH/POP. See
+// V6CInstrInfo::expandPostRAPseudo() and
+// design/future_plans/O74_V6C_STORE16_G_redesign.md.
+let mayStore = 1 in
 def V6C_STORE16_G : V6CPseudo<(outs), (ins GR16:$val, imm16:$addr),
     "# STORE16G $val, $addr", []>;
 
@@ -906,9 +910,13 @@ def V6C_STORE16_G : V6CPseudo<(outs), (ins GR16:$val, imm16:$addr),
 def : Pat<(i16 (load (V6Cwrapper tglobaladdr:$addr))),
           (V6C_LOAD16_G tglobaladdr:$addr)>;
 
-// Store i16 to global via SHLD (source must be in HL).
+// Store i16 to global. Routed through V6C_STORE16_G (GR16 input) so the
+// register allocator can keep the value in HL/DE/BC; the post-RA
+// expander emits SHLD when val is HL, an XCHG-wrapped SHLD when val is
+// DE, and one of three BC shapes (HL-dead / A-dead STA-pair /
+// PUSH-POP fallback).
 def : Pat<(store i16:$val, (V6Cwrapper tglobaladdr:$addr)),
-          (SHLD i16:$val, tglobaladdr:$addr)>;
+          (V6C_STORE16_G i16:$val, tglobaladdr:$addr)>;
 
 // BUILD_PAIR: combine two i8 values into i16 register pair.
 // Post-RA: expands to pair of MOV instructions.

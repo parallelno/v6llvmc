@@ -1966,29 +1966,68 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   }
 
   case V6C::V6C_STORE16_G: {
-    // Store 16-bit to global address.
+    // Store 16-bit to global address. O74: per-shape, liveness-aware.
+    //   val=HL:                 SHLD addr                            (3B / 20cc)
+    //   val=DE, HL dead:        XCHG; SHLD addr                      (4B / 24cc)
+    //   val=DE, fallback:       XCHG; SHLD addr; XCHG                (5B / 28cc)
+    //   val=BC, HL dead:        MOV H,B; MOV L,C; SHLD addr          (5B / 36cc)
+    //   val=BC, A dead:         MOV A,C; STA; MOV A,B; STA+1         (8B / 48cc)
+    //   val=BC, fallback:       PUSH H; MOV H,B; MOV L,C; SHLD; POP H (7B / 64cc)
     Register ValReg = MI.getOperand(0).getReg();
     MachineOperand &AddrOp = MI.getOperand(1);
 
-    if (ValReg == V6C::HL) {
-      // Best case: SHLD addr
+    auto emitSHLD = [&]() {
       auto MIB = BuildMI(MBB, MI, DL, get(V6C::SHLD)).addReg(V6C::HL);
       if (AddrOp.isGlobal())
         MIB.addGlobalAddress(AddrOp.getGlobal(), AddrOp.getOffset());
       else
         MIB.addImm(AddrOp.getImm());
-    } else {
-      MCRegister ValLo = RI.getSubReg(ValReg, V6C::sub_lo);
-      MCRegister ValHi = RI.getSubReg(ValReg, V6C::sub_hi);
+    };
 
-      auto MIB = BuildMI(MBB, MI, DL, get(V6C::LXI), V6C::HL);
-      if (AddrOp.isGlobal())
-        MIB.addGlobalAddress(AddrOp.getGlobal(), AddrOp.getOffset());
-      else
-        MIB.addImm(AddrOp.getImm());
-      BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(ValLo);
-      BuildMI(MBB, MI, DL, get(V6C::INX), V6C::HL).addReg(V6C::HL);
-      BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(ValHi);
+    if (ValReg == V6C::HL) {
+      emitSHLD();
+    } else if (ValReg == V6C::DE) {
+      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+      BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      emitSHLD();
+      if (!HLDead)
+        BuildMI(MBB, MI, DL, get(V6C::XCHG));
+    } else {
+      // val=BC: three-way dispatch on (HLDead, ADead).
+      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+      bool ADead  = isRegDeadAtMI(V6C::A,  MI, MBB, &RI);
+
+      if (HLDead) {
+        // 5B / 36cc: MOV H,B; MOV L,C; SHLD addr.
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::H).addReg(V6C::B);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::L).addReg(V6C::C);
+        emitSHLD();
+      } else if (ADead) {
+        // 8B / 48cc: MOV A,C; STA addr; MOV A,B; STA addr+1.
+        // Preserves HL — strictly cheaper than PUSH/POP wrap (−16cc, +1B).
+        auto emitSTA = [&](int64_t Bias) {
+          auto MIB = BuildMI(MBB, MI, DL, get(V6C::STA)).addReg(V6C::A);
+          if (AddrOp.isGlobal())
+            MIB.addGlobalAddress(AddrOp.getGlobal(),
+                                 AddrOp.getOffset() + Bias);
+          else
+            MIB.addImm(AddrOp.getImm() + Bias);
+        };
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::C);
+        emitSTA(0);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(V6C::B);
+        emitSTA(1);
+      } else {
+        // 7B / 64cc fallback: PUSH H; MOV H,B; MOV L,C; SHLD; POP H.
+        BuildMI(MBB, MI, DL, get(V6C::PUSH))
+            .addReg(V6C::HL, RegState::Kill)
+            .addReg(V6C::SP, RegState::ImplicitDefine);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::H).addReg(V6C::B);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::L).addReg(V6C::C);
+        emitSHLD();
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
+            .addReg(V6C::SP, RegState::ImplicitDefine);
+      }
     }
 
     MI.eraseFromParent();

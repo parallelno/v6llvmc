@@ -1,0 +1,326 @@
+O74 — V6C_STORE16_G redesign
+============================
+
+Goal
+----
+Make the i16-to-global store (`V6C_STORE16_G`) liveness-aware so the
+register allocator no longer fails (or spills unnecessarily) when HL
+is live across the store.
+
+OLD scheme
+  - The `(store i16:$val, (V6Cwrapper tglobaladdr:$addr))` pattern
+    selected the bare `SHLD` instruction. Because `SHLD` reads HL,
+    the value MUST be in HL.
+  - When the live HL contents must survive the store, RA has nowhere
+    to evict HL to (DE/BC may be holding other args) and aborts with
+    "ran out of registers during register allocation".
+  - On the post-RA pseudo `V6C_STORE16_G`, `Defs = [HL]` was declared
+    so any user of `V6C_STORE16_G` would see HL clobbered as well.
+
+NEW scheme
+  - The store pattern now selects `V6C_STORE16_G $val` with $val
+    free to be any GR16 (HL/DE/BC). `Defs = [HL]` was dropped.
+  - Post-RA expansion picks the optimal sequence per-shape and per
+    HL/A liveness (see "Per-row dispatch comparison" below).
+
+
+C test source — `tests/features/56/v6llvmc.c`
+----------------------------------------------
+Four shapes are now exercised at runtime. `case2b_val_de_hl_live`
+**will not compile under the OLD scheme** — the very bug O74
+fixes — so a `#ifndef OLD_BASELINE_SKIP_HL_LIVE` guard lets the
+OLD baseline produce comparable asm for the other three shapes.
+
+    volatile uint16_t g_a;
+
+    /* Row 1 — val=HL: single SHLD. */
+    __attribute__((noinline))
+    void case1_val_hl(uint16_t v) { g_a = v; }
+
+    /* Row 2a — val=DE, HL dead: XCHG; SHLD. */
+    __attribute__((noinline))
+    void case2a_val_de_hl_dead(uint16_t a, uint16_t v) {
+        (void)a; g_a = v;
+    }
+
+  #ifndef OLD_BASELINE_SKIP_HL_LIVE
+    /* Row 2b — val=DE, HL live: hl_keep returned in HL.
+       OLD: COMPILE FAILS — RA cannot put val=DE into HL while
+            hl_keep is also pinned to HL.
+       NEW: XCHG; SHLD g_a; XCHG — hl_keep never leaves HL. */
+    __attribute__((noinline))
+    uint16_t case2b_val_de_hl_live(uint16_t hl_keep, uint16_t v) {
+        g_a = v;
+        return hl_keep;
+    }
+  #endif
+
+    /* Row 3a — val=BC, HL dead: MOV H,B; MOV L,C; SHLD. */
+    __attribute__((noinline))
+    void case3a_val_bc_hl_dead(uint16_t a, uint16_t b, uint16_t v) {
+        (void)a; (void)b; g_a = v;
+    }
+
+    int main(void) {
+        case1_val_hl(0x1234);            __builtin_v6c_out(0xDE, (uint8_t)g_a);
+        case2a_val_de_hl_dead(0, 0x55AA);__builtin_v6c_out(0xDE, (uint8_t)g_a);
+      #ifndef OLD_BASELINE_SKIP_HL_LIVE
+        uint16_t r = case2b_val_de_hl_live(0x9988, 0x6677);
+        __builtin_v6c_out(0xDE, (uint8_t)g_a);
+        __builtin_v6c_out(0xDE, (uint8_t)r);
+      #endif
+        case3a_val_bc_hl_dead(0, 0, 0xABCD);
+        __builtin_v6c_out(0xDE, (uint8_t)g_a);
+        return 0;
+    }
+
+
+OLD baseline — concrete failure on case2b
+------------------------------------------
+Compiling the unguarded source with the pre-O74 compiler:
+
+    > clang -target i8080-unknown-v6c -O3 -S tests\features\56\v6llvmc.c
+    error: ran out of registers during register allocation
+    1 error generated.
+
+The OLD asm shown below was therefore produced with
+`-DOLD_BASELINE_SKIP_HL_LIVE` so the three compilable shapes can
+still be measured side-by-side.
+
+
+c8080 reference asm (Z80 → i8080 mnemonics, main + dependent funcs)
+-------------------------------------------------------------------
+case1_val_hl:
+        SHLD __a_1_case1_val_hl              ; 20cc / 3B   (arg spill)
+        SHLD g_a                             ; 20cc / 3B
+        RET                                  ; 12cc / 1B
+                                             ; ----------
+                                             ; 52cc / 7B
+
+case2a_val_de_hl_dead:
+        SHLD __a_2_case2a_val_de_hl_dead     ; 20cc / 3B   (arg spill)
+        SHLD g_a                             ; 20cc / 3B
+        RET                                  ; 12cc / 1B
+                                             ; ----------
+                                             ; 52cc / 7B
+
+case2b_val_de_hl_live:
+        SHLD __a_2_case2b_val_de_hl_live     ; 20cc / 3B   (arg spill)
+        SHLD g_a                             ; 20cc / 3B
+        LHLD __a_1_case2b_val_de_hl_live     ; 20cc / 3B
+        RET                                  ; 12cc / 1B
+                                             ; ----------
+                                             ; 72cc / 10B
+
+case3a_val_bc_hl_dead:
+        SHLD __a_3_case3a_val_bc_hl_dead     ; 20cc / 3B   (arg spill)
+        SHLD g_a                             ; 20cc / 3B
+        RET                                  ; 12cc / 1B
+                                             ; ----------
+                                             ; 52cc / 7B
+
+main:
+        SHLD __a_2_main                      ; 20cc / 3B
+        LXI  H, 0x1234                       ; 12cc / 3B
+        CALL case1_val_hl                    ; 24cc / 3B
+        LXI  H, 0                            ; 12cc / 3B
+        SHLD __a_1_case2a_val_de_hl_dead     ; 20cc / 3B
+        LXI  H, 0x55AA                       ; 12cc / 3B
+        CALL case2a_val_de_hl_dead           ; 24cc / 3B
+        LXI  H, 0x9988                       ; 12cc / 3B
+        SHLD __a_1_case2b_val_de_hl_live     ; 20cc / 3B
+        LXI  H, 0x6677                       ; 12cc / 3B
+        CALL case2b_val_de_hl_live           ; 24cc / 3B
+        SHLD main_r                          ; 20cc / 3B
+        LXI  H, 0                            ; 12cc / 3B
+        SHLD __a_1_case3a_val_bc_hl_dead     ; 20cc / 3B
+        SHLD __a_2_case3a_val_bc_hl_dead     ; 20cc / 3B
+        LXI  H, 0xABCD                       ; 12cc / 3B
+        CALL case3a_val_bc_hl_dead           ; 24cc / 3B
+        LHLD main_r                          ; 20cc / 3B
+        RET                                  ; 12cc / 1B
+                                             ; ----------
+                                             ; 332cc / 55B
+
+
+c8080 stats (worst-case CPU cycles / length in bytes)
+------------------------------------------------------
+    case1_val_hl           :  52cc /  7B
+    case2a_val_de_hl_dead  :  52cc /  7B
+    case2b_val_de_hl_live  :  72cc / 10B
+    case3a_val_bc_hl_dead  :  52cc /  7B
+    main                   : 332cc / 55B
+
+
+v6llvmc — BASELINE (`v6llvmc_old.asm`, before O74)
+---------------------------------------------------
+NOTE: case2b_val_de_hl_live is ABSENT — the OLD compiler errors out
+with "ran out of registers during register allocation". The asm
+below was produced with `-DOLD_BASELINE_SKIP_HL_LIVE`.
+
+case1_val_hl:
+        SHLD g_a                ; 20cc / 3B
+        RET                     ; 12cc / 1B
+                                ; ---------- 32cc / 4B
+
+case2a_val_de_hl_dead:
+        XCHG                    ;  4cc / 1B   (RA picks XCHG over MOV H,D;MOV L,E)
+        SHLD g_a                ; 20cc / 3B
+        RET                     ; 12cc / 1B
+                                ; ---------- 36cc / 5B
+
+case2b_val_de_hl_live:          ; ** DOES NOT COMPILE **
+        ; (RA aborts: cannot spill HL while hl_keep is live in HL)
+
+case3a_val_bc_hl_dead:
+        MOV  H, B               ;  8cc / 1B
+        MOV  L, C               ;  8cc / 1B
+        SHLD g_a                ; 20cc / 3B
+        RET                     ; 12cc / 1B
+                                ; ---------- 48cc / 6B
+
+main:                           ; case2b call elided
+        LXI  H, 0x1234          ; 12cc / 3B
+        CALL case1_val_hl       ; 24cc / 3B
+        LHLD g_a                ; 20cc / 3B
+        MOV  A, L               ;  8cc / 1B
+        OUT  0xDE               ; 12cc / 2B
+        LXI  D, 0x55AA          ; 12cc / 3B
+        CALL case2a_val_de_hl_dead ; 24cc / 3B
+        LHLD g_a                ; 20cc / 3B
+        MOV  A, L               ;  8cc / 1B
+        OUT  0xDE               ; 12cc / 2B
+        LXI  B, 0xABCD          ; 12cc / 3B
+        CALL case3a_val_bc_hl_dead ; 24cc / 3B
+        LHLD g_a                ; 20cc / 3B
+        MOV  A, L               ;  8cc / 1B
+        OUT  0xDE               ; 12cc / 2B
+        LXI  H, 0               ; 12cc / 3B
+        RET                     ; 12cc / 1B
+                                ; ---------- 252cc / 40B
+
+
+v6llvmc — AFTER O74 (`v6llvmc_new01.asm`)
+------------------------------------------
+case1_val_hl:
+        SHLD g_a                ; 20cc / 3B
+        RET                     ; 12cc / 1B
+                                ; ---------- 32cc / 4B
+
+case2a_val_de_hl_dead:
+        XCHG                    ;  4cc / 1B
+        SHLD g_a                ; 20cc / 3B
+        RET                     ; 12cc / 1B
+                                ; ---------- 36cc / 5B
+
+case2b_val_de_hl_live:          ; ** NEW: now compiles **
+        XCHG                    ;  4cc / 1B   (DE↔HL, hl_keep into DE)
+        SHLD g_a                ; 20cc / 3B   (val now in HL → store)
+        XCHG                    ;  4cc / 1B   (restore hl_keep into HL for return)
+        RET                     ; 12cc / 1B
+                                ; ---------- 40cc / 5B
+
+case3a_val_bc_hl_dead:
+        MOV  H, B               ;  8cc / 1B
+        MOV  L, C               ;  8cc / 1B
+        SHLD g_a                ; 20cc / 3B
+        RET                     ; 12cc / 1B
+                                ; ---------- 48cc / 6B
+
+main:
+        LXI  H, 0x1234          ; 12cc / 3B
+        CALL case1_val_hl       ; 24cc / 3B
+        LHLD g_a                ; 20cc / 3B
+        MOV  A, L               ;  8cc / 1B
+        OUT  0xDE               ; 12cc / 2B
+        LXI  D, 0x55AA          ; 12cc / 3B
+        CALL case2a_val_de_hl_dead ; 24cc / 3B
+        LHLD g_a                ; 20cc / 3B
+        MOV  A, L               ;  8cc / 1B
+        OUT  0xDE               ; 12cc / 2B
+        LXI  H, 0x9988          ; 12cc / 3B   <-- NEW: case2b call site
+        LXI  D, 0x6677          ; 12cc / 3B
+        CALL case2b_val_de_hl_live ; 24cc / 3B
+        LHLD g_a                ; 20cc / 3B
+        MOV  A, L               ;  8cc / 1B
+        OUT  0xDE               ; 12cc / 2B
+        MVI  A, 0x88            ;  8cc / 2B   (constant-folded r=0x9988 lo)
+        OUT  0xDE               ; 12cc / 2B
+        LXI  B, 0xABCD          ; 12cc / 3B
+        CALL case3a_val_bc_hl_dead ; 24cc / 3B
+        LHLD g_a                ; 20cc / 3B
+        MOV  A, L               ;  8cc / 1B
+        OUT  0xDE               ; 12cc / 2B
+        LXI  H, 0               ; 12cc / 3B
+        RET                     ; 12cc / 1B
+                                ; ---------- 360cc / 60B
+
+
+Comparison table
+----------------
++--------------------------+----------------+----------------+----------------+----------------+
+| Function                 | c8080          | v6llvmc OLD    | v6llvmc NEW    | NEW vs OLD     |
+|                          | cycles / bytes | cycles / bytes | cycles / bytes |                |
++--------------------------+----------------+----------------+----------------+----------------+
+| case1_val_hl             |   52 /   7     |   32 /   4     |   32 /   4     |    0 /  0      |
+| case2a_val_de_hl_dead    |   52 /   7     |   36 /   5     |   36 /   5     |    0 /  0      |
+| case2b_val_de_hl_live    |   72 /  10     |  ** FAIL **    |   40 /   5     | now compiles   |
+| case3a_val_bc_hl_dead    |   52 /   7     |   48 /   6     |   48 /   6     |    0 /  0      |
+| main (case2b skipped/in) |  332 /  55     |  252 /  40     |  360 /  60     |  +108 / +20 *  |
++--------------------------+----------------+----------------+----------------+----------------+
+* main grows because NEW main contains the extra `case2b_val_de_hl_live`
+  call site + readback (108cc / 20B). The OLD main does NOT call
+  case2b at all (compilation would fail), so this is not a regression
+  — it is the cost of the new code path the OLD compiler could not
+  emit. Comparing the equivalent main bodies (both with case2b
+  excluded) NEW matches OLD byte-for-byte.
+
+Bottom-line wins from O74:
+  * case2b_val_de_hl_live now compiles (40cc / 5B). Under OLD it was
+    impossible to produce any code at all.
+  * case2b is also strictly faster/shorter than the c8080 reference
+    (40cc / 5B vs 72cc / 10B) — 32cc and 5B better.
+
+
+Per-row dispatch comparison (lit test `store16g-shapes.ll`)
+------------------------------------------------------------
++----+-------------------------+--------------------------------+--------------------------------+--------------+
+| #  | Shape                   | OLD (SHLD-only pattern)        | NEW (V6C_STORE16_G dispatch)   | Δ            |
++----+-------------------------+--------------------------------+--------------------------------+--------------+
+| 1  | val=HL                  | SHLD                  20cc/3B  | SHLD                  20cc/3B  |   0cc /  0B  |
+| 2a | val=DE, HL dead         | XCHG; SHLD            24cc/4B  | XCHG; SHLD            24cc/4B  |   0cc /  0B  |
+| 2b | val=DE, HL live         | RA fails ("ran out of regs")   | XCHG; SHLD; XCHG      28cc/5B  | now compiles |
+| 3a | val=BC, HL dead         | MOV H,B;MOV L,C;SHLD  36cc/5B  | MOV H,B;MOV L,C;SHLD  36cc/5B  |   0cc /  0B  |
+| 3b | val=BC, HL live, A dead | RA fails / spills              | MOV A,C;STA;MOV A,B;STA+1      | now compiles |
+|    |                         |                                |                       48cc/8B  |              |
+| 3c | val=BC, HL live, A live | RA fails / spills              | PUSH H;MOVs;SHLD;POP H         | now compiles |
+|    |                         |                                |                       64cc/7B  |              |
++----+-------------------------+--------------------------------+--------------------------------+--------------+
+
+
+Verification
+------------
+- Direct empirical proof of the OLD bug: compiling the full
+  `tests/features/56/v6llvmc.c` (without the
+  `OLD_BASELINE_SKIP_HL_LIVE` guard) against HEAD~1 yields
+  `error: ran out of registers during register allocation`.
+- `llvm/test/CodeGen/V6C/store16g-shapes.ll` — pins each row via the
+  V6C calling convention; all 6 cases match.
+- `python tests\run_all.py` — golden + lit suites both PASS
+  (132/132 tests).
+
+
+Cycle budgets used (per docs/Vector_06c_instruction_timings.md)
+---------------------------------------------------------------
+  LHLD/SHLD =  20cc / 3B    LDA/STA =  16cc / 3B    LXI = 12cc / 3B
+  MOV r,r   =   8cc / 1B    XCHG    =   4cc / 1B    DAD = 12cc / 1B
+  MVI r,n   =   8cc / 2B    PUSH    =  16cc / 1B    POP = 12cc / 1B
+  CALL      =  24cc / 3B    JMP     =  12cc / 3B    RET = 12cc / 1B
+  IN/OUT #  =  12cc / 2B    INX     =   8cc / 1B
+
+
+References
+----------
+- Design: design/future_plans/O74_V6C_STORE16_G_redesign.md
+- Plan:   design/plan_O74_V6C_STORE16_G_redesign.md
+- Companion (load side): design/future_plans/O73_V6C_LOAD16_G_redesign.md
