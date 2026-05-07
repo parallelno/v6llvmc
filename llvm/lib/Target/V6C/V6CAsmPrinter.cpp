@@ -119,16 +119,56 @@ void V6CAsmPrinter::emitFunctionBodyStart() {
   Decl += F.getName().str();
   Decl += "(";
 
-  // V6C calling convention: position-based register assignment.
-  static const MCPhysReg ArgRegsI8[]  = {V6C::A, V6C::E, V6C::C};
-  static const MCPhysReg ArgRegsI16[] = {V6C::HL, V6C::DE, V6C::BC};
+  // V6C calling convention: free-list allocator (mirrors
+  // V6CArgAllocator in V6CISelLowering.cpp). i8 args take from
+  // {A,B,C,D,E,L,H}; i16 args take from {HL,DE,BC}; taking an i16 pair
+  // removes its two halves from the i8 list and vice versa.
+  SmallVector<MCPhysReg, 7> FreeI8 = {V6C::A, V6C::B, V6C::C,
+                                      V6C::D, V6C::E, V6C::L, V6C::H};
+  SmallVector<MCPhysReg, 3> FreeI16 = {V6C::HL, V6C::DE, V6C::BC};
+  auto dropReg = [](SmallVectorImpl<MCPhysReg> &L, MCPhysReg R) {
+    auto It = std::find(L.begin(), L.end(), R);
+    if (It != L.end())
+      L.erase(It);
+  };
+  auto pairOf = [](MCPhysReg H) -> MCPhysReg {
+    switch (H) {
+    case V6C::H: case V6C::L: return V6C::HL;
+    case V6C::D: case V6C::E: return V6C::DE;
+    case V6C::B: case V6C::C: return V6C::BC;
+    default: return MCRegister::NoRegister;
+    }
+  };
+  auto halves = [](MCPhysReg P) -> std::pair<MCPhysReg, MCPhysReg> {
+    switch (P) {
+    case V6C::HL: return {V6C::H, V6C::L};
+    case V6C::DE: return {V6C::D, V6C::E};
+    case V6C::BC: return {V6C::B, V6C::C};
+    default: return {MCRegister::NoRegister, MCRegister::NoRegister};
+    }
+  };
+  auto takeI8 = [&]() -> MCPhysReg {
+    if (FreeI8.empty()) return MCRegister::NoRegister;
+    MCPhysReg R = FreeI8.front();
+    FreeI8.erase(FreeI8.begin());
+    if (MCPhysReg P = pairOf(R)) dropReg(FreeI16, P);
+    return R;
+  };
+  auto takeI16 = [&]() -> MCPhysReg {
+    if (FreeI16.empty()) return MCRegister::NoRegister;
+    MCPhysReg P = FreeI16.front();
+    FreeI16.erase(FreeI16.begin());
+    auto Hs = halves(P);
+    dropReg(FreeI8, Hs.first);
+    dropReg(FreeI8, Hs.second);
+    return P;
+  };
 
   struct ParamInfo {
     std::string Name;
     std::string Reg;
   };
   SmallVector<ParamInfo, 4> Params;
-  unsigned ArgIdx = 0;
 
   for (unsigned i = 0; i < F.arg_size(); ++i) {
     const Argument *Arg = F.getArg(i);
@@ -142,16 +182,10 @@ void V6CAsmPrinter::emitFunctionBodyStart() {
       Decl += ", ";
     Decl += TStr + " " + Name;
 
-    std::string RegStr;
-    if (ArgIdx < 3) {
-      bool Is8Bit = Ty->isIntegerTy() && Ty->getIntegerBitWidth() <= 8;
-      MCPhysReg Reg = Is8Bit ? ArgRegsI8[ArgIdx] : ArgRegsI16[ArgIdx];
-      RegStr = TRI->getName(Reg);
-    } else {
-      RegStr = "stack";
-    }
+    bool Is8Bit = Ty->isIntegerTy() && Ty->getIntegerBitWidth() <= 8;
+    MCPhysReg Reg = Is8Bit ? takeI8() : takeI16();
+    std::string RegStr = Reg ? std::string(TRI->getName(Reg)) : "stack";
     Params.push_back({Name, RegStr});
-    ++ArgIdx;
   }
 
   if (F.arg_size() == 0)

@@ -5,22 +5,33 @@
 // Calling convention definitions for the V6C (Intel 8080) target.
 // See design.md §6 for the full specification.
 //
-// The V6C calling convention is position-based:
-//   Arg 1: i8 → A,   i16 → HL
-//   Arg 2: i8 → E,   i16 → DE
-//   Arg 3: i8 → C,   i16 → BC
-//   Arg 4+: stack (right-to-left, caller cleans)
+// Argument assignment is type-driven (not position-based): a free-list
+// allocator hands out registers from
+//
+//   i8  free-list:  A, B, C, D, E, L, H
+//   i16 free-list:  HL, DE, BC
+//
+// Taking an i16 pair removes its two halves from the i8 list, and taking
+// an i8 half removes its enclosing i16 pair from the i16 list. Once the
+// relevant free-list is exhausted, remaining args go on the stack
+// (right-to-left, caller cleans).
+//
+// Worked examples (see V6CISelLowering.cpp `V6CArgAllocator`):
+//   foo(i8, i8, i8, i16, i16)  -> A,  B,  C,  HL, DE
+//   foo(i16, i16, i8, i16)     -> HL, DE, A,  BC
+//   foo(i8, i16, i8, i16)      -> A,  HL, B,  DE
+//   foo(i16, i16, i8, i8)      -> HL, DE, A,  B
 //
 // Return values:
-//   i8  → A
-//   i16 → HL
-//   i32 → DE:HL (DE=high, HL=low)
+//   i8  -> A
+//   i16 -> HL
+//   i32 -> DE:HL (DE=high, HL=low)
 //
 // All registers are caller-saved (no callee-saved registers).
 //
-// The position-based argument assignment doesn't map to LLVM's standard
-// CallingConv TableGen, so argument lowering is done in C++
-// (V6CISelLowering.cpp). Return values use the generated RetCC_V6C.
+// The free-list allocation does not map to LLVM's standard CallingConv
+// TableGen, so argument lowering is done in C++ (V6CISelLowering.cpp).
+// Return values use the generated RetCC_V6C below.
 //
 //===----------------------------------------------------------------------===//
 
