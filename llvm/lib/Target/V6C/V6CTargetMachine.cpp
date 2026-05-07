@@ -41,6 +41,14 @@ static llvm::cl::opt<bool> V6CAnnotatePseudos(
     llvm::cl::desc("Add asm comments showing pseudo expansion origins"),
     llvm::cl::init(false));
 
+static llvm::cl::opt<bool> V6CPrintRTHelpers(
+    "mv6c-print-rt-helpers",
+    llvm::cl::desc("Emit auto-included v6c_arith.h runtime helpers "
+                   "(__mulqi3, __mulhi3, __udivhi3, ...) into asm output. "
+                   "Off by default to keep `.s` readable; the helpers are "
+                   "still generated into the object file regardless."),
+    llvm::cl::init(false));
+
 static llvm::cl::opt<bool> V6CSpillPatchedReload(
     "mv6c-spill-patched-reload",
     llvm::cl::desc("O61: rewrite HL spill/reload pairs as patched LXI HL "
@@ -57,6 +65,7 @@ namespace llvm {
 unsigned getV6CStartAddress() { return V6CStartAddress; }
 bool getV6CStaticStackEnabled() { return V6CStaticStack && !V6CNoStaticStack; }
 bool getV6CAnnotatePseudosEnabled() { return V6CAnnotatePseudos; }
+bool getV6CPrintRTHelpersEnabled() { return V6CPrintRTHelpers; }
 bool getV6CSpillPatchedReloadEnabled() {
   return V6CSpillPatchedReload && !V6CNoSpillPatchedReload;
 }

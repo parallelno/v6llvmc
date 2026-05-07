@@ -18,12 +18,16 @@
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/ADT/StringSet.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Module.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/TargetRegistry.h"
-#include "llvm/IR/Function.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 
 #define DEBUG_TYPE "v6c-asm-printer"
@@ -37,12 +41,60 @@ public:
 
   StringRef getPassName() const override { return "V6C Assembly Printer"; }
 
+  bool doInitialization(Module &M) override;
+  bool runOnMachineFunction(MachineFunction &MF) override;
+
   void emitFunctionBodyStart() override;
   void emitInstruction(const MachineInstr *MI) override;
 
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
                        const char *ExtraCode, raw_ostream &O) override;
+
+private:
+  /// Names of functions tagged `__attribute__((annotate("v6c-rt-helper")))`
+  /// in the current module. Populated in doInitialization().
+  StringSet<> RTHelperNames;
 };
+
+bool V6CAsmPrinter::doInitialization(Module &M) {
+  // Scan `@llvm.global.annotations` once per module to find functions
+  // tagged with `__attribute__((annotate("v6c-rt-helper")))` so we can
+  // suppress them from .s output unless -mv6c-print-rt-helpers is on.
+  RTHelperNames.clear();
+  if (auto *GA = M.getNamedGlobal("llvm.global.annotations")) {
+    if (auto *CA = dyn_cast_or_null<ConstantArray>(GA->getInitializer())) {
+      for (auto &Op : CA->operands()) {
+        auto *CS = dyn_cast<ConstantStruct>(&*Op);
+        if (!CS || CS->getNumOperands() < 2)
+          continue;
+        auto *F = dyn_cast<Function>(
+            CS->getOperand(0)->stripPointerCasts());
+        auto *StrGV = dyn_cast<GlobalVariable>(
+            CS->getOperand(1)->stripPointerCasts());
+        if (!F || !StrGV || !StrGV->hasInitializer())
+          continue;
+        auto *CDA = dyn_cast<ConstantDataArray>(StrGV->getInitializer());
+        if (!CDA || !CDA->isCString())
+          continue;
+        if (CDA->getAsCString() == "v6c-rt-helper")
+          RTHelperNames.insert(F->getName());
+      }
+    }
+  }
+  return AsmPrinter::doInitialization(M);
+}
+
+bool V6CAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
+  // Suppress auto-included v6c_arith.h runtime helpers from human-readable
+  // asm output unless explicitly requested via -mv6c-print-rt-helpers.
+  // Only applies to text (`-S`) emission — when emitting an object file
+  // (`-filetype=obj`) every helper must still be encoded so the linker
+  // can resolve calls to `__mulqi3` etc.
+  if (!getV6CPrintRTHelpersEnabled() && OutStreamer->hasRawTextSupport() &&
+      RTHelperNames.contains(MF.getName()))
+    return false;
+  return AsmPrinter::runOnMachineFunction(MF);
+}
 
 void V6CAsmPrinter::emitFunctionBodyStart() {
   if (!getV6CAnnotatePseudosEnabled())

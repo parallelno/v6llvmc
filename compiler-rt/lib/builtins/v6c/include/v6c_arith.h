@@ -51,7 +51,12 @@
 #ifndef V6C_ARITH_H_INCLUDED
 #define V6C_ARITH_H_INCLUDED
 
-#define V6C_RT static __attribute__((noinline, used, naked))
+/* The `annotate("v6c-rt-helper")` attribute tags every routine defined
+ * by this header so the V6C AsmPrinter can suppress them from `.s`
+ * output by default (toggle with -mv6c-print-rt-helpers). It has no
+ * effect on codegen, linkage, or section placement. */
+#define V6C_RT static __attribute__((noinline, used, naked, \
+                                     annotate("v6c-rt-helper")))
 
 /* ------------------------------------------------------------------
  * __mulqi3 — 8x8 -> 8-bit multiply (low byte of product, in A).

@@ -27,6 +27,9 @@ bool getV6CStaticStackEnabled();
 /// Whether pseudo expansion annotation comments are enabled.
 bool getV6CAnnotatePseudosEnabled();
 
+/// Whether v6c_arith.h runtime helpers should be emitted into asm output.
+bool getV6CPrintRTHelpersEnabled();
+
 /// Whether the O61 spill-patched-reload rewrite is enabled.
 bool getV6CSpillPatchedReloadEnabled();
 
