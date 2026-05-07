@@ -1,0 +1,239 @@
+O73 — V6C_LOAD16_G redesign
+============================
+
+Goal
+----
+Per-shape liveness-aware dispatch for `V6C_LOAD16_G`:
+
+  Row 1   — dst=HL              : LHLD addr                          (3B / 20cc)
+  Row 2a  — dst=DE, HL dead     : LHLD addr; XCHG                    (4B / 24cc)  [NEW]
+  Row 2b  — dst=DE, fallback    : XCHG; LHLD addr; XCHG              (5B / 28cc)
+  Row 3a  — dst=BC, HL dead     : LHLD; MOV B,H; MOV C,L             (5B / 36cc)
+  Row 3b  — dst=BC, A dead      : LDA; MOV C,A; LDA+1; MOV B,A       (8B / 48cc)  [NEW]
+  Row 3c  — dst=BC, fallback    : PUSH H; LHLD; MOVs; POP H          (7B / 64cc)
+
+
+C test source
+-------------
+v6llvmc.c (excerpted):
+
+    volatile uint16_t g_a, g_b, g_c, g_r;
+
+    /* Row 1 — dst=HL: single LHLD. */
+    uint16_t case1_dst_hl(void) { return g_a; }
+
+    /* Row 2 — dst=DE: hl_keep arrives in HL, must remain live across
+       the global load until the trailing DAD D. */
+    uint16_t case2_dst_de(uint16_t hl_keep) { return hl_keep + g_a; }
+
+    /* Row 3 — dst=BC: forced via 3-i16-arg noinline call.
+       At the load of g_c, HL carries g_a (live), A is dead → row 3b. */
+    __attribute__((noinline))
+    uint16_t add3(uint16_t a, uint16_t b, uint16_t c) { return a + b + c; }
+    uint16_t case3_dst_bc(void) { return add3(g_a, g_b, g_c); }
+
+    int main(void) {
+        g_a = 0x1234; g_b = 0x5678; g_c = 0x0001;
+        g_r = case1_dst_hl();        __builtin_v6c_out(0xDE, (uint8_t)g_r);
+        g_r = case2_dst_de(0x0100);  __builtin_v6c_out(0xDE, (uint8_t)g_r);
+        g_r = case3_dst_bc();        __builtin_v6c_out(0xDE, (uint8_t)g_r);
+        return 0;
+    }
+
+(c8080.c is the same minus `__attribute__((noinline))` and
+`__builtin_v6c_out`; the c8080 frontend does not inline so the
+attribute is redundant there.)
+
+
+c8080 reference (i8080 mnemonics — main + dependent funcs body)
+---------------------------------------------------------------
+case1_dst_hl:
+        LHLD g_a                ; 20cc / 3B
+        RET                     ; 12cc / 1B
+                                ; ----------
+                                ; 32cc / 4B
+
+case2_dst_de:                   ; (c8080 spills hl_keep to static slot)
+        SHLD __a_1_case2_dst_de ; 20cc / 3B
+        XCHG                    ;  4cc / 1B
+        LHLD g_a                ; 20cc / 3B
+        DAD  D                  ; 12cc / 1B
+        RET                     ; 12cc / 1B
+                                ; ----------
+                                ; 68cc / 9B
+
+add3:                           ; (c8080 spills all three args to slots)
+        SHLD __a_3_add3         ; 20cc / 3B
+        LHLD __a_1_add3         ; 20cc / 3B
+        XCHG                    ;  4cc / 1B
+        LHLD __a_2_add3         ; 20cc / 3B
+        DAD  D                  ; 12cc / 1B
+        XCHG                    ;  4cc / 1B
+        LHLD __a_3_add3         ; 20cc / 3B
+        DAD  D                  ; 12cc / 1B
+        RET                     ; 12cc / 1B
+                                ; -----------
+                                ; 124cc / 17B
+
+case3_dst_bc:                   ; falls through into add3
+        LHLD g_a                ; 20cc / 3B
+        SHLD __a_1_add3         ; 20cc / 3B
+        LHLD g_b                ; 20cc / 3B
+        SHLD __a_2_add3         ; 20cc / 3B
+        LHLD g_c                ; 20cc / 3B
+                                ; (falls through to add3)
+                                ; -----------
+                                ; 100cc / 15B
+
+main:
+        LXI  H, 0               ; 12cc / 3B
+        SHLD __a_1_main         ; 20cc / 3B
+        SHLD __a_2_main         ; 20cc / 3B
+        LXI  H, 0x1234          ; 12cc / 3B
+        SHLD g_a                ; 20cc / 3B
+        LXI  H, 0x5678          ; 12cc / 3B
+        SHLD g_b                ; 20cc / 3B
+        LXI  H, 1               ; 12cc / 3B
+        SHLD g_c                ; 20cc / 3B
+        CALL case1_dst_hl       ; 24cc / 3B
+        SHLD g_r                ; 20cc / 3B
+        LXI  H, 256             ; 12cc / 3B
+        CALL case2_dst_de       ; 24cc / 3B
+        SHLD g_r                ; 20cc / 3B
+        CALL case3_dst_bc       ; 24cc / 3B
+        SHLD g_r                ; 20cc / 3B
+        LXI  H, 0               ; 12cc / 3B
+        RET                     ; 12cc / 1B
+                                ; -----------
+                                ; 316cc / 49B
+
+
+c8080 stats (worst-case CPU cycles / length in bytes)
+------------------------------------------------------
+    case1_dst_hl  :   32cc /  4B
+    case2_dst_de  :   68cc /  9B
+    add3          :  124cc / 17B
+    case3_dst_bc  :  100cc / 15B  (falls through into add3)
+    main          :  316cc / 49B
+
+
+v6llvmc — BASELINE (`v6llvmc_old.asm`, before O73)
+---------------------------------------------------
+case1_dst_hl:
+        LHLD g_a                ; 20cc / 3B
+        RET                     ; 12cc / 1B
+                                ; ---------- 32cc / 4B
+
+case2_dst_de:
+        XCHG                    ;  4cc / 1B
+        LHLD g_a                ; 20cc / 3B
+        DAD  D                  ; 12cc / 1B
+        RET                     ; 12cc / 1B
+                                ; ---------- 48cc / 6B
+
+add3:
+        DAD  D                  ; 12cc / 1B
+        DAD  B                  ; 12cc / 1B
+        RET                     ; 12cc / 1B
+                                ; ---------- 36cc / 3B
+
+case3_dst_bc:
+        LHLD g_a                ; 20cc / 3B
+        XCHG                    ;  4cc / 1B
+        LHLD g_b                ; 20cc / 3B
+        XCHG                    ;  4cc / 1B
+        PUSH H                  ; 16cc / 1B   <-- savings target
+        LHLD g_c                ; 20cc / 3B
+        MOV  B, H               ;  8cc / 1B
+        MOV  C, L               ;  8cc / 1B
+        POP  H                  ; 12cc / 1B   <-- savings target
+        JMP  add3               ; 12cc / 3B   (tail call)
+                                ; ---------- 124cc / 18B
+
+
+v6llvmc — AFTER O73 (`v6llvmc_new02.asm`)
+------------------------------------------
+case1_dst_hl: unchanged                     ;  32cc /  4B
+case2_dst_de: unchanged (HL live, row 2b)   ;  48cc /  6B
+add3:         unchanged                     ;  36cc /  3B
+
+case3_dst_bc:                               ; row 3b: A dead, HL live
+        LHLD g_a                ; 20cc / 3B
+        XCHG                    ;  4cc / 1B
+        LHLD g_b                ; 20cc / 3B
+        XCHG                    ;  4cc / 1B
+        LDA  g_c                ; 16cc / 3B   <-- replaces PUSH H
+        MOV  C, A               ;  8cc / 1B
+        LDA  g_c+1              ; 16cc / 3B
+        MOV  B, A               ;  8cc / 1B   <-- replaces POP H + LHLD/MOVs
+        JMP  add3               ; 12cc / 3B
+                                ; ---------- 108cc / 19B
+
+
+Comparison table
+----------------
++----------------+----------------+----------------+----------------+----------------+
+| Function       | c8080          | v6llvmc OLD    | v6llvmc NEW    | NEW vs OLD     |
+|                | cycles / bytes | cycles / bytes | cycles / bytes | Δcc /  ΔB      |
++----------------+----------------+----------------+----------------+----------------+
+| case1_dst_hl   |   32 /   4     |   32 /   4     |   32 /   4     |    0 /   0     |
+| case2_dst_de   |   68 /   9     |   48 /   6     |   48 /   6     |    0 /   0  *  |
+| add3           |  124 /  17     |   36 /   3     |   36 /   3     |    0 /   0     |
+| case3_dst_bc   |  100 /  15 †   |  124 /  18     |  108 /  19     |  -16 /  +1     |
++----------------+----------------+----------------+----------------+----------------+
+
+  * case2_dst_de: HL holds `hl_keep` across the V6C_LOAD16_G site, so
+    row 2b (the fallback) is selected. The new row 2a path is
+    exercised by the lit test `case2b_dst_de_hl_dead` instead.
+  † c8080's case3_dst_bc figure excludes the fall-through into add3
+    (15 B of inline arg-marshalling spills, no RET emitted by case3).
+
+
+Net win for case3_dst_bc:  −16 cycles  /  +1 byte  (−12.9 % cycles)
+
+
+Per-row dispatch matrix (post-O73)
+-----------------------------------
++--------+----------+----------------+-------------------------------------+----------+----------+
+| Case   | dst      | Predicate      | Emitted shape                       | Bytes    | Cycles   |
++--------+----------+----------------+-------------------------------------+----------+----------+
+| 1      | HL       | —              | LHLD addr                           | 3        | 20       |
+| 2a     | DE       | HL dead        | LHLD; XCHG                          | 4        | 24       |
+| 2b     | DE       | (fallback)     | XCHG; LHLD; XCHG                    | 5        | 28       |
+| 3a     | BC       | HL dead        | LHLD; MOV B,H; MOV C,L              | 5        | 36       |
+| 3b     | BC       | A dead, HL live| LDA; MOV C,A; LDA+1; MOV B,A        | 8        | 48       |
+| 3c     | BC       | (fallback)     | PUSH H; LHLD; MOVs; POP H           | 7        | 64       |
++--------+----------+----------------+-------------------------------------+----------+----------+
+
+
+Lit coverage
+------------
+`llvm-project/llvm/test/CodeGen/V6C/load16g-shapes.ll` pins all
+six rows above. Each `CHECK-LABEL` block asserts the literal
+expected mnemonics and a `CHECK-NOT` exclusion of shapes that
+must not appear:
+    case1_dst_hl              — row 1
+    case2_dst_de              — row 2b
+    case2b_dst_de_hl_dead     — row 2a
+    case3a_dst_bc_hl_dead     — row 3a
+    case3b_dst_bc_a_dead      — row 3b
+    case3c_dst_bc_a_live      — row 3c
+
+
+Risks resolved
+--------------
+* `addr+1` operand: confirmed via `LDA g_c+1` literal text in
+  `v6llvmc_new02.asm` and `; CHECK-NEXT: LDA g+1` in the lit
+  test — the V6C MC printer correctly serialises
+  `MachineOperand::ChangeToGA(g, offset+1)`.
+* No regressions: `python tests\run_all.py` reports 2/2 suites pass
+  (golden 16/16, lit 106/106 — 131 tests total).
+
+
+Cycle budgets used
+------------------
+Per docs/Vector_06c_instruction_timings.md:
+  LHLD/SHLD = 20cc/3B   LDA/STA = 16cc/3B   LXI = 12cc/3B
+  MOV r,r   =  8cc/1B   XCHG    =  4cc/1B   DAD = 12cc/1B
+  PUSH      = 16cc/1B   POP     = 12cc/1B
+  CALL      = 24cc/3B   JMP     = 12cc/3B   RET = 12cc/1B

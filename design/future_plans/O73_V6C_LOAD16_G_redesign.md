@@ -33,7 +33,8 @@ materialisation.
 
 The current expander honours the contract for `dst=HL` (`LHLD`,
 optimal) and for `dst=DE` (`XCHG; LHLD; XCHG`, preserves HL via the
-swap), but the `dst=BC` path is one-size-fits-all:
+swap, even when HL is dead and the leading `XCHG` could be skipped),
+but the `dst=BC` path is one-size-fits-all:
 
 ```asm
 PUSH H              ; 16cc / 1B
@@ -99,20 +100,26 @@ pseudo's location.
    clobber and that is live across the pseudo, the expander emits
    the cheapest available recovery.
 
-3. **Cheapest-first dispatch for `dst=BC`.** Preference order:
+3. **Cheapest-first dispatch for `dst=DE` and `dst=BC`.**
+   For `dst=DE`:
+   1. `HL` dead → `LHLD addr; XCHG` (HL is scratch).
+   2. else → `XCHG; LHLD addr; XCHG`.
+
+   For `dst=BC`:
    1. `HL` dead → `LHLD addr; MOV B,H; MOV C,L`.
    2. else `A` dead → `LDA addr; MOV C,A; LDA addr+1; MOV B,A`.
    3. else → `PUSH H; LHLD addr; MOV B,H; MOV C,L; POP H`.
 
-   `dst=HL` and `dst=DE` are unchanged from the current expander
-   (already optimal — see table below).
+   `dst=HL` is unchanged from the current expander (already
+   optimal — see table below).
 
 ### Per-shape expansion table
 
 |# |dst|Predicate          |Expansion                                   |Bytes/CCs|
 |--|---|-------------------|--------------------------------------------|---------|
 |1 |HL |(always)           |`LHLD addr`                                 |3B / 20cc|
-|2 |DE |(always)           |`XCHG; LHLD addr; XCHG`                     |5B / 28cc|
+|2a|DE |`HL` dead at pseudo|`LHLD addr; XCHG`                           |4B / 24cc|
+|2b|DE |otherwise          |`XCHG; LHLD addr; XCHG`                     |5B / 28cc|
 |3a|BC |`HL` dead at pseudo|`LHLD addr; MOV B,H; MOV C,L`               |5B / 36cc|
 |3b|BC |`A` dead at pseudo |`LDA addr; MOV C,A; LDA addr+1; MOV B,A`    |8B / 48cc|
 |3c|BC |otherwise          |`PUSH H; LHLD addr; MOV B,H; MOV C,L; POP H`|7B / 64cc|

@@ -1881,10 +1881,12 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   }
 
   case V6C::V6C_LOAD16_G: {
-    // Load 16-bit from global address.
-    // dst=HL: LHLD addr (3B, 16cc) — optimal.
-    // dst=DE: XCHG; LHLD addr; XCHG (5B, 24cc) — preserves HL via swap.
-    // dst=BC: PUSH HL; LHLD addr; MOV B,H; MOV C,L; POP HL (7B, 46cc).
+    // Load 16-bit from global address. O73: per-shape, liveness-aware.
+    //   dst=HL: LHLD addr                                   (3B / 20cc)
+    //   dst=DE: XCHG; LHLD addr; XCHG                       (5B / 28cc)
+    //   dst=BC, HL dead:    LHLD; MOV B,H; MOV C,L          (5B / 36cc)
+    //   dst=BC, A dead:     LDA; MOV C,A; LDA+1; MOV B,A    (8B / 48cc)
+    //   dst=BC, fallback:   PUSH H; LHLD; MOVs; POP H       (7B / 64cc)
     Register DstReg = MI.getOperand(0).getReg();
     MachineOperand &AddrOp = MI.getOperand(1);
 
@@ -1899,35 +1901,64 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     if (DstReg == V6C::HL) {
       emitLHLD(MI);
     } else if (DstReg == V6C::DE) {
-      // XCHG; LHLD addr; XCHG — saves 2B + 22cc vs PUSH/POP path.
-      // First XCHG saves HL into DE (we observe DE only via the second
-      // XCHG, which overwrites HL with the loaded value, so the value
-      // brought into HL by the first XCHG is dead). If DE wasn't live
-      // before, the implicit-DE read is genuinely undef-tolerant —
-      // annotate so -verify-machineinstrs is satisfied.
-      MachineInstr *FirstXchg =
-          BuildMI(MBB, MI, DL, get(V6C::XCHG)).getInstr();
-      emitLHLD(MI);
-      BuildMI(MBB, MI, DL, get(V6C::XCHG));
-      if (!isRegLiveBefore(MBB, FirstXchg->getIterator(), V6C::DE, &RI))
-        markXchgUseUndef(FirstXchg, V6C::DE);
+      // dst=DE, HL dead: LHLD addr; XCHG (4B / 24cc).
+      //   HL is scratch — LHLD overwrites it, XCHG moves loaded value
+      //   into DE; HL ends up holding old DE which is dead anyway.
+      // dst=DE, HL live: XCHG; LHLD addr; XCHG (5B / 28cc).
+      //   First XCHG saves HL into DE (the value brought into HL by
+      //   the first XCHG is dead, since the second XCHG overwrites HL
+      //   with the loaded value). If DE wasn't live before, annotate
+      //   the first XCHG's DE read as undef.
+      if (isRegDeadAtMI(V6C::HL, MI, MBB, &RI)) {
+        emitLHLD(MI);
+        BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      } else {
+        MachineInstr *FirstXchg =
+            BuildMI(MBB, MI, DL, get(V6C::XCHG)).getInstr();
+        emitLHLD(MI);
+        BuildMI(MBB, MI, DL, get(V6C::XCHG));
+        if (!isRegLiveBefore(MBB, FirstXchg->getIterator(), V6C::DE, &RI))
+          markXchgUseUndef(FirstXchg, V6C::DE);
+      }
     } else {
-      // BC case: PUSH HL; LHLD; MOV B,H; MOV C,L; POP HL
+      // BC: three-way dispatch on (HLDead, ADead). See O73 design.
       MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
       MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
 
-      // O42: skip PUSH/POP HL when HL is dead after this instruction.
       bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
-      if (!HLDead)
+      bool ADead  = isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+
+      if (HLDead) {
+        // 5B / 36cc: LHLD addr; MOV B,H; MOV C,L (HL is scratch).
+        emitLHLD(MI);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::H);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::L);
+      } else if (ADead) {
+        // 8B / 48cc: LDA addr; MOV C,A; LDA addr+1; MOV B,A.
+        // Preserves HL — strictly cheaper than PUSH/POP wrap (−16cc, +1B).
+        auto emitLDA = [&](int64_t Bias) {
+          auto MIB = BuildMI(MBB, MI, DL, get(V6C::LDA), V6C::A);
+          if (AddrOp.isGlobal())
+            MIB.addGlobalAddress(AddrOp.getGlobal(),
+                                 AddrOp.getOffset() + Bias);
+          else
+            MIB.addImm(AddrOp.getImm() + Bias);
+        };
+        emitLDA(0);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+        emitLDA(1);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
+      } else {
+        // 7B / 64cc fallback: PUSH H; LHLD; MOV B,H; MOV C,L; POP H.
         BuildMI(MBB, MI, DL, get(V6C::PUSH))
             .addReg(V6C::HL, RegState::Kill)
             .addReg(V6C::SP, RegState::ImplicitDefine);
-      emitLHLD(MI);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::H);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::L);
-      if (!HLDead)
+        emitLHLD(MI);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::H);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::L);
         BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
             .addReg(V6C::SP, RegState::ImplicitDefine);
+      }
     }
 
     MI.eraseFromParent();
