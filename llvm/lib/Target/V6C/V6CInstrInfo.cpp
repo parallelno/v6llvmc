@@ -2034,48 +2034,6 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     return true;
   }
 
-  case V6C::V6C_LOAD8_G: {
-    // Expand to: LXI HL, addr; MOV $dst, M
-    Register DstReg = MI.getOperand(0).getReg();
-    MachineOperand &AddrOp = MI.getOperand(1);
-
-    MachineInstrBuilder LXI = BuildMI(MBB, MI, DL, get(V6C::LXI))
-        .addReg(V6C::HL, RegState::Define);
-    if (AddrOp.isImm())
-      LXI.addImm(AddrOp.getImm());
-    else if (AddrOp.isGlobal())
-      LXI.addGlobalAddress(AddrOp.getGlobal(), AddrOp.getOffset());
-    else if (AddrOp.isSymbol())
-      LXI.addExternalSymbol(AddrOp.getSymbolName());
-
-    BuildMI(MBB, MI, DL, get(V6C::MOVrM))
-        .addReg(DstReg, RegState::Define);
-
-    MI.eraseFromParent();
-    return true;
-  }
-
-  case V6C::V6C_STORE8_G: {
-    // Expand to: LXI HL, addr; MOV M, $src
-    Register SrcReg = MI.getOperand(0).getReg();
-    MachineOperand &AddrOp = MI.getOperand(1);
-
-    MachineInstrBuilder LXI = BuildMI(MBB, MI, DL, get(V6C::LXI))
-        .addReg(V6C::HL, RegState::Define);
-    if (AddrOp.isImm())
-      LXI.addImm(AddrOp.getImm());
-    else if (AddrOp.isGlobal())
-      LXI.addGlobalAddress(AddrOp.getGlobal(), AddrOp.getOffset());
-    else if (AddrOp.isSymbol())
-      LXI.addExternalSymbol(AddrOp.getSymbolName());
-
-    BuildMI(MBB, MI, DL, get(V6C::MOVMr))
-        .addReg(SrcReg);
-
-    MI.eraseFromParent();
-    return true;
-  }
-
   case V6C::V6C_SHL16: {
     // Left shift i16 by constant amount.
     // For 1-7: unrolled ADD self (lo+carry→hi).

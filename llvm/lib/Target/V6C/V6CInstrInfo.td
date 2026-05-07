@@ -606,18 +606,6 @@ def V6C_SELECT_CC : V6CPseudo<(outs GR8:$dst),
     "# V6C_SELECT_CC $dst, $trueval, $falseval, $cc",
     [(set i8:$dst, (V6Cselectcc i8:$trueval, i8:$falseval, (i8 imm:$cc)))]>;
 
-// V6C_LOAD8_G — Load i8 from global address.
-// Pseudo: expands to LXI HL, addr + MOV $dst, M
-let mayLoad = 1, Defs = [HL] in
-def V6C_LOAD8_G : V6CPseudo<(outs GR8:$dst), (ins imm16:$addr),
-    "# LOAD8 $dst, $addr", []>;
-
-// V6C_STORE8_G — Store i8 to global address.
-// Pseudo: expands to LXI HL, addr + MOV M, $src
-let mayStore = 1, Defs = [HL] in
-def V6C_STORE8_G : V6CPseudo<(outs), (ins GR8:$src, imm16:$addr),
-    "# STORE8 $src, $addr", []>;
-
 // V6C_LOAD8_P — Load i8 from i16 pointer (in register pair).
 // Expansion preserves HL in all paths (LDAX, PUSH/POP, or direct MOV r,M).
 let mayLoad = 1 in
