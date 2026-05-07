@@ -24,7 +24,8 @@ two things V6C cares about:
 So O70 made the runtime header-only:
 
 ```c
-#define V6C_RT static __attribute__((noinline, used, naked))
+#define V6C_RT static __attribute__((noinline, used, naked, \
+                                     annotate("v6c-rt-helper")))
 
 V6C_RT unsigned char __mulqi3(unsigned char a, unsigned char b) {
     __asm__ volatile ( /* 8-iteration shift-add ending in MOV A,L; RET */ );
@@ -34,6 +35,13 @@ V6C_RT unsigned char __mulqi3(unsigned char a, unsigned char b) {
 Each translation unit gets its own per-TU copy. `--gc-sections` (now
 on by default for V6C in ld.lld) prunes the ones the program never
 calls. IPRA recovers each routine's true clobber set.
+
+The `annotate("v6c-rt-helper")` tag is purely metadata. It has **no**
+effect on codegen, linkage, calling convention, or section placement;
+it only marks the function so the V6C `AsmPrinter` can suppress its
+body from `.s` text output by default. See
+[Suppressing helpers from `.s` output](#suppressing-helpers-from-s-output)
+below.
 
 ## What the header provides
 
@@ -77,6 +85,62 @@ clang -target i8080-unknown-v6c -fno-v6c-auto-include main.c -o out.rom
 
 You'll then see `ld.lld: error: undefined symbol: __mulhi3` (etc.)
 unless you provide them.
+
+## Suppressing helpers from `.s` output
+
+Because `v6c_arith.h` is auto-included and every helper is `used`,
+running `clang -S` on even a tiny source file would otherwise dump all
+~15 runtime routines into the assembly listing alongside user code,
+making the output hard to read. The V6C `AsmPrinter` therefore
+**suppresses helpers from `.s` text output by default**:
+
+| Mode | Helpers in output? |
+|------|--------------------|
+| `clang -S foo.c -o foo.s` (text)               | No (suppressed) |
+| `clang -S foo.c -o foo.s -mllvm -mv6c-print-rt-helpers` | Yes |
+| `clang -c foo.c -o foo.o` (object)             | Yes (always — required for linking) |
+| `llc -filetype=obj foo.ll` (object)            | Yes (always — required for linking) |
+
+Mechanism:
+
+1. Each helper carries `__attribute__((annotate("v6c-rt-helper")))`
+   (applied automatically by the `V6C_RT` macro). The clang frontend
+   lowers this to an entry in the module-level
+   `@llvm.global.annotations` global.
+2. `V6CAsmPrinter::doInitialization` walks `@llvm.global.annotations`,
+   collects every function tagged `"v6c-rt-helper"`, and stores their
+   names in a `StringSet`.
+3. `V6CAsmPrinter::runOnMachineFunction` returns early — skipping
+   directives, label, and instruction emission — when **all** of the
+   following hold:
+   - `getV6CPrintRTHelpersEnabled()` is `false` (default), and
+   - `OutStreamer->hasRawTextSupport()` is `true` (i.e. assembly text,
+     not object code), and
+   - the function name is in the helper set.
+
+Because the suppression is gated by `hasRawTextSupport()`, object-file
+emission is never affected and the linker resolves helper calls
+normally.
+
+## Tagging your own helpers
+
+If you ship a private routine under the same convention (header-only,
+naked, hand-written 8080 asm) and want it filtered from `.s` output,
+add the same annotation:
+
+```c
+static __attribute__((noinline, used, naked,
+                      annotate("v6c-rt-helper")))
+unsigned int my_helper(unsigned int a, unsigned int b) {
+    __asm__ volatile (
+        /* hand-written 8080 body */
+        "RET\n"
+    );
+}
+```
+
+Pass `-mllvm -mv6c-print-rt-helpers` whenever you need to inspect the
+generated body.
 
 ## Calling convention contract (free-list C ABI)
 
