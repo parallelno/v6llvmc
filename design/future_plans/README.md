@@ -73,6 +73,7 @@
 | O72 | V6C_STORE16_P Per-Shape Redesign (companion to O71) — **DONE** | [O72_V6C_STORE16_P_redesign.md](O72_V6C_STORE16_P_redesign.md) | V6C |
 | O73 | V6C_LOAD16_G Per-Shape Redesign (LDA-pair when A dead, −16cc/+1B for dst=BC) — **DONE** | [O73_V6C_LOAD16_G_redesign.md](O73_V6C_LOAD16_G_redesign.md) | V6C |
 | O74 | V6C_STORE16_G Per-Shape Redesign (drop `Defs=[HL]`, STA-pair when A dead, companion to O73) — **DONE** | [O74_V6C_STORE16_G_redesign.md](O74_V6C_STORE16_G_redesign.md) | V6C |
+| O76 | V6C_LOAD8_P Per-Shape Redesign (SpareR-A + universal XCHG bypass for addr=DE/A-live, eliminates PSW-wrap on hot A-live paths) — **DONE** | [O76_V6C_LOAD8_P_redesign.md](O76_V6C_LOAD8_P_redesign.md) | V6C |
 | O-LLD | Native ld.lld Linker (replaces Python `v6c_link.py`) | [../plan_O_LLD_native_linker.md](../plan_O_LLD_native_linker.md) | V6C |
 | O-AsmInterop | Asm-Interop Overhaul (i8080 mnemonics, free-list CC, MC AsmParser, V6C resource headers, retire libv6c-builtins) | [../plan_asm_interop_overhaul.md](../plan_asm_interop_overhaul.md) | V6C |
 ---
@@ -145,6 +146,7 @@
 | O67 | i8 Rotate ISel via RLC/RRC | V6C | ~14× size & speed on rotl/rotr by const | Low (CRC/hash/bit-perm code) | Low | Very Low | None |
 | O68 | Wide SHL/ROTL by 1 via `DAD H` | V6C | 5B+28cc per i16 `<<1`; 7B+44cc per `rotl i16,1` (branchful, preserves A) | High (i16 `<<1`) / Low (rotates) | Low (Phase 1) / Med (Phases 2–3) | Very Low | None (composes with O40, O62, O67) | Phase 1 de-facto via O40+LowerSHL_i16; Phase 2 (rotl i16, 1 → DAD H + ACI 0); Phase 3 deferred (~200 LOC) |
 | O69 | Direct Frame-Index Memory Pseudos | V6C | 32cc, 4B per i16 stack-arg load; removes address temporaries for i8/i16 stores too | Medium (stack args / frame-index loads/stores) | Low-Med | Medium | Stack-arg correctness fixes; frame-index load/store selection |
+| O76 | V6C_LOAD8_P SpareR-A + XCHG bypass | V6C | −12cc/fire (SpareR), −28cc & −1B/fire (XCHG bypass for any addr=DE, A-live, non-A dst) | Med-High (any A-live load through BC/DE with non-A dst) | Low-Med | Low | None (composes with O70-style SpareR helpers from O71/O72) |
 | O-LLD | Native ld.lld linker (replaces Python `v6c_link.py`) | V6C | toolchain hardening | One-shot | Med-High | Low | lld build wired in |
 
 ### Implementation order
@@ -193,6 +195,7 @@
 37. ~~**O67** — i8 rotate ISel via RLC/RRC, ~14× speedup/size on constant rotl/rotr, ~60 lines~~ ✅
 38. ~~**O68** — wide SHL/ROTL by 1 via `DAD H`. Phase 1 (i16 `<<1`) is already de-facto delivered via O40 + `LowerSHL_i16` (no patch needed). **Phase 2 ✅** (`rotl i16, 1` → `DAD H; MOV A,L; ACI 0; MOV L,A`, 5B/36cc, saves −12B/−64cc per rotate; clobbers A, no liveness regression). Phase 3 (i32) deferred (~200 LOC of new infrastructure required — multi-result SDNode + glue, no `ReplaceNodeResults` hook today).~~ ✅
 39. ~~**O69** — select direct frame-index memory pseudos, removing address temporaries before RA, ~100 lines.~~ ✅
+40. **O76** — V6C_LOAD8_P per-shape redesign: SpareR-A path (dead GR8 instead of PSW-wrap) + universal XCHG bypass for `addr=DE, A live, dst≠A` (3B/16cc, all six non-A dsts via partner-MOV trick), ~80 lines. — **DONE**
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 

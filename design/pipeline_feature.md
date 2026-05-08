@@ -67,7 +67,14 @@ Enter this phase after all implementation plan steps are complete.
    ```
    powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1
    ```
-6. Make sure result.txt is created. Details in `tests\features\README.md`.
+6. Make sure result.txt is created. It must contain:
+- The C test case code.
+- c8080 asm, but only the main func and dependent funcs body converted from Z80 asm to i8080 asm.
+- c8080 stats: worst CPU cycles, length in bytes for each function.
+- v6llvmc old asm.
+- v6llvmc new asm.
+- Comparisen table for c8080, v6llvmc old, v6llvmc new that includes CPU cycles, length in bytes for each function.
+Details in `tests\features\README.md`.
 
 ---
 

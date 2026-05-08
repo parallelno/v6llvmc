@@ -99,10 +99,9 @@ main:                                   ; @main
 	LXI	H, .LLo61_3+1
 	MOV	M, C
 	POP	H
-	PUSH	PSW
-	LDAX	D
-	MOV	C, A
-	POP	PSW
+	XCHG
+	MOV	C, M
+	XCHG
 	PUSH	H
 	LXI	H, .LLo61_7+1
 	MOV	M, C

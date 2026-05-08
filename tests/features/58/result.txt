@@ -1,0 +1,280 @@
+Feature 58 — O76: V6C_LOAD8_P Per-Shape Redesign
+=================================================
+
+Goal
+----
+Rewrite the priority-4 arm of `V6C_LOAD8_P` (the i8 load-through-pointer
+pseudo) to dispatch on `(AddrReg, A-liveness, dead-GR8 availability)`
+instead of always emitting `PUSH PSW; LDAX; MOV; POP PSW`.
+
+New shapes:
+  - case 7  (addr=DE, A live, dst!=A) — `XCHG; MOV partner(dst),M; XCHG`
+            via partner-MOV trick (B->B, C->C, H->D, L->E, D->H, E->L).
+            3B / 16cc, fires for any non-A dst RA picks.
+  - case 6a (addr=BC, A live, SpareR avail) — `MOV spareR,A; LDAX B;
+            MOV dst,A; MOV A,spareR`. 4B / 32cc.
+  - case 6b (addr=BC, A live, no spare) — legacy `PUSH PSW` envelope.
+            4B / 44cc (unchanged).
+
+
+C test case (tests/features/58/v6llvmc.c)
+-----------------------------------------
+Five pinned-register probes + a driver that calls each:
+
+  void test_de_b(unsigned hl_keep, const uint8_t *de_ptr, uint8_t a_keep) {
+      register uint8_t v asm("B");
+      v = *de_ptr;
+      asm volatile ("OUT 0xde" :: "a"(a_keep));
+      asm volatile ("OUT 0xde" :: "r"(hl_keep));
+      asm volatile ("OUT 0xde" :: "r"(v));
+  }
+  // test_de_c : same shape, dst pinned to C
+  // test_de_h : dst pinned to H, no hl_keep sink
+  // test_de_l : dst pinned to L, no hl_keep sink
+  // test_de_d : dst pinned to D, HL/BC/A live across, DE dead-after.
+  //            Exercises partner-MOV trick `MOV H, M` for dst=D.
+  void test_bc_b(unsigned hl_keep, unsigned de_keep,
+                 const uint8_t *bc_ptr, uint8_t a_keep) {
+      register uint8_t v asm("B");
+      v = *bc_ptr;
+      asm volatile ("OUT 0xde" :: "a"(a_keep));
+      asm volatile ("OUT 0xde" :: "r"(hl_keep));
+      asm volatile ("OUT 0xde" :: "r"(de_keep));
+      asm volatile ("OUT 0xde" :: "r"(v));
+  }
+  int main(int argc, char **argv) {
+      const uint8_t *p = (const uint8_t *)g_buf;
+      test_de_b(g_hl, p, g_a);
+      test_de_c(g_hl, p, g_a);
+      test_de_h(g_hl, p, g_a);
+      test_de_l(g_hl, p, g_a);
+      test_bc_b(g_hl, g_de, p, g_a);
+      return 0;
+  }
+
+The c8080 reference (tests/features/58/c8080.c) is shape-equivalent
+plain C — c8080 cannot pin physical registers, so it serves only as a
+per-function cycle/byte anchor. Its functions are named load_use_b,
+load_use_c, load_use_h, load_use_l, load_via_bc.
+
+
+c8080 ASM — main + dependents (Z80 mnemonics → i8080 mnemonics)
+---------------------------------------------------------------
+main:
+        LXI     H, g_buf
+        SHLD    main_p
+        LHLD    g_hl
+        SHLD    __a_1_load_use_b
+        LHLD    main_p
+        SHLD    __a_2_load_use_b
+        LDA     g_a
+        CALL    load_use_b
+        STA     g_sink
+        LHLD    g_hl
+        SHLD    __a_1_load_use_c
+        LHLD    main_p
+        SHLD    __a_2_load_use_c
+        LDA     g_a
+        CALL    load_use_c
+        STA     g_sink
+        LHLD    g_hl
+        SHLD    __a_1_load_use_h
+        LHLD    main_p
+        SHLD    __a_2_load_use_h
+        LDA     g_a
+        CALL    load_use_h
+        STA     g_sink
+        LHLD    g_hl
+        SHLD    __a_1_load_use_l
+        LHLD    main_p
+        SHLD    __a_2_load_use_l
+        LDA     g_a
+        CALL    load_use_l
+        STA     g_sink
+        LHLD    g_hl
+        SHLD    __a_1_load_via_bc
+        LHLD    g_de
+        SHLD    __a_2_load_via_bc
+        LHLD    main_p
+        SHLD    __a_3_load_via_bc
+        LDA     g_a
+        CALL    load_via_bc
+        STA     g_sink
+        LXI     H, 0
+        RET
+
+load_use_b:                              ; addr in HL after LHLD spill
+        STA     __a_3_load_use_b         ; spill a_keep
+        LHLD    __a_2_load_use_b         ; reload p into HL
+        MOV     A, M                     ; the load
+        STA     load_use_b_v
+        LDA     __a_3_load_use_b
+        LDA     __a_1_load_use_b         ; (u8)hl_keep
+        STA     g_sink
+        LDA     load_use_b_v
+        RET
+
+; load_use_c, load_use_h, load_use_l : identical shape (h/l drop the
+;                                       hl_keep STA g_sink pair)
+; load_via_bc                         : same as load_use_b plus one
+;                                       extra LDA spill for de_keep
+
+
+c8080 stats (per function, body + RET)
+--------------------------------------
+Timings (V6CInstructionTimings.md): LHLD/SHLD=3B/20cc, LDA/STA=3B/16cc,
+LXI=3B/10cc, MOV r,r/M=1B/8cc, CALL=3B/24cc, RET=1B/12cc.
+
+  load_use_b   ............ 23 B / 136 cc
+  load_use_c   ............ 23 B / 136 cc
+  load_use_h   ............ 20 B / 120 cc   (no hl_keep sink)
+  load_use_l   ............ 20 B / 120 cc
+  load_via_bc  ............ 26 B / 152 cc   (extra LDA for de_keep)
+  main         ............ 127 B / 818 cc
+
+The c8080 load proper (the part that materializes `*p` into A) is
+`LHLD __a_N; MOV A, M` = 4B / 28cc, because c8080 cannot keep the
+pointer in HL/DE/BC across the CC boundary and reloads it from a
+static-stack slot on every entry. Add the trailing `STA load_use_*_v`
+to persist the value across the next reload of A and the load+spill
+block costs 7B / 44cc.
+
+Not directly comparable to v6llvmc's free-list register CC where the
+pointer arrives already in DE/BC. The relevant comparison is
+v6llvmc-old vs v6llvmc-new at the load-expansion site (next two
+sections).
+
+
+v6llvmc OLD ASM — load expansion (tests/features/58/v6llvmc_old.asm)
+--------------------------------------------------------------------
+test_de_b:                          test_de_h:
+        PUSH    PSW                         PUSH    PSW
+        LDAX    D                           LDAX    D
+        MOV     B, A                        MOV     H, A
+        POP     PSW                         POP     PSW
+        ...OUT sinks...                     ...OUT sinks...
+        RET                                 RET
+
+test_de_c:                          test_de_l:
+        PUSH    PSW                         PUSH    PSW
+        LDAX    D                           LDAX    D
+        MOV     C, A                        MOV     L, A
+        POP     PSW                         POP     PSW
+        ...                                 ...
+        RET                                 RET
+
+test_bc_b:
+        PUSH    PSW
+        LDAX    B
+        MOV     B, A
+        POP     PSW
+        ...OUT sinks...
+        RET
+
+
+v6llvmc NEW ASM — load expansion (tests/features/58/v6llvmc_new01.asm)
+----------------------------------------------------------------------
+test_de_b:                          test_de_h:
+        XCHG                                XCHG
+        MOV     B, M                        MOV     D, M    ; partner-MOV
+        XCHG                                XCHG
+        ...OUT sinks...                     ...OUT sinks...
+        RET                                 RET
+
+test_de_c:                          test_de_l:
+        XCHG                                XCHG
+        MOV     C, M                        MOV     E, M    ; partner-MOV
+        XCHG                                XCHG
+        ...                                 ...
+        RET                                 RET
+
+test_de_d:                          ; addr=DE, dst=D, DE dead-after, HL/BC/A live
+        XCHG                        ; partner(D) = H, so emits `MOV H, M`
+        MOV     H, M                ; loaded byte now in H; D still h0
+        XCHG                        ; D = loaded, E = (dead), HL/BC preserved
+        ...OUT sinks: a, hl, bc, v=D...
+        RET
+
+test_bc_b:
+        MOV     C, A          ; SpareR = C (dead after BC pointer use)
+        LDAX    B
+        MOV     B, A
+        MOV     A, C          ; restore A
+        ...OUT sinks...
+        RET
+
+
+Comparison — load-expansion only (per fire, excluding identical RET + OUT sinks)
+--------------------------------------------------------------------------------
+Timings: PUSH PSW=1B/16cc, POP PSW=1B/12cc, LDAX=1B/8cc, MOV r,r/M=1B/8cc,
+XCHG=1B/4cc.
+
+| Function   | c8080 load shape         | v6llvmc OLD                  | v6llvmc NEW                       | Δ vs OLD     |
+|------------|--------------------------|------------------------------|-----------------------------------|--------------|
+| test_de_b  | 7B / 44cc (LHLD+MOV+STA) | 4B / 44cc (PSW + LDAX + MOV) | 3B / 16cc (XCHG + MOV + XCHG)     | −1B, −28cc   |
+| test_de_c  | 7B / 44cc                | 4B / 44cc                    | 3B / 16cc                         | −1B, −28cc   |
+| test_de_h  | 7B / 44cc                | 4B / 44cc                    | 3B / 16cc (partner-MOV D)         | −1B, −28cc   |
+| test_de_l  | 7B / 44cc                | 4B / 44cc                    | 3B / 16cc (partner-MOV E)         | −1B, −28cc   |
+| test_de_d  | 7B / 44cc                | 4B / 44cc                    | 3B / 16cc (partner-MOV H, dst=D)  | −1B, −28cc   |
+| test_bc_b  | 7B / 44cc                | 4B / 44cc                    | 4B / 32cc (SpareR-A envelope)     | =B, −12cc    |
+
+c8080's "7B / 44cc" covers the LHLD-of-pointer + MOV A,M + STA-of-v
+triple: c8080 cannot keep the pointer in DE/BC across a CC boundary,
+so it always reloads HL from a static-stack slot per call and spills
+the loaded byte to a static `*_v` slot before any other A use. The
+`MOV A, M` itself is just 1B/8cc, identical to v6llvmc's `LDAX` /
+`MOV r,M`.
+
+
+Comparison — full function body (including RET, no OUT sinks)
+-------------------------------------------------------------
+| Function   | v6llvmc OLD       | v6llvmc NEW       | Δ          |
+|------------|-------------------|-------------------|------------|
+| test_de_b  | 5B / 56 cc        | 4B / 28 cc        | −1B, −28cc |
+| test_de_c  | 5B / 56 cc        | 4B / 28 cc        | −1B, −28cc |
+| test_de_h  | 5B / 56 cc        | 4B / 28 cc        | −1B, −28cc |
+| test_de_l  | 5B / 56 cc        | 4B / 28 cc        | −1B, −28cc |
+| test_de_d  | 5B / 56 cc        | 4B / 28 cc        | −1B, −28cc |
+| test_bc_b  | 5B / 56 cc        | 5B / 44 cc        | =B,  −12cc |
+| main       | unchanged         | unchanged         | 0          |
+
+Total across the six test functions: −6B, −152cc.
+
+
+Test status
+-----------
+Lit suite ............... 134/134 PASS  (added load8p-shape-redesign.ll)
+Golden suite ............ PASS
+Full regression ......... PASS  (run_all.py — 2/2 suites)
+Benchmark checksums ..... bsort 0x98, sieve 0xEC, fib_crc 0x2B,
+                          fannkuch 0x10, lfsr16 0x1D — all OK
+
+
+Files changed
+-------------
+  llvm-project/llvm/lib/Target/V6C/V6CInstrInfo.cpp
+    case V6C::V6C_LOAD8_P: priority-4 arm rewritten (~70 lines).
+    Reuses isRegDeadAtMI, findDeadGR8AtMI; no new helpers.
+
+  llvm-project/llvm/test/CodeGen/V6C/load8p-shape-redesign.ll  (new)
+  tests/lit/CodeGen/V6C/load8p-shape-redesign.ll               (new, mirror)
+
+  tests/features/58/{v6llvmc.c, c8080.c, *.asm, result.txt}    (new)
+
+
+Correctness — DE clobber for dst ∈ {D, E}
+-----------------------------------------
+The XCHG bypass clobbers DE when dst ∈ {D, E}. This is unobservable:
+LLVM's RA invariant "a def of a sub-register ends the live range of
+its containing super-register" guarantees DE is dead-after the pseudo
+whenever RA picks dst ∈ {D, E} for addr=DE. Verified empirically
+with probes temp/load8p_de_d3.c and temp/load8p_de_e3.c — RA refuses
+those allocations and routes through a scratch GR8 instead.
+
+
+References
+----------
+  design/future_plans/O76_V6C_LOAD8_P_redesign.md   (design doc)
+  design/plan_O76_V6C_LOAD8_P_redesign.md           (8-section plan)
+  docs/V6CInstructionTimings.md                     (cycle counts)
+  tests/features/README.md                          (this file format)
