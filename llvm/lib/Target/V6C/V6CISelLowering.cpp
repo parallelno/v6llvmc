@@ -500,12 +500,28 @@ SDValue V6CTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
     return Opc >= V6CISD::ADDF && Opc <= V6CISD::DECF;
   };
   if (LHS.getValueType() == MVT::i8 && isNullConstant(RHS) &&
-      (V6CC == V6CCC::COND_Z || V6CC == V6CCC::COND_NZ) &&
-      isFlagArith(LHS.getOpcode())) {
-    SDValue Flags = LHS.getValue(1);
-    SDValue CCVal = DAG.getConstant(V6CC, DL, MVT::i8);
-    return DAG.getNode(V6CISD::BRCOND, DL, MVT::Other,
-                       {Chain, Dest, CCVal, Flags});
+      (V6CC == V6CCC::COND_Z || V6CC == V6CCC::COND_NZ)) {
+    // LegalizeDAG processes nodes parent-first via AllNodes traversal,
+    // so BR_CC is typically visited *before* its ISD::ADD/SUB/AND/OR/XOR
+    // operand has been Custom-lowered to a V6CISD::*F node.  If LHS is
+    // still a raw ISD arithmetic op we can lower, do it here proactively;
+    // SelectionDAG CSE will dedupe with the eventual LowerArithF call.
+    unsigned LhsOp = LHS.getOpcode();
+    if (LhsOp == ISD::ADD || LhsOp == ISD::SUB || LhsOp == ISD::AND ||
+        LhsOp == ISD::OR  || LhsOp == ISD::XOR) {
+      SDValue Lowered = LowerArithF(LHS, DAG);
+      if (Lowered) {
+        // Redirect any other in-flight users of LHS to the new value.
+        DAG.ReplaceAllUsesOfValueWith(LHS, Lowered);
+        LHS = Lowered;
+      }
+    }
+    if (isFlagArith(LHS.getOpcode())) {
+      SDValue Flags = LHS.getValue(1);
+      SDValue CCVal = DAG.getConstant(V6CC, DL, MVT::i8);
+      return DAG.getNode(V6CISD::BRCOND, DL, MVT::Other,
+                         {Chain, Dest, CCVal, Flags});
+    }
   }
 
   // For i8: emit CMP (produces FLAGS as SSA i8) then BRCOND consumes it.
@@ -646,12 +662,25 @@ SDValue V6CTargetLowering::LowerSELECT_CC(SDValue Op,
     return Opc >= V6CISD::ADDF && Opc <= V6CISD::DECF;
   };
   if (LHS.getValueType() == MVT::i8 && isNullConstant(RHS) &&
-      (V6CC == V6CCC::COND_Z || V6CC == V6CCC::COND_NZ) &&
-      isFlagArith(LHS.getOpcode())) {
-    SDValue Flags = LHS.getValue(1);
-    SDVTList VTs = DAG.getVTList(Op.getValueType());
-    return DAG.getNode(V6CISD::SELECT_CC, DL, VTs,
-                       {TrueVal, FalseVal, CCVal, Flags});
+      (V6CC == V6CCC::COND_Z || V6CC == V6CCC::COND_NZ)) {
+    // Mirror of LowerBR_CC: proactively materialize the *F when LHS is
+    // still raw ISD::ADD/SUB/AND/OR/XOR (LegalizeDAG visits SELECT_CC
+    // before its arithmetic operand).  CSE will dedupe.
+    unsigned LhsOp = LHS.getOpcode();
+    if (LhsOp == ISD::ADD || LhsOp == ISD::SUB || LhsOp == ISD::AND ||
+        LhsOp == ISD::OR  || LhsOp == ISD::XOR) {
+      SDValue Lowered = LowerArithF(LHS, DAG);
+      if (Lowered) {
+        DAG.ReplaceAllUsesOfValueWith(LHS, Lowered);
+        LHS = Lowered;
+      }
+    }
+    if (isFlagArith(LHS.getOpcode())) {
+      SDValue Flags = LHS.getValue(1);
+      SDVTList VTs = DAG.getVTList(Op.getValueType());
+      return DAG.getNode(V6CISD::SELECT_CC, DL, VTs,
+                         {TrueVal, FalseVal, CCVal, Flags});
+    }
   }
 
   // For i16 comparison operands, emit CMP16 then SELECT_CC (uses FLAGS).
