@@ -34,11 +34,12 @@ hi:
 ; --- Negative: i32 add lowers to a multi-byte SBB chain whose CY is ---
 ; --- read by a subsequent JNC; the codegen materialises 0 into A    ---
 ; --- BETWEEN the SBB and the JNC. The peephole MUST decline.        ---
-; --- Expect a `MVI A, 0` to remain on that path.                    ---
+; --- Expect a `MVI A, 0` to remain on that path. (Other flag-       ---
+; --- preserving MOVs may schedule between MVI and JNC.)             ---
 ; CHECK-LABEL: add_i32:
 ; CHECK:       SBB
 ; CHECK-NEXT:  MVI{{.*}}A{{.*}}0
-; CHECK-NEXT:  JNC
+; CHECK:       JNC
 define i32 @add_i32(i32 %a, i32 %b) {
   %r = add i32 %a, %b
   ret i32 %r

@@ -48,12 +48,24 @@ def GR16StackPair : RegisterOperand<GR16Stack, "printRegPair8080">;
 
 def SDT_V6CRet     : SDTypeProfile<0, 0, []>;
 def SDT_V6CCall    : SDTypeProfile<0, 1, [SDTCisVT<0, iPTR>]>;
-def SDT_V6CCmp     : SDTypeProfile<0, 2, [SDTCisSameAs<0, 1>]>;
-def SDT_V6CBrCond  : SDTypeProfile<0, 2, [SDTCisVT<0, OtherVT>,
-                                           SDTCisVT<1, i8>]>;
-def SDT_V6CSelectCC : SDTypeProfile<1, 3, [SDTCisSameAs<0, 1>,
+
+// O75 Phase A: FLAGS travels as an SSA-typed i8 value, not glue. The i8
+// "flags" output is bound to the physical FLAGS register at TableGen
+// pattern level (see CMPr/CPI/V6C_CMP16/V6C_BRCOND/V6C_SELECT_CC).
+//
+// V6Ccmp:     (i8 flags) = cmp(T lhs, T rhs)   ; T is i8 or i16
+def SDT_V6CCmp     : SDTypeProfile<1, 2, [SDTCisVT<0, i8>,
+                                           SDTCisSameAs<1, 2>,
+                                           SDTCisInt<1>]>;
+// V6Cbrcond:  brcond(chain, dst, cc, i8 flags)
+def SDT_V6CBrCond  : SDTypeProfile<0, 3, [SDTCisVT<0, OtherVT>,
+                                           SDTCisVT<1, i8>,
+                                           SDTCisVT<2, i8>]>;
+// V6Cselectcc: (T) = selectcc(T true, T false, cc, i8 flags)
+def SDT_V6CSelectCC : SDTypeProfile<1, 4, [SDTCisSameAs<0, 1>,
                                             SDTCisSameAs<1, 2>,
-                                            SDTCisVT<3, i8>]>;
+                                            SDTCisVT<3, i8>,
+                                            SDTCisVT<4, i8>]>;
 def SDT_V6CWrapper : SDTypeProfile<1, 1, [SDTCisSameAs<0, 1>,
                                            SDTCisPtrTy<0>]>;
 
@@ -62,16 +74,15 @@ def V6Cretflag  : SDNode<"V6CISD::RET", SDTNone,
 def V6Ccall     : SDNode<"V6CISD::CALL", SDT_V6CCall,
                           [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue,
                            SDNPVariadic]>;
-def V6Ccmp      : SDNode<"V6CISD::CMP", SDT_V6CCmp, [SDNPOutGlue]>;
+def V6Ccmp      : SDNode<"V6CISD::CMP", SDT_V6CCmp, []>;
 
-// CMP_ZERO: zero-test a single i16 value, produces FLAGS.
-def SDT_V6CCmpZero : SDTypeProfile<0, 1, [SDTCisVT<0, i16>]>;
-def V6Ccmpzero : SDNode<"V6CISD::CMP_ZERO", SDT_V6CCmpZero, [SDNPOutGlue]>;
+// CMP_ZERO: zero-test a single i16 value, produces FLAGS (i8 SSA).
+def SDT_V6CCmpZero : SDTypeProfile<1, 1, [SDTCisVT<0, i8>, SDTCisVT<1, i16>]>;
+def V6Ccmpzero : SDNode<"V6CISD::CMP_ZERO", SDT_V6CCmpZero, []>;
 
 def V6Cbrcond   : SDNode<"V6CISD::BRCOND", SDT_V6CBrCond,
-                          [SDNPHasChain, SDNPInGlue]>;
-def V6Cselectcc : SDNode<"V6CISD::SELECT_CC", SDT_V6CSelectCC,
-                          [SDNPInGlue]>;
+                          [SDNPHasChain]>;
+def V6Cselectcc : SDNode<"V6CISD::SELECT_CC", SDT_V6CSelectCC, []>;
 def V6Cwrapper  : SDNode<"V6CISD::Wrapper", SDT_V6CWrapper>;
 
 // BR_CC16: chain, lhs(i16), rhs(i16), cc(i8), dest(OtherVT) → chain
@@ -81,6 +92,31 @@ def SDT_V6CBrCC16 : SDTypeProfile<0, 4, [SDTCisVT<0, i16>,
                                           SDTCisVT<3, OtherVT>]>;
 def V6Cbrcc16 : SDNode<"V6CISD::BR_CC16", SDT_V6CBrCC16,
                         [SDNPHasChain]>;
+
+// O75 Phase B: flag-producing 8-bit arithmetic.
+//   *F      : (i8 dst, i8 flags) = OP(i8 lhs, i8 rs)
+//   *F_IMM  : (i8 dst, i8 flags) = OP(i8 lhs, i8imm)
+//   INCF/DECF: (i8 dst, i8 flags) = OP(i8 src)
+def SDT_V6CArithF    : SDTypeProfile<2, 2, [SDTCisVT<0, i8>,
+                                             SDTCisVT<1, i8>,
+                                             SDTCisVT<2, i8>,
+                                             SDTCisVT<3, i8>]>;
+def SDT_V6CIncDecF   : SDTypeProfile<2, 1, [SDTCisVT<0, i8>,
+                                             SDTCisVT<1, i8>,
+                                             SDTCisVT<2, i8>]>;
+
+def V6Caddf      : SDNode<"V6CISD::ADDF",     SDT_V6CArithF, [SDNPCommutative]>;
+def V6Csubf      : SDNode<"V6CISD::SUBF",     SDT_V6CArithF, []>;
+def V6Candf      : SDNode<"V6CISD::ANDF",     SDT_V6CArithF, [SDNPCommutative]>;
+def V6Corf       : SDNode<"V6CISD::ORF",      SDT_V6CArithF, [SDNPCommutative]>;
+def V6Cxorf      : SDNode<"V6CISD::XORF",     SDT_V6CArithF, [SDNPCommutative]>;
+def V6Caddf_imm  : SDNode<"V6CISD::ADDF_IMM", SDT_V6CArithF, []>;
+def V6Csubf_imm  : SDNode<"V6CISD::SUBF_IMM", SDT_V6CArithF, []>;
+def V6Candf_imm  : SDNode<"V6CISD::ANDF_IMM", SDT_V6CArithF, []>;
+def V6Corf_imm   : SDNode<"V6CISD::ORF_IMM",  SDT_V6CArithF, []>;
+def V6Cxorf_imm  : SDNode<"V6CISD::XORF_IMM", SDT_V6CArithF, []>;
+def V6Cincf      : SDNode<"V6CISD::INCF",     SDT_V6CIncDecF, []>;
+def V6Cdecf      : SDNode<"V6CISD::DECF",     SDT_V6CIncDecF, []>;
 
 // SEXT: sign-extend i8 to i16
 def SDT_V6CSext : SDTypeProfile<1, 1, [SDTCisVT<0, i16>, SDTCisVT<1, i8>]>;
@@ -271,38 +307,39 @@ def XTHL : V6CInstImplied<0xE3,
 
 // --- Register source variants ---
 
-// Ops that read and write A — explicit Acc in/out, FLAGS implicit def
+// Ops that read and write A — explicit Acc in/out, FLAGS implicit def.
+// O75 Phase B: patterns produce both value and flags via V6CISD::*F.
 let Defs = [FLAGS] in {
   let Constraints = "$dst = $lhs" in {
     def ADDr : V6CInstRegSrc<0b000,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
-        "ADD\t$rs", [(set i8:$dst, (add i8:$lhs, i8:$rs))]>;
+        "ADD\t$rs", [(set i8:$dst, FLAGS, (V6Caddf i8:$lhs, i8:$rs))]>;
     let Uses = [FLAGS] in  // ADC reads CY
     def ADCr : V6CInstRegSrc<0b001,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "ADC\t$rs", []>;
     def SUBr : V6CInstRegSrc<0b010,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
-        "SUB\t$rs", [(set i8:$dst, (sub i8:$lhs, i8:$rs))]>;
+        "SUB\t$rs", [(set i8:$dst, FLAGS, (V6Csubf i8:$lhs, i8:$rs))]>;
     let Uses = [FLAGS] in  // SBB reads CY
     def SBBr : V6CInstRegSrc<0b011,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "SBB\t$rs", []>;
     def ANAr : V6CInstRegSrc<0b100,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
-        "ANA\t$rs", [(set i8:$dst, (and i8:$lhs, i8:$rs))]>;
+        "ANA\t$rs", [(set i8:$dst, FLAGS, (V6Candf i8:$lhs, i8:$rs))]>;
     def XRAr : V6CInstRegSrc<0b101,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
-        "XRA\t$rs", [(set i8:$dst, (xor i8:$lhs, i8:$rs))]>;
+        "XRA\t$rs", [(set i8:$dst, FLAGS, (V6Cxorf i8:$lhs, i8:$rs))]>;
     def ORAr : V6CInstRegSrc<0b110,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
-        "ORA\t$rs", [(set i8:$dst, (or i8:$lhs, i8:$rs))]>;
+        "ORA\t$rs", [(set i8:$dst, FLAGS, (V6Corf i8:$lhs, i8:$rs))]>;
   }
 
   // CMP: reads A but does NOT modify it — no output, sets FLAGS only
   def CMPr : V6CInstRegSrc<0b111,
       (outs), (ins Acc:$lhs, GR8:$rs),
-      "CMP\t$rs", [(V6Ccmp i8:$lhs, i8:$rs)]>;
+      "CMP\t$rs", [(set FLAGS, (V6Ccmp i8:$lhs, i8:$rs))]>;
 }
 
 // --- Memory (M via HL) source variants ---
@@ -334,32 +371,37 @@ let Defs = [FLAGS] in {
   let Constraints = "$dst = $lhs" in {
     def ADI : V6CInstImm8Opc<0b000,
         (outs Acc:$dst), (ins Acc:$lhs, imm8:$imm),
-        "ADI\t$imm", [(set i8:$dst, (add i8:$lhs, (i8 imm:$imm)))]>;
+        "ADI\t$imm",
+        [(set i8:$dst, FLAGS, (V6Caddf_imm i8:$lhs, (i8 imm:$imm)))]>;
     let Uses = [FLAGS] in  // ACI reads CY
     def ACI : V6CInstImm8Opc<0b001,
         (outs Acc:$dst), (ins Acc:$lhs, imm8:$imm),
         "ACI\t$imm", []>;
     def SUI : V6CInstImm8Opc<0b010,
         (outs Acc:$dst), (ins Acc:$lhs, imm8:$imm),
-        "SUI\t$imm", [(set i8:$dst, (sub i8:$lhs, (i8 imm:$imm)))]>;
+        "SUI\t$imm",
+        [(set i8:$dst, FLAGS, (V6Csubf_imm i8:$lhs, (i8 imm:$imm)))]>;
     let Uses = [FLAGS] in  // SBI reads CY
     def SBI : V6CInstImm8Opc<0b011,
         (outs Acc:$dst), (ins Acc:$lhs, imm8:$imm),
         "SBI\t$imm", []>;
     def ANI : V6CInstImm8Opc<0b100,
         (outs Acc:$dst), (ins Acc:$lhs, imm8:$imm),
-        "ANI\t$imm", [(set i8:$dst, (and i8:$lhs, (i8 imm:$imm)))]>;
+        "ANI\t$imm",
+        [(set i8:$dst, FLAGS, (V6Candf_imm i8:$lhs, (i8 imm:$imm)))]>;
     def XRI : V6CInstImm8Opc<0b101,
         (outs Acc:$dst), (ins Acc:$lhs, imm8:$imm),
-        "XRI\t$imm", [(set i8:$dst, (xor i8:$lhs, (i8 imm:$imm)))]>;
+        "XRI\t$imm",
+        [(set i8:$dst, FLAGS, (V6Cxorf_imm i8:$lhs, (i8 imm:$imm)))]>;
     def ORI : V6CInstImm8Opc<0b110,
         (outs Acc:$dst), (ins Acc:$lhs, imm8:$imm),
-        "ORI\t$imm", [(set i8:$dst, (or i8:$lhs, (i8 imm:$imm)))]>;
+        "ORI\t$imm",
+        [(set i8:$dst, FLAGS, (V6Corf_imm i8:$lhs, (i8 imm:$imm)))]>;
   }
   // CPI: reads A, does NOT modify it — sets FLAGS only
   def CPI : V6CInstImm8Opc<0b111,
       (outs), (ins Acc:$lhs, imm8:$imm),
-      "CPI\t$imm", [(V6Ccmp i8:$lhs, (i8 imm:$imm))]>;
+      "CPI\t$imm", [(set FLAGS, (V6Ccmp i8:$lhs, (i8 imm:$imm)))]>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -392,7 +434,7 @@ def DCX : V6CInstRegPair<0b00, 0b1011,
 let Defs = [FLAGS] in
 def INRr : V6CInstRegDst<0b100,
     (outs GR8:$rd), (ins GR8:$src),
-    "INR\t$rd", [(set i8:$rd, (add i8:$src, (i8 1)))]> {
+    "INR\t$rd", [(set i8:$rd, FLAGS, (V6Cincf i8:$src))]> {
   let Constraints = "$rd = $src";
 }
 
@@ -400,7 +442,7 @@ def INRr : V6CInstRegDst<0b100,
 let Defs = [FLAGS] in
 def DCRr : V6CInstRegDst<0b101,
     (outs GR8:$rd), (ins GR8:$src),
-    "DCR\t$rd", [(set i8:$rd, (add i8:$src, (i8 -1)))]> {
+    "DCR\t$rd", [(set i8:$rd, FLAGS, (V6Cdecf i8:$src))]> {
   let Constraints = "$rd = $src";
 }
 
@@ -591,12 +633,13 @@ def OUT : V6CInstIO<0xD3,
 //===----------------------------------------------------------------------===//
 
 // V6C_BRCOND — Conditional branch. Expanded to Jcc in post-ISel.
-// Operand 0: branch target, Operand 1: V6C condition code (i8)
+// Operand 0: branch target, Operand 1: V6C condition code (i8),
+// Operand 2: FLAGS (i8 SSA, bound to physical FLAGS register).
 let isBranch = 1, isTerminator = 1, Uses = [FLAGS] in
 def V6C_BRCOND : V6CPseudo<(outs),
     (ins brtarget:$dst, i8imm:$cc),
     "# V6C_BRCOND $dst, $cc",
-    [(V6Cbrcond bb:$dst, (i8 imm:$cc))]>;
+    [(V6Cbrcond bb:$dst, (i8 imm:$cc), FLAGS)]>;
 
 // V6C_SELECT_CC — Conditional select. Expanded to compare+branch sequence.
 // Uses FLAGS (set by a preceding V6CISD::CMP).
@@ -604,7 +647,8 @@ let usesCustomInserter = 1, Uses = [FLAGS] in
 def V6C_SELECT_CC : V6CPseudo<(outs GR8:$dst),
     (ins GR8:$trueval, GR8:$falseval, i8imm:$cc),
     "# V6C_SELECT_CC $dst, $trueval, $falseval, $cc",
-    [(set i8:$dst, (V6Cselectcc i8:$trueval, i8:$falseval, (i8 imm:$cc)))]>;
+    [(set i8:$dst, (V6Cselectcc i8:$trueval, i8:$falseval,
+                                (i8 imm:$cc), FLAGS))]>;
 
 // V6C_LOAD8_P — Load i8 from i16 pointer (in register pair).
 // Expansion preserves HL in all paths (LDAX, PUSH/POP, or direct MOV r,M).
@@ -634,28 +678,33 @@ let mayLoad = 1, Defs = [FLAGS] in {
   let Constraints = "$dst = $lhs" in {
     def V6C_ADD_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
         "# ADD_M_P $dst, ($addr)",
-        [(set Acc:$dst, (add Acc:$lhs, (i8 (load i16:$addr))))]>;
+        [(set Acc:$dst, FLAGS,
+              (V6Caddf Acc:$lhs, (i8 (load i16:$addr))))]>;
     def V6C_ADC_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
         "# ADC_M_P $dst, ($addr)", []>;
     def V6C_SUB_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
         "# SUB_M_P $dst, ($addr)",
-        [(set Acc:$dst, (sub Acc:$lhs, (i8 (load i16:$addr))))]>;
+        [(set Acc:$dst, FLAGS,
+              (V6Csubf Acc:$lhs, (i8 (load i16:$addr))))]>;
     def V6C_SBB_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
         "# SBB_M_P $dst, ($addr)", []>;
     def V6C_ANA_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
         "# ANA_M_P $dst, ($addr)",
-        [(set Acc:$dst, (and Acc:$lhs, (i8 (load i16:$addr))))]>;
+        [(set Acc:$dst, FLAGS,
+              (V6Candf Acc:$lhs, (i8 (load i16:$addr))))]>;
     def V6C_ORA_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
         "# ORA_M_P $dst, ($addr)",
-        [(set Acc:$dst, (or Acc:$lhs, (i8 (load i16:$addr))))]>;
+        [(set Acc:$dst, FLAGS,
+              (V6Corf Acc:$lhs, (i8 (load i16:$addr))))]>;
     def V6C_XRA_M_P : V6CPseudo<(outs Acc:$dst), (ins Acc:$lhs, GR16:$addr),
         "# XRA_M_P $dst, ($addr)",
-        [(set Acc:$dst, (xor Acc:$lhs, (i8 (load i16:$addr))))]>;
+        [(set Acc:$dst, FLAGS,
+              (V6Cxorf Acc:$lhs, (i8 (load i16:$addr))))]>;
   }
   // CMP M: reads A, writes FLAGS only.
   def V6C_CMP_M_P : V6CPseudo<(outs), (ins Acc:$lhs, GR16:$addr),
       "# CMP_M_P $lhs, ($addr)",
-      [(V6Ccmp Acc:$lhs, (i8 (load i16:$addr)))]>;
+      [(set FLAGS, (V6Ccmp Acc:$lhs, (i8 (load i16:$addr))))]>;
 }
 
 // MVI M, imm8 via register pointer: store an 8-bit immediate.
@@ -668,10 +717,10 @@ def V6C_STORE8_IMM_P : V6CPseudo<(outs), (ins imm8:$imm, GR16:$addr),
 let mayLoad = 1, mayStore = 1, Defs = [FLAGS] in {
   def V6C_INR_M_P : V6CPseudo<(outs), (ins GR16:$addr),
       "# INR_M_P ($addr)",
-      [(store (add (i8 (load i16:$addr)), (i8 1)), i16:$addr)]>;
+      [(store (V6Cincf (i8 (load i16:$addr))), i16:$addr)]>;
   def V6C_DCR_M_P : V6CPseudo<(outs), (ins GR16:$addr),
       "# DCR_M_P ($addr)",
-      [(store (add (i8 (load i16:$addr)), (i8 -1)), i16:$addr)]>;
+      [(store (V6Cdecf (i8 (load i16:$addr))), i16:$addr)]>;
 }
 
 // Spill/reload pseudos for register allocation.
@@ -928,7 +977,8 @@ let usesCustomInserter = 1, Uses = [FLAGS] in
 def V6C_SELECT_CC16 : V6CPseudo<(outs GR16:$dst),
     (ins GR16:$trueval, GR16:$falseval, i8imm:$cc),
     "# V6C_SELECT_CC16 $dst, $trueval, $falseval, $cc",
-    [(set i16:$dst, (V6Cselectcc i16:$trueval, i16:$falseval, (i8 imm:$cc)))]>;
+    [(set i16:$dst, (V6Cselectcc i16:$trueval, i16:$falseval,
+                                 (i8 imm:$cc), FLAGS))]>;
 
 // Fused 16-bit compare + conditional branch.
 // Expanded post-RA into 8-bit compare sequence + Jcc.
@@ -952,22 +1002,25 @@ def V6C_BR_CC16_IMM : V6CPseudo<(outs),
 
 // O34: 16-bit zero-test comparison (for SELECT_CC against zero).
 // Produces FLAGS via MOV A, Hi; ORA Lo — Z=1 iff pair==0.
-let Defs = [A, FLAGS] in
+// Note: FLAGS must precede A in Defs so the [(set FLAGS, ...)] pattern
+// binder picks FLAGS (first physreg of matching type i8).
+let Defs = [FLAGS, A] in
 def V6C_CMP16_ZERO : V6CPseudo<(outs), (ins GR16:$src),
     "# CMP16_ZERO $src",
-    [(V6Ccmpzero i16:$src)]>;
+    [(set FLAGS, (V6Ccmpzero i16:$src))]>;
 
 // 16-bit comparison (for use in i16 BR_CC lowering).
 // Produces FLAGS via subtraction (SUB lo, SBB hi).
-let Defs = [A, FLAGS] in
+// FLAGS first in Defs (see CMP16_ZERO note).
+let Defs = [FLAGS, A] in
 def V6C_CMP16 : V6CPseudo<(outs), (ins GR16:$lhs, GR16:$rhs),
     "# CMP16 $lhs, $rhs",
-    [(V6Ccmp i16:$lhs, i16:$rhs)]>;
+    [(set FLAGS, (V6Ccmp i16:$lhs, i16:$rhs))]>;
 
 // O24: 16-bit comparison with immediate RHS (for SELECT_CC ordering).
 // Produces FLAGS via MVI+SUB, MVI+SBB — no register pair needed.
 // Selected manually in ISel (K→K-1 + CC inversion done in LowerSELECT_CC).
-let Defs = [A, FLAGS] in
+let Defs = [FLAGS, A] in
 def V6C_CMP16_IMM : V6CPseudo<(outs), (ins GR16:$lhs, imm16:$rhs),
     "# CMP16_IMM $lhs, $rhs",
     []>;

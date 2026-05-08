@@ -275,25 +275,35 @@ void V6CDAGToDAGISel::Select(SDNode *N) {
     // O24: For i16 comparisons with constant/global RHS, use V6C_CMP16_IMM
     // to avoid allocating a register pair. The K→K-1 + CC inversion was
     // already done in LowerSELECT_CC.
+    //
+    // O75 Phase A: V6CISD::CMP now produces FLAGS as an SSA-typed i8
+    // value (not glue). Emit V6C_CMP16_IMM (which implicit-defs FLAGS),
+    // glue it to a CopyFromReg(FLAGS, MVT::i8) so that consumers of the
+    // i8 FLAGS value are correctly fed.
     SDValue LHS = N->getOperand(0);
     SDValue RHS = N->getOperand(1);
+
+    auto emitCmp16Imm = [&](SDValue ImmOp) {
+      SDNode *CmpImm = CurDAG->getMachineNode(V6C::V6C_CMP16_IMM, DL,
+                                                MVT::Glue, LHS, ImmOp);
+      SDValue Flags = CurDAG->getCopyFromReg(CurDAG->getEntryNode(), DL,
+                                              V6C::FLAGS, MVT::i8,
+                                              SDValue(CmpImm, 0));
+      ReplaceUses(SDValue(N, 0), Flags);
+      CurDAG->RemoveDeadNode(N);
+    };
 
     if (LHS.getValueType() == MVT::i16) {
       if (auto *C = dyn_cast<ConstantSDNode>(RHS)) {
         SDValue ImmOp = CurDAG->getTargetConstant(C->getSExtValue(), DL,
                                                     MVT::i16);
-        SDNode *CmpImm = CurDAG->getMachineNode(V6C::V6C_CMP16_IMM, DL,
-                                                  MVT::Glue, LHS, ImmOp);
-        ReplaceNode(N, CmpImm);
+        emitCmp16Imm(ImmOp);
         return;
       }
       if (RHS.getOpcode() == V6CISD::Wrapper &&
           (isa<GlobalAddressSDNode>(RHS.getOperand(0)) ||
            isa<ExternalSymbolSDNode>(RHS.getOperand(0)))) {
-        SDValue Unwrapped = RHS.getOperand(0);
-        SDNode *CmpImm = CurDAG->getMachineNode(V6C::V6C_CMP16_IMM, DL,
-                                                  MVT::Glue, LHS, Unwrapped);
-        ReplaceNode(N, CmpImm);
+        emitCmp16Imm(RHS.getOperand(0));
         return;
       }
     }

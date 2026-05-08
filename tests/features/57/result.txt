@@ -1,0 +1,341 @@
+Feature 57 — O75: Flag-Producing Arithmetic SDNodes
+====================================================
+
+Goal
+----
+Always lower i8 ADD/SUB/AND/OR/XOR through new V6CISD::*F nodes that
+expose FLAGS as a second SSA result, so a downstream BR_CC / SELECT_CC
+that compares the result to zero (EQ/NE) can consume those FLAGS
+directly instead of emitting a redundant CPI 0 / ORA A.
+
+Phases
+------
+- Phase A: rewire FLAGS as an SSA i8 value (replace MVT::Glue chain).
+- Phase B: 12 V6CISD::*F nodes (ADDF/SUBF/ANDF/ORF/XORF, *_IMM, INCF,
+           DECF) + setOperationAction(...,Custom) on i8 ADD/SUB/AND/OR/XOR
+           + EQ/NE-against-zero short-circuit in LowerBR_CC / LowerSELECT_CC.
+
+Test status
+-----------
+Lit suite ............... 108/108 PASS  (added o75-flag-arith-fold.ll)
+Golden suite ............ PASS
+Full regression ......... 132/132 PASS  (run_all.py — 2/2 suites)
+
+
+C test case (tests/features/57/v6llvmc.c)
+-----------------------------------------
+extern volatile u8 g_sink;
+u16 dec_loop(u8 n) {
+    u16 sum = 0;
+    while (n) { g_sink = n; sum += n; --n; }
+    return sum;
+}
+u8  mask_test(u8 x)        { return (x & 0x0F) == 0 ? 1 : 0; }
+u8  xor_test (u8 x, u8 y)  { u8 z = x ^ y; g_sink = z; return z != 0; }
+u8  sub_test (u8 x)        { u8 z = x - 5; g_sink = z; return z != 0; }
+u16 dec_loop_used(u8 n)    { /* same loop, returns sum + (u16)n */ }
+
+volatile u8  g_n  = 7, g_x = 0x33, g_y = 0x33, g_outb;
+volatile u16 g_out;
+
+int main(int, char **) {
+    g_out  = dec_loop(g_n);
+    g_outb = mask_test(g_x);
+    g_outb = xor_test(g_x, g_y);
+    g_outb = sub_test(g_x);
+    g_out  = dec_loop_used(g_n);
+    return 0;
+}
+
+
+c8080 reference (tests/features/57/c8080.asm — Z80→i8080 transliteration)
+-------------------------------------------------------------------------
+dec_loop:
+        STA   __a_1                ; 16cc / 3B
+        LXI   H, 0                 ; 12cc / 3B
+        SHLD  dec_loop_sum         ; 20cc / 3B
+.l0:    ORA   A                    ;  4cc / 1B
+        JZ    .l1                  ; 12cc / 3B
+        STA   g_sink               ; 16cc / 3B
+        XCHG                       ;  4cc / 1B
+        LHLD  __a_1                ; 20cc / 3B
+        MVI   H, 0                 ;  8cc / 2B
+        DAD   D                    ; 12cc / 1B
+        SHLD  dec_loop_sum         ; 20cc / 3B
+        LDA   __a_1                ; 16cc / 3B
+        DCR   A                    ;  8cc / 1B
+        STA   __a_1                ; 16cc / 3B
+        JMP   .l0                  ; 12cc / 3B
+.l1:    LHLD  dec_loop_sum         ; 20cc / 3B
+        RET                        ; 12cc / 1B
+                                   ; ---------- 228cc / 40B (one body pass)
+
+mask_test:
+        STA   __a_1                ; 16cc / 3B
+        ANI   0x0F                 ;  8cc / 2B
+        JNZ   .l2                  ; 12cc / 3B
+        MVI   A, 1                 ;  8cc / 2B
+        RET                        ; 12cc / 1B
+.l2:    XRA   A                    ;  4cc / 1B
+        RET                        ; 12cc / 1B
+                                   ; ----------  56cc / 13B (worst path)
+
+xor_test:
+        STA   __a_2                ; 16cc / 3B
+        LXI   H, __a_1             ; 12cc / 3B
+        XRA   M                    ;  8cc / 1B
+        STA   xor_test_z           ; 16cc / 3B
+        STA   g_sink               ; 16cc / 3B
+        LDA   xor_test_z           ; 16cc / 3B
+        ORA   A                    ;  4cc / 1B
+        JZ    .l4                  ; 12cc / 3B
+        MVI   A, 1                 ;  8cc / 2B
+        RET                        ; 12cc / 1B
+.l4:    XRA   A                    ;  4cc / 1B
+        RET                        ; 12cc / 1B
+                                   ; ---------- 120cc / 25B (worst path)
+
+sub_test:
+        STA   __a_1                ; 16cc / 3B
+        ADI   0xFB                 ;  8cc / 2B
+        STA   sub_test_z           ; 16cc / 3B
+        STA   g_sink               ; 16cc / 3B
+        LDA   sub_test_z           ; 16cc / 3B
+        ORA   A                    ;  4cc / 1B
+        JZ    .l6                  ; 12cc / 3B
+        MVI   A, 1                 ;  8cc / 2B
+        RET                        ; 12cc / 1B
+.l6:    XRA   A                    ;  4cc / 1B
+        RET                        ; 12cc / 1B
+                                   ; ---------- 108cc / 23B (worst path)
+
+dec_loop_used:
+        ; identical body to dec_loop, plus tail:
+        ;   LHLD sum / XCHG / LHLD __a_1 / MVI H,0 / DAD D / RET
+                                   ; ---------- 272cc / 47B
+
+main:
+        LXI   H, 0                 ; 12cc / 3B
+        SHLD  __a_1_main           ; 20cc / 3B
+        SHLD  __a_2_main           ; 20cc / 3B
+        LDA   g_n                  ; 16cc / 3B
+        CALL  dec_loop             ; 24cc / 3B
+        SHLD  g_out                ; 20cc / 3B
+        LDA   g_x                  ; 16cc / 3B
+        CALL  mask_test            ; 24cc / 3B
+        STA   g_outb               ; 16cc / 3B
+        LDA   g_x                  ; 16cc / 3B
+        STA   __a_1_xor_test       ; 16cc / 3B
+        LDA   g_y                  ; 16cc / 3B
+        CALL  xor_test             ; 24cc / 3B
+        STA   g_outb               ; 16cc / 3B
+        LDA   g_x                  ; 16cc / 3B
+        CALL  sub_test             ; 24cc / 3B
+        STA   g_outb               ; 16cc / 3B
+        LDA   g_n                  ; 16cc / 3B
+        CALL  dec_loop_used        ; 24cc / 3B
+        SHLD  g_out                ; 20cc / 3B
+        LXI   H, 0                 ; 12cc / 3B
+        RET                        ; 12cc / 1B
+                                   ; ---------- 396cc / 64B
+
+
+c8080 stats (worst-case CPU cycles / length in bytes)
+-----------------------------------------------------
+    dec_loop      :  228cc / 40B
+    mask_test     :   56cc / 13B
+    xor_test      :  120cc / 25B
+    sub_test      :  108cc / 23B
+    dec_loop_used :  272cc / 47B
+    main          :  396cc / 64B
+
+
+v6llvmc — BASELINE (`v6llvmc_old.asm`, before O75)
+--------------------------------------------------
+dec_loop:                          ; counter pinned to A: g_sink store
+        ORA   A                    ;  4cc / 1B   forces n in A; loop iv
+        JZ    .L3                  ; 12cc / 3B   uses DCR A on the same A
+        MOV   L, A                 ;  8cc / 1B
+        XRA   A                    ;  4cc / 1B
+        MOV   D, A                 ;  8cc / 1B
+        MOV   E, L                 ;  8cc / 1B
+        MOV   A, L                 ;  8cc / 1B
+        LXI   H, 0                 ; 12cc / 3B
+.L2:    MOV   C, A                 ;  8cc / 1B
+        DAD   D                    ; 12cc / 1B
+        MOV   A, C                 ;  8cc / 1B
+        DCX   D                    ;  8cc / 1B
+        STA   g_sink               ; 16cc / 3B
+        DCR   A                    ;  8cc / 1B
+        JNZ   .L2                  ; 12cc / 3B
+        RET                        ; 12cc / 1B
+.L3:    LXI   H, 0                 ; 12cc / 3B
+        RET                        ; 12cc / 1B
+                                   ; ---------- 172cc / 28B
+
+mask_test:
+        ANI   0x0F                 ;  8cc / 2B
+        JNZ   .L2                  ; 12cc / 3B
+        INR   A                    ;  8cc / 1B   ; A=0 here ⇒ INR=1
+        RET                        ; 12cc / 1B
+.L2:    XRA   A                    ;  4cc / 1B
+        RET                        ; 12cc / 1B
+                                   ; ----------  40cc /  9B
+
+xor_test:
+        MOV   L, A                 ;  8cc / 1B   ; save x
+        MOV   A, B                 ;  8cc / 1B
+        XRA   L                    ;  4cc / 1B   ; A = x^y
+        MOV   L, A                 ;  8cc / 1B   ; spill z to L
+        JZ    .L2                  ; 12cc / 3B
+        MVI   H, 1                 ;  8cc / 2B
+        JMP   .L3                  ; 12cc / 3B
+.L2:    MOV   H, A                 ;  8cc / 1B   ; H = 0 (A=0 here)
+.L3:    MOV   A, L                 ;  8cc / 1B   ; reload z
+        STA   g_sink               ; 16cc / 3B
+        MOV   A, H                 ;  8cc / 1B
+        RET                        ; 12cc / 1B
+                                   ; ---------- 104cc / 19B (worst path)
+
+sub_test:
+        ADI   0xFB                 ;  8cc / 2B
+        JZ    .L2                  ; 12cc / 3B
+        MVI   L, 1                 ;  8cc / 2B
+        JMP   .L3                  ; 12cc / 3B
+.L2:    MOV   L, A                 ;  8cc / 1B   ; A=0 here
+.L3:    STA   g_sink               ; 16cc / 3B
+        MOV   A, L                 ;  8cc / 1B
+        RET                        ; 12cc / 1B
+                                   ; ----------  76cc / 16B (worst path)
+
+dec_loop_used:                     ; identical body to dec_loop above
+                                   ; ---------- 172cc / 28B
+
+main:                              ; (sum of all instructions)
+                                   ; ---------- 676cc / 126B
+
+
+v6llvmc — AFTER O75 (`v6llvmc_new02.asm`)
+-----------------------------------------
+dec_loop:       unchanged          ; ---------- 172cc / 28B
+                                   ; (g_sink store inside loop body
+                                   ;  forces n into A; *F flag-fold
+                                   ;  cannot break the Acc-pin here)
+dec_loop_used:  unchanged          ; ---------- 172cc / 28B
+
+mask_test:                         ; same shape, MVI A,1 instead of INR A
+        ANI   0x0F                 ;  8cc / 2B
+        JNZ   .L2                  ; 12cc / 3B
+        MVI   A, 1                 ;  8cc / 2B   <-- was INR A (1B)
+        RET                        ; 12cc / 1B
+.L2:    XRA   A                    ;  4cc / 1B
+        RET                        ; 12cc / 1B
+                                   ; ----------  40cc / 10B  (+1B)
+
+xor_test:                          ; spill round-trip eliminated
+        MOV   L, A                 ;  8cc / 1B
+        MOV   A, B                 ;  8cc / 1B
+        XRA   L                    ;  4cc / 1B   ; *F: also produces FLAGS
+        JZ    .L2                  ; 12cc / 3B   ; no MOV L,A spill before
+        MVI   H, 1                 ;  8cc / 2B
+        JMP   .L3                  ; 12cc / 3B
+.L2:    MVI   H, 0                 ;  8cc / 2B
+.L3:    STA   g_sink               ; 16cc / 3B   ; no MOV A,L reload
+        MOV   A, H                 ;  8cc / 1B
+        RET                        ; 12cc / 1B
+                                   ; ----------  88cc / 18B  (-16cc / -1B)
+
+sub_test:                          ; MVI L,0 in place of MOV L,A
+        ADI   0xFB                 ;  8cc / 2B
+        JZ    .L2                  ; 12cc / 3B
+        MVI   L, 1                 ;  8cc / 2B
+        JMP   .L3                  ; 12cc / 3B
+.L2:    MVI   L, 0                 ;  8cc / 2B   <-- was MOV L,A (1B)
+.L3:    STA   g_sink               ; 16cc / 3B
+        MOV   A, L                 ;  8cc / 1B
+        RET                        ; 12cc / 1B
+                                   ; ----------  76cc / 17B  (+1B)
+
+main:                              ; (sum of all instructions)
+                                   ; ---------- 672cc / 125B
+                                   ; - mask_test inline: LXI H,g_x;
+                                   ;   MVI A,0xf; ANA M  ⇒  LDA g_x;
+                                   ;   ANI 0xf       (-4cc / -1B)
+                                   ; - xor_test inline: XCHG; XRA M;
+                                   ;   XCHG          ⇒  XRA M
+                                   ;                 (-8cc / -2B)
+                                   ; - sub_test inline: MVI A,0xfb;
+                                   ;   ADD M  ⇒  LDA g_x; ADI 0xfb
+                                   ;                 (+8cc / +2B)
+
+
+Comparison table (worst-case CPU cycles / length in bytes)
+----------------------------------------------------------
++------------------+----------------+----------------+----------------+----------------+
+| Function         | c8080          | v6llvmc OLD    | v6llvmc NEW    | NEW vs OLD     |
+|                  | cycles / bytes | cycles / bytes | cycles / bytes | Δcc / ΔB       |
++------------------+----------------+----------------+----------------+----------------+
+| dec_loop         |  228 /  40     |  172 /  28     |  172 /  28     |    0 /   0     |
+| mask_test        |   56 /  13     |   40 /   9     |   40 /  10     |    0 /  +1     |
+| xor_test         |  120 /  25     |  104 /  19     |   88 /  18     |  -16 /  -1     |
+| sub_test         |  108 /  23     |   76 /  16     |   76 /  17     |    0 /  +1     |
+| dec_loop_used    |  272 /  47     |  172 /  28     |  172 /  28     |    0 /   0     |
+| main             |  396 /  64     |  676 / 126     |  672 / 125     |   -4 /  -1     |
++------------------+----------------+----------------+----------------+----------------+
+| Sum (.text body) | 1180 / 212     | 1240 / 226     | 1220 / 225     |  -20 /  -1     |
++------------------+----------------+----------------+----------------+----------------+
+
+Notes
+-----
+- v6llvmc's `dec_loop` is much smaller than c8080's because the loop
+  body is fully register-resident; c8080 spills `n` and `sum` to a
+  static stack across each iteration.
+- `dec_loop` is unchanged by O75 because the C source forces `n` into
+  A every iteration (via `g_sink = n;`). `DCR A` already produces
+  FLAGS that the loop-back JNZ consumes — no extra `CPI 0` was being
+  emitted to begin with. The Acc-pin here is structural, not a CPI 0
+  issue.
+- `xor_test` is the headline win: removing the FLAGS glue (Phase A)
+  freed the scheduler to hoist `STA g_sink` past the conditional,
+  which let the *F fold (Phase B) consume `XRA L`'s FLAGS without
+  the previous `MOV L,A` / `MOV A,L` spill round-trip.
+- `mask_test` and `sub_test` get +1 byte each: they no longer rely
+  on the implicit `A = 0` post-condition of a taken JZ (so `INR A`
+  / `MOV L,A` become `MVI A,1` / `MVI L,0`). This is offset by the
+  inline savings in `main`.
+- Net win across .text body: -20 cycles / -1 byte.
+
+Implementation summary
+----------------------
+- 12 new V6CISD nodes (each producing (i8 value, i8 flags)):
+    ADDF, SUBF, ANDF, ORF, XORF,
+    ADDF_IMM, SUBF_IMM, ANDF_IMM, ORF_IMM, XORF_IMM,
+    INCF, DECF
+
+- TableGen patterns rewritten to multi-result form:
+    ADDr / SUBr / ANAr / ORAr / XRAr,
+    ADI  / SUI  / ANI  / ORI  / XRI,
+    INRr / DCRr,
+    V6C_ADD_M_P / V6C_SUB_M_P / V6C_ANA_M_P / V6C_ORA_M_P / V6C_XRA_M_P,
+    V6C_INR_M_P / V6C_DCR_M_P
+  All emit `[(set i8:$dst, FLAGS, (V6C*f ...))]`.
+
+- LowerArithF: setOperationAction(Custom) on i8 ADD/SUB/AND/OR/XOR.
+  Always rewrites to *F variants. Special case: `XOR x, -1` stays as
+  `ISD::XOR` so the existing CMA pattern matches (CMA does NOT
+  affect FLAGS, so it intentionally stays out of the *F family).
+
+- LowerBR_CC / LowerSELECT_CC: when LHS.getOpcode() is in
+  [V6CISD::ADDF .. V6CISD::DECF] and the comparison is EQ/NE against
+  zero, consume LHS.getValue(1) directly as FLAGS — no redundant
+  CMP / CPI 0.
+
+Files touched
+-------------
+- llvm-project/llvm/lib/Target/V6C/V6CInstrInfo.td
+- llvm-project/llvm/lib/Target/V6C/V6CISelLowering.h
+- llvm-project/llvm/lib/Target/V6C/V6CISelLowering.cpp
+- llvm-project/llvm/lib/Target/V6C/V6CISelDAGToDAG.cpp
+- llvm-project/llvm/test/CodeGen/V6C/o75-flag-arith-fold.ll      (new)
+- llvm-project/llvm/test/CodeGen/V6C/peephole-mvi-zero-to-xra.ll (CHECK loosen)
+- llvm/  mirror synced via scripts/sync_llvm_mirror.ps1

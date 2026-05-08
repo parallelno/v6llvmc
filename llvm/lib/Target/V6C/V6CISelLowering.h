@@ -19,10 +19,10 @@ enum NodeType : unsigned {
   FIRST_NUMBER = ISD::BUILTIN_OP_END,
   RET,        // Return from function (with optional glue).
   CALL,       // Function call.
-  CMP,        // Compare two values, produces glue (FLAGS).
-  CMP_ZERO,   // Zero-test a single i16 value, produces glue (FLAGS).
-  BRCOND,     // Conditional branch on FLAGS.
-  SELECT_CC,  // Conditional select on FLAGS.
+  CMP,        // Compare two values, produces FLAGS as SSA-typed i8.
+  CMP_ZERO,   // Zero-test a single i16 value, produces FLAGS as i8.
+  BRCOND,     // Conditional branch on FLAGS (FLAGS as last i8 operand).
+  SELECT_CC,  // Conditional select on FLAGS (FLAGS as last i8 operand).
   Wrapper,    // GlobalAddress / ExternalSymbol wrapper.
   BR_CC16,    // Fused 16-bit compare + conditional branch.
   SEXT,       // Sign-extend i8 to i16 (pseudo, expands to RLC+SBB).
@@ -36,6 +36,27 @@ enum NodeType : unsigned {
   ROTL16_1,   // i16 rotate-left by 1, lowered via DAD H + ACI 0 carry-fold
               // (O68 Phase 2). Single-result, HL-constrained at the pseudo
               // level. CY chains internally inside the post-RA expansion.
+
+  // O75 Phase B: flag-producing arithmetic SDNodes. Each returns
+  // (i8 value, i8 flags). Pattern-bound to the same machine instructions
+  // as the plain ISD ops, but the second result (FLAGS) is exposed so a
+  // downstream BR_CC/SELECT_CC can consume the flags directly without
+  // emitting a redundant CMP/CPI.
+  //
+  // Keep this range contiguous and end with DECF — `LowerBR_CC`'s
+  // short-circuit relies on a [ADDF, DECF] range check.
+  ADDF,        // (val, flags) = ADDF(lhs, rhs)        — register form.
+  SUBF,        // (val, flags) = SUBF(lhs, rhs)
+  ANDF,        // (val, flags) = ANDF(lhs, rhs)
+  ORF,         // (val, flags) = ORF(lhs, rhs)
+  XORF,        // (val, flags) = XORF(lhs, rhs)
+  ADDF_IMM,    // (val, flags) = ADDF_IMM(lhs, i8 imm) — immediate form.
+  SUBF_IMM,    // (val, flags) = SUBF_IMM(lhs, i8 imm)
+  ANDF_IMM,    // (val, flags) = ANDF_IMM(lhs, i8 imm)
+  ORF_IMM,     // (val, flags) = ORF_IMM(lhs, i8 imm)
+  XORF_IMM,    // (val, flags) = XORF_IMM(lhs, i8 imm)
+  INCF,        // (val, flags) = INCF(src)             — INR r.
+  DECF,        // (val, flags) = DECF(src)             — DCR r.
 };
 } // namespace V6CISD
 
@@ -102,6 +123,9 @@ private:
   SDValue LowerZERO_EXTEND(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSIGN_EXTEND(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerANY_EXTEND(SDValue Op, SelectionDAG &DAG) const;
+
+  // O75 Phase B: lower i8 ADD/SUB/AND/OR/XOR to flag-producing *F nodes.
+  SDValue LowerArithF(SDValue Op, SelectionDAG &DAG) const;
 
   SDValue PerformDAGCombine(SDNode *N,
                             DAGCombinerInfo &DCI) const override;

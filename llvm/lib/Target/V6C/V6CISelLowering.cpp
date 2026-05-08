@@ -89,6 +89,15 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
   setOperationAction(ISD::BR_CC,     MVT::i8, Custom);
   setOperationAction(ISD::SELECT_CC, MVT::i8, Custom);
 
+  // O75 Phase B: Custom-lower i8 ADD/SUB/AND/OR/XOR to flag-producing
+  // V6CISD::*F nodes so a downstream BR_CC/SELECT_CC against zero can
+  // consume the flags directly (no redundant CMP/CPI).
+  setOperationAction(ISD::ADD, MVT::i8, Custom);
+  setOperationAction(ISD::SUB, MVT::i8, Custom);
+  setOperationAction(ISD::AND, MVT::i8, Custom);
+  setOperationAction(ISD::OR,  MVT::i8, Custom);
+  setOperationAction(ISD::XOR, MVT::i8, Custom);
+
   // SELECT: expand to SELECT_CC.
   setOperationAction(ISD::SELECT, MVT::i8, Expand);
 
@@ -234,6 +243,18 @@ const char *V6CTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case V6CISD::ROTL8:    return "V6CISD::ROTL8";
   case V6CISD::ROTR8:    return "V6CISD::ROTR8";
   case V6CISD::ROTL16_1: return "V6CISD::ROTL16_1";
+  case V6CISD::ADDF:     return "V6CISD::ADDF";
+  case V6CISD::SUBF:     return "V6CISD::SUBF";
+  case V6CISD::ANDF:     return "V6CISD::ANDF";
+  case V6CISD::ORF:      return "V6CISD::ORF";
+  case V6CISD::XORF:     return "V6CISD::XORF";
+  case V6CISD::ADDF_IMM: return "V6CISD::ADDF_IMM";
+  case V6CISD::SUBF_IMM: return "V6CISD::SUBF_IMM";
+  case V6CISD::ANDF_IMM: return "V6CISD::ANDF_IMM";
+  case V6CISD::ORF_IMM:  return "V6CISD::ORF_IMM";
+  case V6CISD::XORF_IMM: return "V6CISD::XORF_IMM";
+  case V6CISD::INCF:     return "V6CISD::INCF";
+  case V6CISD::DECF:     return "V6CISD::DECF";
   }
   return nullptr;
 }
@@ -336,6 +357,11 @@ SDValue V6CTargetLowering::LowerOperation(SDValue Op,
   case ISD::ZERO_EXTEND:    return LowerZERO_EXTEND(Op, DAG);
   case ISD::SIGN_EXTEND:    return LowerSIGN_EXTEND(Op, DAG);
   case ISD::ANY_EXTEND:     return LowerANY_EXTEND(Op, DAG);
+  case ISD::ADD:
+  case ISD::SUB:
+  case ISD::AND:
+  case ISD::OR:
+  case ISD::XOR:            return LowerArithF(Op, DAG);
   }
 }
 
@@ -467,11 +493,26 @@ SDValue V6CTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
     }
   }
 
-  // For i8: emit CMP (produces glue with FLAGS) then BRCOND.
-  SDValue Glue = DAG.getNode(V6CISD::CMP, DL, MVT::Glue, LHS, RHS);
+  // O75 Phase B: if LHS is the result of a flag-producing arithmetic
+  // node (V6CISD::*F) and we're comparing it to zero with EQ/NE,
+  // consume its FLAGS directly — no redundant CMP/CPI.
+  auto isFlagArith = [](unsigned Opc) {
+    return Opc >= V6CISD::ADDF && Opc <= V6CISD::DECF;
+  };
+  if (LHS.getValueType() == MVT::i8 && isNullConstant(RHS) &&
+      (V6CC == V6CCC::COND_Z || V6CC == V6CCC::COND_NZ) &&
+      isFlagArith(LHS.getOpcode())) {
+    SDValue Flags = LHS.getValue(1);
+    SDValue CCVal = DAG.getConstant(V6CC, DL, MVT::i8);
+    return DAG.getNode(V6CISD::BRCOND, DL, MVT::Other,
+                       {Chain, Dest, CCVal, Flags});
+  }
+
+  // For i8: emit CMP (produces FLAGS as SSA i8) then BRCOND consumes it.
+  SDValue Flags = DAG.getNode(V6CISD::CMP, DL, MVT::i8, LHS, RHS);
   SDValue CCVal = DAG.getConstant(V6CC, DL, MVT::i8);
-  return DAG.getNode(V6CISD::BRCOND, DL, MVT::Other, Chain, Dest, CCVal,
-                     Glue);
+  return DAG.getNode(V6CISD::BRCOND, DL, MVT::Other,
+                     {Chain, Dest, CCVal, Flags});
 }
 
 //===----------------------------------------------------------------------===//
@@ -560,10 +601,10 @@ SDValue V6CTargetLowering::LowerSELECT_CC(SDValue Op,
   // instead of materializing 0 into a register pair for SUB/SBB.
   if (LHS.getValueType() == MVT::i16 && isNullConstant(RHS) &&
       (CC == ISD::SETEQ || CC == ISD::SETNE)) {
-    SDValue Glue = DAG.getNode(V6CISD::CMP_ZERO, DL, MVT::Glue, LHS);
+    SDValue Flags = DAG.getNode(V6CISD::CMP_ZERO, DL, MVT::i8, LHS);
     SDVTList VTs = DAG.getVTList(Op.getValueType());
     return DAG.getNode(V6CISD::SELECT_CC, DL, VTs,
-                       TrueVal, FalseVal, CCVal, Glue);
+                       {TrueVal, FalseVal, CCVal, Flags});
   }
 
   // O24: For i16 ordering conditions with constant operand, adjust so
@@ -600,12 +641,25 @@ SDValue V6CTargetLowering::LowerSELECT_CC(SDValue Op,
     }
   }
 
+  // O75 Phase B: short-circuit i8 EQ/NE-against-zero on a *F result.
+  auto isFlagArith = [](unsigned Opc) {
+    return Opc >= V6CISD::ADDF && Opc <= V6CISD::DECF;
+  };
+  if (LHS.getValueType() == MVT::i8 && isNullConstant(RHS) &&
+      (V6CC == V6CCC::COND_Z || V6CC == V6CCC::COND_NZ) &&
+      isFlagArith(LHS.getOpcode())) {
+    SDValue Flags = LHS.getValue(1);
+    SDVTList VTs = DAG.getVTList(Op.getValueType());
+    return DAG.getNode(V6CISD::SELECT_CC, DL, VTs,
+                       {TrueVal, FalseVal, CCVal, Flags});
+  }
+
   // For i16 comparison operands, emit CMP16 then SELECT_CC (uses FLAGS).
   // For i8, emit CMP then SELECT_CC.
-  SDValue Glue = DAG.getNode(V6CISD::CMP, DL, MVT::Glue, LHS, RHS);
+  SDValue Flags = DAG.getNode(V6CISD::CMP, DL, MVT::i8, LHS, RHS);
   SDVTList VTs = DAG.getVTList(Op.getValueType());
   return DAG.getNode(V6CISD::SELECT_CC, DL, VTs,
-                     TrueVal, FalseVal, CCVal, Glue);
+                     {TrueVal, FalseVal, CCVal, Flags});
 }
 
 //===----------------------------------------------------------------------===//
@@ -621,6 +675,81 @@ static SDValue expandShiftByOne(unsigned Opc, SDValue Op, SelectionDAG &DAG) {
   // in a later milestone.  For M4, return SDValue() and let the
   // expander handle it via repeated shift-by-1.
   return SDValue();
+}
+
+//===----------------------------------------------------------------------===//
+// O75 Phase B: Lower i8 ADD/SUB/AND/OR/XOR to flag-producing V6CISD::*F
+//===----------------------------------------------------------------------===//
+
+SDValue V6CTargetLowering::LowerArithF(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc DL(Op);
+  EVT VT = Op.getValueType();
+  assert(VT == MVT::i8 && "LowerArithF only handles i8");
+
+  SDValue LHS = Op.getOperand(0);
+  SDValue RHS = Op.getOperand(1);
+  unsigned Opc = Op.getOpcode();
+
+  // XOR with 0xFF (i.e. ~x): leave as ISD::XOR so the CMA pattern can
+  // match.  CMA does not affect FLAGS, so it is intentionally not part
+  // of the *F flag-producing family.
+  if (Opc == ISD::XOR) {
+    if (auto *C = dyn_cast<ConstantSDNode>(RHS)) {
+      if ((C->getZExtValue() & 0xFF) == 0xFF)
+        return SDValue();
+    }
+    if (auto *C = dyn_cast<ConstantSDNode>(LHS)) {
+      if ((C->getZExtValue() & 0xFF) == 0xFF)
+        return SDValue();
+    }
+  }
+
+  // ADD with ±1 → INCF / DECF (single-input, dst==src reg form).
+  if (Opc == ISD::ADD) {
+    if (auto *C = dyn_cast<ConstantSDNode>(RHS)) {
+      int64_t V = C->getSExtValue();
+      if (V == 1) {
+        SDVTList VTs = DAG.getVTList(MVT::i8, MVT::i8);
+        SDValue N = DAG.getNode(V6CISD::INCF, DL, VTs, LHS);
+        return N.getValue(0);
+      }
+      if (V == -1) {
+        SDVTList VTs = DAG.getVTList(MVT::i8, MVT::i8);
+        SDValue N = DAG.getNode(V6CISD::DECF, DL, VTs, LHS);
+        return N.getValue(0);
+      }
+    }
+  }
+
+  // Choose the *F or *F_IMM opcode.
+  bool RHSIsImm = isa<ConstantSDNode>(RHS);
+  unsigned FOpc;
+  switch (Opc) {
+  case ISD::ADD: FOpc = RHSIsImm ? V6CISD::ADDF_IMM : V6CISD::ADDF; break;
+  case ISD::SUB: FOpc = RHSIsImm ? V6CISD::SUBF_IMM : V6CISD::SUBF; break;
+  case ISD::AND: FOpc = RHSIsImm ? V6CISD::ANDF_IMM : V6CISD::ANDF; break;
+  case ISD::OR:  FOpc = RHSIsImm ? V6CISD::ORF_IMM  : V6CISD::ORF;  break;
+  case ISD::XOR: FOpc = RHSIsImm ? V6CISD::XORF_IMM : V6CISD::XORF; break;
+  default: llvm_unreachable("LowerArithF: unexpected opcode");
+  }
+
+  // SUB has no commutative form; for ADD/AND/OR/XOR, if LHS is the
+  // constant, swap so the immediate is on the RHS (canonical for *_IMM).
+  if (RHSIsImm == false && isa<ConstantSDNode>(LHS) && Opc != ISD::SUB) {
+    std::swap(LHS, RHS);
+    RHSIsImm = true;
+    switch (Opc) {
+    case ISD::ADD: FOpc = V6CISD::ADDF_IMM; break;
+    case ISD::AND: FOpc = V6CISD::ANDF_IMM; break;
+    case ISD::OR:  FOpc = V6CISD::ORF_IMM;  break;
+    case ISD::XOR: FOpc = V6CISD::XORF_IMM; break;
+    default: break;
+    }
+  }
+
+  SDVTList VTs = DAG.getVTList(MVT::i8, MVT::i8);
+  SDValue N = DAG.getNode(FOpc, DL, VTs, LHS, RHS);
+  return N.getValue(0);
 }
 
 SDValue V6CTargetLowering::LowerSHL(SDValue Op, SelectionDAG &DAG) const {

@@ -68,12 +68,6 @@ a compilation key to disable the loop 0 precondition check.
 	// JZ	.LBB19_1
 ```
 ===============================
-I'm seeing a key pattern here — X86's EmitTest uses the same replacement strategy I'm considering, and it returns the glue value from the operation. This gets called during custom lowering through the chain EmitCmp → LowerSETCC/LowerBRCOND, which means the glue threading happens at the lowering stage rather than later.
- (X86-style: setOperationAction(ISD::ADD/SUB/AND/OR/XOR, MVT::i8, Custom) + always-lower to V6CISD::*F)
-
- Let me make it clear. The goal of this optimization is outside of the peehole pipeline. peepholes are not the solution! The initial issue that we are solwing is - do not clobber registers if we can. and we try to not clobber A, but use DCR R or any other ops. using flags produced by the xra, and and other math ops was a side effect of our optimization. The sequence ORA A; CPI 0; can be optimizaed out by the peephole with no residual downsides. it is not a main problem. the problem that the sequence MOV  A, C; DCR  A; MOV  C, A; even optimized to DCR R keeps A clobered that affect spilling! I hope now it is cl;ear for you.
-
-===============================
 check what produces this loop.
 int addi16(int a, uint8_t c){
 while (c << 1){a += 1;}
