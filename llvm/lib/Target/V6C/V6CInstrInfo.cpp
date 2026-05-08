@@ -2252,22 +2252,31 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       BuildMI(MBB, MI, DL, get(V6C::MOVrr))
           .addReg(DstReg, RegState::Define).addReg(V6C::A);
     } else {
-      // Priority 4: fallback — save/restore HL (43cc)
-      // O42: skip PUSH/POP HL when HL is dead after this instruction.
-      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
-      if (!HLDead)
-        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
-      MCRegister Hi = RI.getSubReg(AddrReg, V6C::sub_hi);
-      MCRegister Lo = RI.getSubReg(AddrReg, V6C::sub_lo);
+      // Priority 4: route through A via LDAX (preserve A through PSW
+      // when A is live across the pseudo).
+      //
+      // AddrReg here is guaranteed to be BC or DE: priority 1 caught
+      // HL, and i8080 has no other GR16 physical reg. The earlier
+      // PUSH/POP-HL fallback was incorrect when DstReg ∈ {H, L} —
+      // the POP HL after `MOV DstReg, M` clobbered the loaded value
+      // (observed on fannkuch's perm1 shift loop). Routing through A
+      // sidesteps HL entirely.
+      //
+      // Costs:
+      //   A dead :  LDAX (7) + MOV (5)                   = 12cc, 2B
+      //   A live :  PUSH PSW (12) + LDAX (7) + MOV (5)
+      //           + POP PSW (10)                         = 34cc, 4B
+      // Old worst case was PUSH HL + 2*MOV + MOVrM + POP HL = 43cc, 5B,
+      // so this is also a strict cycle/size win.
+      bool ALive = !isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
+      BuildMI(MBB, MI, DL, get(V6C::LDAX))
+          .addReg(V6C::A, RegState::Define).addReg(AddrReg);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr))
-          .addReg(V6C::H, RegState::Define).addReg(Hi);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr))
-          .addReg(V6C::L, RegState::Define).addReg(Lo);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrM))
-          .addReg(DstReg, RegState::Define);
-      if (!HLDead)
-        BuildMI(MBB, MI, DL, get(V6C::POP))
-            .addDef(V6C::HL);
+          .addReg(DstReg, RegState::Define).addReg(V6C::A);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
     }
     MI.eraseFromParent();
     return true;
@@ -2294,21 +2303,29 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       BuildMI(MBB, MI, DL, get(V6C::STAX))
           .addReg(V6C::A).addReg(AddrReg);
     } else {
-      // Priority 4: fallback — save/restore HL (43cc)
-      // O42: skip PUSH/POP HL when HL is dead after this instruction.
-      bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
-      if (!HLDead)
-        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
-      MCRegister Hi = RI.getSubReg(AddrReg, V6C::sub_hi);
-      MCRegister Lo = RI.getSubReg(AddrReg, V6C::sub_lo);
+      // Priority 4: route through A via STAX (preserve A through PSW
+      // when A is live across the pseudo).
+      //
+      // AddrReg is guaranteed to be BC or DE (priority 1 caught HL).
+      // The earlier PUSH/POP-HL fallback was incorrect when SrcReg ∈
+      // {H, L}: the address load `MOV H,addr_hi; MOV L,addr_lo`
+      // clobbered the source register before it could be stored
+      // (observed on fannkuch's perm1 shift loop). Capturing SrcReg
+      // into A first sidesteps HL entirely.
+      //
+      // Costs:
+      //   A dead :  MOV A,src (5) + STAX (7)             = 12cc, 2B
+      //   A live :  PUSH PSW (12) + MOV (5) + STAX (7)
+      //           + POP PSW (10)                         = 34cc, 4B
+      bool ALive = !isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr))
-          .addReg(V6C::H, RegState::Define).addReg(Hi);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr))
-          .addReg(V6C::L, RegState::Define).addReg(Lo);
-      BuildMI(MBB, MI, DL, get(V6C::MOVMr)).addReg(SrcReg);
-      if (!HLDead)
-        BuildMI(MBB, MI, DL, get(V6C::POP))
-            .addDef(V6C::HL);
+          .addReg(V6C::A, RegState::Define).addReg(SrcReg);
+      BuildMI(MBB, MI, DL, get(V6C::STAX))
+          .addReg(V6C::A).addReg(AddrReg);
+      if (ALive)
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
     }
     MI.eraseFromParent();
     return true;
