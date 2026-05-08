@@ -33,9 +33,14 @@ ZCC_BIN = ZCC.parent
 ZCC_CFG = REPO / "tools" / "z88dk" / "z88dk" / "lib" / "config"
 V6EMUL = REPO / "tools" / "v6emul" / "v6emul.exe"
 
-PROGRAMS = ["bsort", "sieve", "fib_crc"]
-EXPECTED = {"bsort": 0xC4, "sieve": 0xEC, "fib_crc": 0x2B}
-MAX_CYCLES = 50_000_000
+PROGRAMS = ["bsort", "sieve", "fib_crc", "fannkuch", "lfsr16"]
+EXPECTED = {"bsort": 0xC4, "sieve": 0xEC, "fib_crc": 0x2B, "fannkuch": 0x10,
+            "lfsr16": 0x1D}
+# Generous safety cap: long enough for fannkuch-style N=9 runs (~50-100M cc
+# expected per the z88dk reference) without bailing too early. A real
+# emulator stall would still terminate the run via exit code; this just
+# bounds runaway loops in broken codegen.
+MAX_CYCLES = 1_000_000_000
 
 
 @dataclass
@@ -163,11 +168,17 @@ def build_z88dk(prog: str) -> Result:
 
 # ---------------------------------------------------------------------------
 
-def fmt_row(r: Result, baseline_cycles: int | None) -> str:
+def fmt_row(r: Result, baseline_cycles: int | None, md: bool = False) -> str:
     if not r.ok:
         return f"FAIL ({r.error or 'wrong checksum'})"
     sz = r.rom_size
     cc = r.cycles
+    if md:
+        if baseline_cycles and cc:
+            ratio = cc / baseline_cycles
+            return (f"**{sz} B** / <span style=\"color:gray\">{cc:,} cc</span> "
+                    f"(**{ratio:.2f}x**)")
+        return f"**{sz} B** / <span style=\"color:gray\">{cc:,} cc</span>"
     if baseline_cycles and cc:
         ratio = cc / baseline_cycles
         return f"{sz} B / {cc:,} cc ({ratio:.2f}x)"
@@ -233,7 +244,7 @@ def main() -> int:
         cells = [prog]
         for c in cols:
             r = results[(c, prog)]
-            cells.append(fmt_row(r, base_cc))
+            cells.append(fmt_row(r, base_cc, md=True))
         lines.append("| " + " | ".join(cells) + " |")
     lines.append("")
     lines.append("All compilers produced the same checksum byte per program "

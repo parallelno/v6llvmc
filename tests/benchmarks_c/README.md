@@ -26,13 +26,15 @@ port 0xED then HLTs.
 
 | Program | Source | What it stresses |
 |---|---|---|
-| `bsort`   | [src/bsort.c](src/bsort.c)     | bubble-sort 16 i8 values + sum reduction (loops, i8 ALU, indexing) |
-| `sieve`   | [src/sieve.c](src/sieve.c)     | Sieve of Eratosthenes over [0..7999] (pointer arithmetic, byte memory; port of z88dk benchmark) |
-| `fib_crc` | [src/fib_crc.c](src/fib_crc.c) | 24 Fibonacci steps + CRC-16 over the byte stream (i16 add / shift / xor) |
+| `bsort`    | [src/bsort.c](src/bsort.c)       | bubble-sort 16 i8 values + sum reduction (loops, i8 ALU, indexing) |
+| `sieve`    | [src/sieve.c](src/sieve.c)       | Sieve of Eratosthenes over [0..7999] (pointer arithmetic, byte memory; port of z88dk benchmark) |
+| `fib_crc`  | [src/fib_crc.c](src/fib_crc.c)   | 24 Fibonacci steps + CRC-16 over the byte stream (i16 add / shift / xor) |
+| `fannkuch` | [src/fannkuch.c](src/fannkuch.c) | classic Anderson/Rettig pancake-flip benchmark, N=7 (port of z88dk benchmark; nested loops, byte arrays, in-place reverse) |
+| `lfsr16`   | [src/lfsr16.c](src/lfsr16.c)     | 16-bit Galois LFSR (poly 0xB400) for 4096 iterations (i16 shift + conditional i16 xor with 16-bit constant) |
 
 Correctness invariant: every compiler must produce the same checksum byte for
-each program (`bsort`=0xC4, `sieve`=0xEC, `fib_crc`=0x2B). The runner aborts
-with a non-zero exit code on mismatch.
+each program (`bsort`=0xC4, `sieve`=0xEC, `fib_crc`=0x2B, `fannkuch`=0x10,
+`lfsr16`=0x1D). The runner aborts with a non-zero exit code on mismatch.
 
 ## Per-compiler glue
 

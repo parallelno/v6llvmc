@@ -19,43 +19,38 @@ main:                                   ; @main
 	SHLD	__v6c_a.main+2
 	LXI	H, 0xc80d
 	SHLD	__v6c_a.main
-	MVI	A, 0xf
+	MVI	L, 0xf
 	JMP	.LBB15_1
 .LBB15_5:                               ;   in Loop: Header=BB15_1 Depth=1
-.LLo61_1:
-	MVI	A, 0
-	DCR	A
+.LLo61_0:
+	MVI	L, 0
+	DCR	L
 	JZ	.LBB15_6
 .LBB15_1:                               ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB15_2 Depth 2
+	LXI	B, __v6c_a.main
+	MOV	A, L
+	STA	.LLo61_0+1
 	LXI	D, __v6c_a.main
-	STA	.LLo61_1+1
-	LXI	H, __v6c_a.main
 	JMP	.LBB15_2
 .LBB15_4:                               ;   in Loop: Header=BB15_2 Depth=2
-.LLo61_0:
-	MVI	A, 0
-	DCR	A
-	MOV	D, H
-	MOV	E, L
+	DCR	L
+	MOV	B, D
+	MOV	C, E
 	JZ	.LBB15_5
 .LBB15_2:                               ;   Parent Loop BB15_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
-	STA	.LLo61_0+1
+	LDAX	B
+	MOV	H, A
+	INX	D
 	LDAX	D
-	MOV	C, A
-	INX	H
-	MOV	A, M
-	STA	.LLo61_2+1
-	CMP	C
+	CMP	H
 	JNC	.LBB15_4
 ; %bb.3:                                ;   in Loop: Header=BB15_2 Depth=2
-.LLo61_2:
-	MVI	A, 0
-	STAX	D
-	INX	D
-	MOV	A, C
-	STAX	D
+	STAX	B
+	INX	B
+	MOV	A, H
+	STAX	B
 	JMP	.LBB15_4
 .LBB15_6:
 	LXI	H, __v6c_a.main
