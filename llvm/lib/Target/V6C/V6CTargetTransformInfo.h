@@ -70,6 +70,9 @@ public:
       CmpInst::Predicate VecPred, TTI::TargetCostKind CostKind,
       const Instruction *I = nullptr);
 
+  InstructionCost getIntrinsicInstrCost(const IntrinsicCostAttributes &ICA,
+                                        TTI::TargetCostKind CostKind);
+
   InstructionCost getScalingFactorCost(Type *Ty, GlobalValue *BaseGV,
                                        int64_t BaseOffset, bool HasBaseReg,
                                        int64_t Scale, unsigned AddrSpace);

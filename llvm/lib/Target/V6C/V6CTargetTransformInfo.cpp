@@ -7,6 +7,7 @@
 #include "V6CTargetTransformInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
@@ -241,6 +242,30 @@ InstructionCost V6CTTIImpl::getCmpSelInstrCost(
     return 8;
   return BaseT::getCmpSelInstrCost(Opcode, ValTy, CondTy, VecPred,
                                    CostKind, I);
+}
+
+InstructionCost V6CTTIImpl::getIntrinsicInstrCost(
+    const IntrinsicCostAttributes &ICA, TTI::TargetCostKind CostKind) {
+  if (EnableTTICostHooks) {
+    // CTLZ / CTTZ / CTPOP have no hardware support and the generic Expand
+    // produces a SWAR popcount sequence that needs more 16-bit live ranges
+    // than the i8080 register file can sustain (HL/BC/DE only, with HL
+    // typically pinned by the live caller-side pointer). Reporting these
+    // intrinsics as unconditionally expensive here keeps middle-end passes
+    // (notably LoopIdiomRecognize::recognizeAndInsertFFS, which would
+    // rewrite `while (c <<= 1) cnt++;` into `8 - cttz(c<<1)`) from creating
+    // them in the first place. The straight loop is both smaller and
+    // RA-safe on V6C.
+    switch (ICA.getID()) {
+    case Intrinsic::ctlz:
+    case Intrinsic::cttz:
+    case Intrinsic::ctpop:
+      return TTI::TCC_Expensive;
+    default:
+      break;
+    }
+  }
+  return BaseT::getIntrinsicInstrCost(ICA, CostKind);
 }
 
 InstructionCost V6CTTIImpl::getScalingFactorCost(Type *Ty, GlobalValue *BaseGV,

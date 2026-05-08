@@ -68,16 +68,6 @@ a compilation key to disable the loop 0 precondition check.
 	// JZ	.LBB19_1
 ```
 ===============================
-check what produces this loop.
-int addi16(int a, uint8_t c){
-while (c << 1){a += 1;}
-return a;}
-Expected:
-l: INX H
-   ADD A
-   JNZ l
-   ret
-===============================
 bad code
 tests\features\43\v6llvmc_bsort_spillfrwd.asm
 	;--- V6C_LOAD8_P ---
