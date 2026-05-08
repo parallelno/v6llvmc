@@ -274,7 +274,3 @@ or `Register()` if none exists.
   port to the store with the same constraints; the XCHG bypass for stores
   applies to `addr=DE, src ∈ {B, C}`. Tracked separately as O77 / part of
   this plan as a follow-up — flagged here for visibility, not in scope.
-- **`addr=BC` XCHG-via-DE alternative.** A path of the form
-  `XCHG; MOV H,B; MOV L,C; MOV dst,M; XCHG` could preserve `A` for `addr=BC`
-  too, but it costs 5B / 36cc (worse than 6a's 4B / 32cc) and unconditionally
-  clobbers DE. Rejected.

@@ -2343,29 +2343,69 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       BuildMI(MBB, MI, DL, get(V6C::STAX))
           .addReg(V6C::A).addReg(AddrReg);
     } else {
-      // Priority 4: route through A via STAX (preserve A through PSW
-      // when A is live across the pseudo).
-      //
-      // AddrReg is guaranteed to be BC or DE (priority 1 caught HL).
-      // The earlier PUSH/POP-HL fallback was incorrect when SrcReg ∈
-      // {H, L}: the address load `MOV H,addr_hi; MOV L,addr_lo`
-      // clobbered the source register before it could be stored
-      // (observed on fannkuch's perm1 shift loop). Capturing SrcReg
-      // into A first sidesteps HL entirely.
-      //
-      // Costs:
-      //   A dead :  MOV A,src (5) + STAX (7)             = 12cc, 2B
-      //   A live :  PUSH PSW (12) + MOV (5) + STAX (7)
-      //           + POP PSW (10)                         = 34cc, 4B
+      // Priority 4: AddrReg ∈ {BC, DE}, SrcReg != A. O77 — three-way
+      // dispatch on (AddrReg, A-liveness, dead-GR8 availability):
+      //   7  : addr=DE, A live           → XCHG bypass        (3B/16cc)
+      //   6a : addr=BC, A live, SpareR   → SpareR-A envelope  (4B/32cc)
+      //   6b : addr=BC, A live, no spare → PSW-wrap fallback  (4B/44cc)
+      //   4/5: A dead                    → MOV A,src + STAX   (2B/16cc)
       bool ALive = !isRegDeadAtMI(V6C::A, MI, MBB, &RI);
-      if (ALive)
-        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr))
-          .addReg(V6C::A, RegState::Define).addReg(SrcReg);
-      BuildMI(MBB, MI, DL, get(V6C::STAX))
-          .addReg(V6C::A).addReg(AddrReg);
-      if (ALive)
-        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
+
+      // partner(src) = XCHG image of src. After `XCHG; MOV M,r; XCHG`
+      // the byte stored is the value originally in `src` for every
+      // non-A src — the body MOV M,r only reads a register and writes
+      // memory, so the trailing XCHG fully restores DE. Unlike the
+      // load (O76), there is no `src ∈ {D, E}` edge case.
+      auto partnerOf = [](Register R) -> Register {
+        switch (R) {
+        case V6C::B: return V6C::B;
+        case V6C::C: return V6C::C;
+        case V6C::H: return V6C::D;
+        case V6C::L: return V6C::E;
+        case V6C::D: return V6C::H;
+        case V6C::E: return V6C::L;
+        default:     return Register();
+        }
+      };
+
+      if (ALive && AddrReg == V6C::DE) {
+        // 7: XCHG bypass. 3B / 16cc, unconditional for any non-A src.
+        BuildMI(MBB, MI, DL, get(V6C::XCHG));
+        BuildMI(MBB, MI, DL, get(V6C::MOVMr))
+            .addReg(partnerOf(SrcReg));
+        BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      } else if (ALive) {
+        // 6a / 6b: addr=BC, A live. Try SpareR-A first (saves 12cc vs
+        // PSW-wrap, same byte count). Exclude AddrReg (BC) and SrcReg
+        // — SpareR must not alias the address pair (STAX B reads BC)
+        // nor the source (`MOV spareR,A` would clobber src before it
+        // is read into A).
+        Register SpareR =
+            findDeadGR8AtMI(MI, MBB, &RI, AddrReg, SrcReg);
+        if (SpareR) {
+          // 6a: MOV spareR,A; MOV A,src; STAX B; MOV A,spareR.
+          BuildMI(MBB, MI, DL, get(V6C::MOVrr), SpareR).addReg(V6C::A);
+          BuildMI(MBB, MI, DL, get(V6C::MOVrr))
+              .addReg(V6C::A, RegState::Define).addReg(SrcReg);
+          BuildMI(MBB, MI, DL, get(V6C::STAX))
+              .addReg(V6C::A).addReg(AddrReg);
+          BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(SpareR);
+        } else {
+          // 6b: PUSH PSW; MOV A,src; STAX B; POP PSW (legacy fallback).
+          BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::PSW);
+          BuildMI(MBB, MI, DL, get(V6C::MOVrr))
+              .addReg(V6C::A, RegState::Define).addReg(SrcReg);
+          BuildMI(MBB, MI, DL, get(V6C::STAX))
+              .addReg(V6C::A).addReg(AddrReg);
+          BuildMI(MBB, MI, DL, get(V6C::POP), V6C::PSW);
+        }
+      } else {
+        // 4 / 5: A dead — plain MOV A,src + STAX.
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr))
+            .addReg(V6C::A, RegState::Define).addReg(SrcReg);
+        BuildMI(MBB, MI, DL, get(V6C::STAX))
+            .addReg(V6C::A).addReg(AddrReg);
+      }
     }
     MI.eraseFromParent();
     return true;

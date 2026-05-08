@@ -62,10 +62,9 @@ main:                                   ; @main
 .LBB15_11:                              ;   Parent Loop BB15_4 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	MOV	C, M
-	PUSH	PSW
-	MOV	A, C
-	STAX	D
-	POP	PSW
+	XCHG
+	MOV	M, C
+	XCHG
 	INX	D
 	INX	H
 	DCR	A
@@ -115,10 +114,9 @@ main:                                   ; @main
 	POP	H
 .LLo61_4:
 	MVI	C, 0
-	PUSH	PSW
-	MOV	A, C
-	STAX	D
-	POP	PSW
+	XCHG
+	MOV	M, C
+	XCHG
 .LLo61_7:
 	MVI	C, 0
 	MOV	M, C
