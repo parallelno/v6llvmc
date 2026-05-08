@@ -64,97 +64,113 @@ __init_loop:
 	ld hl, 0
 	ld (__a_1_main), hl
 main:
-; 39 int main(int argc, char **argv) {
+; 21 int main(int argc, char **argv) {
 	ld (__a_2_main), hl
-; 40     (void)argc; (void)argv;
-; 41     u8 i;
-; 42 
-; 43     init_buf();
-	call init_buf
-; 44     for (i = 2; i < 16; i++) {
-	ld a, 2
-	ld (main_i), a
-l_0:
-	cp 16
-	jp nc, l_2
-; 45         if (buf[i]) cross_off(i);
-	ld de, buf
-	ld hl, (main_i)
-	ld h, 0
-	add hl, de
-	ld a, (hl)
-	or a
-	jp z, l_3
-	ld a, (main_i)
-	call cross_off
-l_3:
-	ld a, (main_i)
-	inc a
-	ld (main_i), a
-	jp l_0
-l_2:
-; 46     }
-; 47     bench_finish(count_set());
-	call count_set
-	call bench_finish
-; 48     return 0;
+; 22     (void)argc; (void)argv;
+; 23     u16 i, i_sq, k, count;
+; 24 
+; 25     /* some compilers do not initialize properly */
+; 26     {
+; 27         u16 n;
+; 28         for (n = 0; n < SIZE; n++) flags[n] = 0;
 	ld hl, 0
-	ret
-init_buf:
-; 16 static NOINLINE void init_buf(void) {
-; 17     u8 i;
-; 18     for (i = 0; i < N; i++) buf[i] = 1;
-	xor a
-	ld (init_buf_i), a
-l_5:
-	cp 252
-	jp nc, l_7
-	ld de, buf
-	ld hl, (init_buf_i)
-	ld h, 0
+	ld (main_n), hl
+l_0:
+	ld de, 57536
 	add hl, de
-	ld (hl), 1
-	inc a
-	ld (init_buf_i), a
-	jp l_5
-l_7:
-; 19     buf[0] = 0;
-	xor a
-	ld (buf), a
-; 20     buf[1] = 0;
-	ld (0FFFFh & ((buf) + (1))), a
-	ret
-cross_off:
-; 23 static NOINLINE void cross_off(u8 p) {
-	ld (__a_1_cross_off), a
-; 24     /* Walk multiples of p starting at 2*p, using u16 index so codegen
-; 25      * stays simple (no overflow wrap to reason about). */
-; 26     u16 j;
-; 27     for (j = (u16)p + p; j < N; j = (u16)(j + p)) {
-	ld hl, (__a_1_cross_off)
-	ld h, 0
-	ex hl, de
-	ld hl, (__a_1_cross_off)
-	ld h, 0
-	add hl, de
-	ld (cross_off_j), hl
-l_8:
-	ld de, 65284
-	add hl, de
-	ret c
-; 28         buf[j] = 0;
-	ld de, buf
-	ld hl, (cross_off_j)
+	jp c, l_2
+	ld de, flags
+	ld hl, (main_n)
 	add hl, de
 	xor a
 	ld (hl), a
-	ld hl, (cross_off_j)
-	ex hl, de
-	ld hl, (__a_1_cross_off)
-	ld h, 0
+	ld hl, (main_n)
+	inc hl
+	ld (main_n), hl
+	jp l_0
+l_2:
+; 29     }
+; 30 
+; 31     count = SIZE - 2;
+	ld hl, 7998
+	ld (main_count), hl
+; 32 
+; 33     i_sq = 4;
+	ld hl, 4
+	ld (main_i_sq), hl
+; 34     for (i = 2; i_sq < SIZE; ++i) {
+	ld hl, 2
+	ld (main_i), hl
+l_3:
+	ld hl, (main_i_sq)
+	ld de, 57536
 	add hl, de
-	ld (cross_off_j), hl
+	jp c, l_5
+; 35         if (!flags[i]) {
+	ld de, flags
+	ld hl, (main_i)
+	add hl, de
+	ld a, (hl)
+	or a
+	jp nz, l_6
+; 36             for (k = i_sq; k < SIZE; k = (u16)(k + i)) {
+	ld hl, (main_i_sq)
+	ld (main_k), hl
+l_8:
+	ld de, 57536
+	add hl, de
+	jp c, l_10
+; 37                 if (!flags[k]) count = (u16)(count - 1);
+	ld de, flags
+	ld hl, (main_k)
+	add hl, de
+	ld a, (hl)
+	or a
+	jp nz, l_11
+	ld hl, (main_count)
+	dec hl
+	ld (main_count), hl
+l_11:
+; 38                 flags[k] = 1;
+	ld hl, (main_k)
+	add hl, de
+	ld (hl), 1
+	ld hl, (main_k)
+	ex hl, de
+	ld hl, (main_i)
+	add hl, de
+	ld (main_k), hl
 	jp l_8
+l_10:
+l_6:
+; 39             }
+; 40         }
+; 41         i_sq = (u16)(i_sq + i + i + 1);  /* (n+1)^2 = n^2 + 2n + 1 */
+	ld hl, (main_i_sq)
+	ex hl, de
+	ld hl, (main_i)
+	add hl, de
+	ex hl, de
+	ld hl, (main_i)
+	add hl, de
+	inc hl
+	ld (main_i_sq), hl
+	ld hl, (main_i)
+	inc hl
+	ld (main_i), hl
+	jp l_3
+l_5:
+; 42     }
+; 43 
+; 44     bench_finish((u8)((u8)count ^ (u8)(count >> 8)));
+	ld a, (main_count)
+	ld hl, (main_count)
+	ld d, h
+	xor d
+	call bench_finish
+; 45     return 0;
+	ld hl, 0
+	ret
 bench_finish:
 ; 42 void __global bench_finish(unsigned char checksum) {
 	ld (__a_1_bench_finish), a
@@ -164,55 +180,21 @@ bench_finish:
         halt
 
 	ret
-count_set:
-; 32 static NOINLINE u8 count_set(void) {
-; 33     u8 c = 0;
-	xor a
-	ld (count_set_c), a
-; 34     u8 i;
-; 35     for (i = 0; i < N; i++) if (buf[i]) c = (u8)(c + 1);
-	ld (count_set_i), a
-l_11:
-	cp 252
-	jp nc, l_13
-	ld de, buf
-	ld hl, (count_set_i)
-	ld h, 0
-	add hl, de
-	ld a, (hl)
-	or a
-	jp z, l_14
-	ld a, (count_set_c)
-	inc a
-	ld (count_set_c), a
-l_14:
-	ld a, (count_set_i)
-	inc a
-	ld (count_set_i), a
-	jp l_11
-l_13:
-; 36     return c;
-	ld a, (count_set_c)
-	ret
 __bss:
-buf:
-	ds 252
+flags:
+	ds 8000
 __static_stack:
-	ds 8
+	ds 15
 __end:
-__s___init equ __static_stack + 8
-__s_main equ __static_stack + 3
-__a_1_main equ __s_main + 1
-__a_2_main equ __s_main + 3
+__s___init equ __static_stack + 15
+__s_main equ __static_stack + 1
+__a_1_main equ __s_main + 10
+__a_2_main equ __s_main + 12
+main_n equ __s_main + 8
+main_count equ __s_main + 6
+main_i_sq equ __s_main + 2
 main_i equ __s_main + 0
-__s_cross_off equ __static_stack + 0
-__a_1_cross_off equ __s_cross_off + 2
-__s_bench_finish equ __static_stack + 2
+main_k equ __s_main + 4
+__s_bench_finish equ __static_stack + 0
 __a_1_bench_finish equ __s_bench_finish + 0
-__s_init_buf equ __static_stack + 0
-init_buf_i equ __s_init_buf + 0
-cross_off_j equ __s_cross_off + 0
-__s_count_set equ __static_stack + 0
-count_set_c equ __s_count_set + 0
-count_set_i equ __s_count_set + 1
     savebin "C:\Work\Programming\v6llvmc\tests\benchmarks_c\build\c8080_sieve.com", __begin, __bss - __begin

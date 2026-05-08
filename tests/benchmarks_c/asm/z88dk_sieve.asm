@@ -3,7 +3,7 @@
 ;
 ;	Reconstructed for z80 Module Assembler
 ;
-;	Module compile time: Thu May 07 23:16:44 2026
+;	Module compile time: Thu May 07 23:24:52 2026
 
 
 	C_LINE	0,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c"
@@ -34,218 +34,179 @@
 	ret
 
 
-	C_LINE	4,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::bench_finish::0::1"
-	C_LINE	14,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::bench_finish::0::1"
-	C_LINE	16,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::bench_finish::0::1"
-
-; Function init_buf flags 0x00000200 __smallc 
-; void init_buf()
-	C_LINE	16,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::init_buf::0::1"
-._init_buf
-	dec	sp
-	ld	hl,0	;const
-	add	hl,sp
-	ld	(hl),0
-	jp	i_4	;EOS
-.i_2
-	ld	hl,0	;const
-	add	hl,sp
-	inc	(hl)
-.i_4
-	pop	hl
-	push	hl
-	ld	a,l
-	sub	252
-	jp	nc,i_3	;
-	ld	hl,_buf
-	ex	de,hl
-	pop	hl
-	push	hl
-	ld	h,0
-	add	hl,de
-	ld	(hl),1
-	jp	i_2	;EOS
-.i_3
-	ld	hl,_buf
-	ld	(hl),0
-	ld	hl,_buf+1
-	ld	(hl),0
-	ld	l,(hl)
-	ld	h,0
-	inc	sp
-	ret
-
-
-	C_LINE	23,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::init_buf::0::2"
-
-; Function cross_off flags 0x00000200 __smallc 
-; void cross_off(unsigned char p)
-; parameter 'unsigned char p' at sp+2 size(1)
-	C_LINE	23,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::cross_off::0::2"
-._cross_off
-	push	bc
-	ld	hl,4	;const
-	add	hl,sp
-	ld	e,(hl)
-	ld	d,0
-	ld	hl,4	;const
-	add	hl,sp
-	ld	l,(hl)
-	ld	h,0
-	add	hl,de
-	pop	bc
-	push	hl
-	jp	i_7	;EOS
-.i_5
-	pop	de
-	push	de
-	ld	hl,4	;const
-	add	hl,sp
-	ld	l,(hl)
-	ld	h,0
-	add	hl,de
-	pop	bc
-	push	hl
-.i_7
-	pop	hl
-	push	hl
-	ld	a,l
-	sub	252
-	ld	a,h
-	sbc	0
-	jp	nc,i_6	;
-	pop	hl
-	push	hl
-	ld	bc,_buf
-	push	bc
-	pop	de
-	add	hl,de
-	ld	(hl),0
-	jp	i_5	;EOS
-.i_6
-	pop	bc
-	ret
-
-
-	C_LINE	32,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::cross_off::0::4"
-
-; Function count_set flags 0x00000200 __smallc 
-; unsigned char u8count_set()
-	C_LINE	32,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::count_set::0::4"
-._count_set
-	dec	sp
-	pop	hl
-	ld	l,0
-	push	hl
-	dec	sp
-	ld	hl,0	;const
-	add	hl,sp
-	ld	(hl),0
-	jp	i_10	;EOS
-.i_8
-	ld	hl,0	;const
-	add	hl,sp
-	inc	(hl)
-.i_10
-	pop	hl
-	push	hl
-	ld	a,l
-	sub	252
-	jp	nc,i_9	;
-	ld	hl,_buf
-	ex	de,hl
-	pop	hl
-	push	hl
-	ld	h,0
-	add	hl,de
-	ld	a,(hl)
-	and	a
-	jp	z,i_11	;
-	ld	hl,1	;const
-	add	hl,sp
-	push	hl
-	ld	l,(hl)
-	ld	h,0
-	inc	hl
-	pop	de
-	ld	a,l
-	ld	(de),a
-	jp	i_8	;EOS
-.i_9
-	pop	hl
-	push	hl
-	ld	l,h
-	ld	h,0
-	pop	bc
-	ret
-
-
-	C_LINE	39,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::count_set::0::5"
+	C_LINE	13,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::bench_finish::0::1"
+	C_LINE	19,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::bench_finish::0::1"
+	C_LINE	21,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::bench_finish::0::1"
 
 ; Function main flags 0x00000000 __stdc 
 ; int main(int argc, char * * argv)
 ; parameter 'int argc' at 2 size(2)
 ; parameter 'char * * argv' at 4 size(2)
-	C_LINE	39,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::main::0::6"
+	C_LINE	21,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\sieve.c::main::0::2"
 ._main
 	pop	bc
 	pop	hl
 	push	hl
 	push	bc
 	call	l_gint4sp	;
-	dec	sp
-	call	_init_buf
+	push	bc
+	push	bc
+	push	bc
+	push	bc
 	ld	hl,0	;const
-	add	hl,sp
-	ld	(hl),2
-	jp	i_14	;EOS
-.i_12
-	ld	hl,0	;const
-	add	hl,sp
-	inc	(hl)
-.i_14
+	push	hl
+	jp	i_4	;EOS
+.i_2
+	pop	hl
+	inc	hl
+	push	hl
+.i_4
 	pop	hl
 	push	hl
 	ld	a,l
-	sub	16
-	jp	nc,i_13	;
-	ld	hl,_buf
-	ex	de,hl
+	sub	64
+	ld	a,h
+	sbc	31
+	jp	nc,i_3	;
 	pop	hl
 	push	hl
-	ld	h,0
+	ld	bc,_flags
+	push	bc
+	pop	de
+	add	hl,de
+	ld	(hl),0
+	jp	i_2	;EOS
+.i_3
+	pop	bc
+	ld	hl,7998	;const
+	pop	bc
+	push	hl
+	ld	hl,4	;const
+	add	hl,sp
+	ld	(hl),4
+	inc	hl
+	ld	(hl),0
+	ld	hl,6	;const
+	add	hl,sp
+	ld	(hl),2
+	inc	hl
+	ld	(hl),0
+	jp	i_7	;EOS
+.i_5
+	ld	hl,6	;const
+	add	hl,sp
+	push	hl
+	call	l_gint	;
+	inc	hl
+	call	l_pint_pop
+.i_7
+	call	l_gint4sp	;
+	ld	a,l
+	sub	64
+	ld	a,h
+	sbc	31
+	jp	nc,i_6	;
+	ld	hl,_flags
+	ex	de,hl
+	call	l_gint6sp
 	add	hl,de
 	ld	a,(hl)
 	and	a
-	jp	z,i_15	;
+	jp	nz,i_8	;
+	call	l_gint4sp	;
+	pop	de
+	pop	bc
+	push	hl
+	push	de
+	jp	i_11	;EOS
+.i_9
+	ld	hl,2	;const
+	call	l_gintspsp	;
+	call	l_gint8sp	;
+	pop	de
+	add	hl,de
+	pop	de
+	pop	bc
+	push	hl
+	push	de
+.i_11
+	pop	bc
+	pop	hl
+	push	hl
+	push	bc
+	ld	a,l
+	sub	64
+	ld	a,h
+	sbc	31
+	jp	nc,i_10	;
+	ld	hl,_flags
+	ex	de,hl
+	call	l_gint2sp
+	add	hl,de
+	ld	a,(hl)
+	and	a
+	jp	nz,i_12	;
+	pop	hl
+	push	hl
+	dec	hl
+	pop	bc
+	push	hl
+.i_12
+	ld	hl,_flags
+	ex	de,hl
+	call	l_gint2sp
+	add	hl,de
+	ld	(hl),1
+	jp	i_9	;EOS
+.i_8
+	ld	hl,4	;const
+	add	hl,sp
+	push	hl
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	call	l_gint8sp	;
+	add	hl,de
+	ex	de,hl
+	call	l_gint8sp	;
+	add	hl,de
+	inc	hl
+	call	l_pint_pop
+	jp	i_5	;EOS
+.i_6
 	pop	hl
 	push	hl
 	ld	h,0
+	pop	de
+	push	de
 	push	hl
-	call	_cross_off
-	pop	bc
-	jp	i_12	;EOS
-.i_13
-	call	_count_set
+	ex	de,hl
+	ld	l,h
+	ld	h,0
+	pop	de
+	call	l_xor
+	ld	h,0
 	push	hl
 	call	_bench_finish
 	pop	bc
 	ld	hl,0	;const
-	inc	sp
+	pop	bc
+	pop	bc
+	pop	bc
+	pop	bc
 	ret
 
 
 	SECTION	bss_compiler
 	SECTION	code_compiler
 ; --- Start of Optimiser additions ---
-	defc	i_11 = i_8
-	defc	i_15 = i_12
+	defc	i_10 = i_8
 
 
 ; --- Start of Static Variables ---
 
 	SECTION	bss_compiler
-._buf	defs	252
+._flags	defs	8000
 	SECTION	code_compiler
 
 

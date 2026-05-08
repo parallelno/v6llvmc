@@ -1,189 +1,141 @@
 	.text
-	.section	.text.init_buf,"ax",@progbits
-init_buf:                               ; -- Begin function init_buf
-                                        ; @init_buf
-; %bb.0:
-	LXI	H, buf
-	MVI	A, 0xfc
-.LBB15_1:                               ; =>This Inner Loop Header: Depth=1
-	DCR	A
-	MVI	M, 1
-	INX	H
-	JNZ	.LBB15_1
-; %bb.2:
-	LXI	H, 0
-	SHLD	buf
-	RET
-                                        ; -- End function
-	.section	.text.cross_off,"ax",@progbits
-cross_off:                              ; -- Begin function cross_off
-                                        ; @cross_off
-; %bb.0:
-	MVI	L, 0
-	MOV	H, L
-	MOV	L, A
-	SHLD	.LLo61_0+1
-	CPI	0x7e
-	RNC
-.LBB16_1:
-	LHLD	.LLo61_0+1
-	DAD	H
-	LXI	B, buf
-.LBB16_2:                               ; =>This Inner Loop Header: Depth=1
-.LLo61_0:
-	LXI	D, 0
-	XCHG
-	DAD	D
-	XCHG
-	DAD	B
-	MVI	M, 0
-	MOV	H, D
-	MOV	L, E
-	MVI	A, 0xfb
-	SUB	E
-	MVI	A, 0
-	SBB	D
-	JNC	.LBB16_2
-; %bb.3:
-	RET
-                                        ; -- End function
-	.section	.text.count_set,"ax",@progbits
-count_set:                              ; -- Begin function count_set
-                                        ; @count_set
-; %bb.0:
-	XRA	A
-	LXI	H, buf
-	MVI	C, 0xfc
-	JMP	.LBB17_1
-.LBB17_3:                               ;   in Loop: Header=BB17_1 Depth=1
-	MOV	A, D
-	ADD	E
-	MOV	D, A
-	MOV	A, C
-	DCR	A
-	MOV	C, A
-	MOV	A, D
-	INX	H
-	RZ
-.LBB17_1:                               ; =>This Inner Loop Header: Depth=1
-	MOV	D, A
-	MOV	A, M
-	ORA	A
-	MVI	E, 0
-	JZ	.LBB17_3
-; %bb.2:                                ;   in Loop: Header=BB17_1 Depth=1
-	INR	E
-	JMP	.LBB17_3
-                                        ; -- End function
 	.section	.text.main,"ax",@progbits
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
 ; %bb.0:
-	CALL	init_buf
-	LDA	buf+2
+	LXI	H, flags
+.LBB15_1:                               ; =>This Inner Loop Header: Depth=1
+	MVI	M, 0
+	INX	H
+	MVI	A, <(flags+8000)
+	CMP	L
+	JNZ	.LBB15_1
+; %bb.10:                               ;   in Loop: Header=BB15_1 Depth=1
+	MVI	A, >(flags+8000)
+	CMP	H
+	JNZ	.LBB15_1
+; %bb.2:
+	LXI	H, 4
+	SHLD	.LLo61_4+1
+	LXI	H, 0x1f3e
+	SHLD	.LLo61_0+1
+	LXI	H, 2
+	LXI	B, 5
+	LXI	D, flags+4
+	XCHG
+	SHLD	.LLo61_2+1
+	XCHG
+.LBB15_3:                               ; =>This Loop Header: Depth=1
+                                        ;     Child Loop BB15_5 Depth 2
+	PUSH	H
+	MOV	L, C
+	MOV	H, B
+	SHLD	.LLo61_5+1
+	POP	H
+	SHLD	.LLo61_1+1
+	LXI	D, flags
+	DAD	D
+	MOV	A, M
 	ORA	A
-	JZ	.LBB18_2
-; %bb.1:
-	MVI	A, 2
-	CALL	cross_off
-.LBB18_2:
-	LDA	buf+3
+	JZ	.LBB15_4
+.LBB15_8:                               ;   in Loop: Header=BB15_3 Depth=1
+	LHLD	.LLo61_1+1
+	DAD	H
+.LLo61_4:
+	LXI	D, 0
+	DAD	D
+	SHLD	.LLo61_4+1
+	LHLD	.LLo61_1+1
+.LLo61_5:
+	LXI	B, 0
+.LLo61_2:
+	LXI	D, 0
+	XCHG
+	DAD	B
+	SHLD	.LLo61_2+1
+	INX	B
+	INX	B
+	LHLD	.LLo61_4+1
+	XCHG
+	INX	D
+	XCHG
+	SHLD	.LLo61_4+1
+	XCHG
+	INX	H
+	MVI	A, 0x5a
+	CMP	L
+	JNZ	.LBB15_3
+; %bb.11:                               ;   in Loop: Header=BB15_3 Depth=1
+	XRA	A
+	CMP	H
+	JNZ	.LBB15_3
+	JMP	.LBB15_9
+.LBB15_4:                               ;   in Loop: Header=BB15_3 Depth=1
+	LHLD	.LLo61_2+1
+	MOV	C, L
+	MOV	B, H
+	LHLD	.LLo61_4+1
+	JMP	.LBB15_5
+.LBB15_7:                               ;   in Loop: Header=BB15_5 Depth=2
+	MOV	H, L
+	MOV	L, A
+.LLo61_0:
+	LXI	D, 0
+	MOV	A, E
+	SUB	L
+	MOV	E, A
+	MOV	A, D
+	SBB	H
+	MOV	D, A
+	XCHG
+	SHLD	.LLo61_0+1
+	MOV	L, C
+	MOV	H, B
+	MVI	M, 1
+.LLo61_1:
+	LXI	H, 0
+	MOV	A, C
+	ADD	L
+	MOV	C, A
+	MOV	A, B
+	ADC	H
+	MOV	B, A
+.LLo61_3:
+	LXI	D, 0
+	DAD	D
+	MVI	A, 0x3f
+	SUB	L
+	MVI	A, 0x1f
+	SBB	H
+	JC	.LBB15_8
+.LBB15_5:                               ;   Parent Loop BB15_3 Depth=1
+                                        ; =>  This Inner Loop Header: Depth=2
+	SHLD	.LLo61_3+1
+	LDAX	B
 	ORA	A
-	JZ	.LBB18_4
-; %bb.3:
-	MVI	A, 3
-	CALL	cross_off
-.LBB18_4:
-	LDA	buf+4
-	ORA	A
-	JZ	.LBB18_6
-; %bb.5:
-	MVI	A, 4
-	CALL	cross_off
-.LBB18_6:
-	LDA	buf+5
-	ORA	A
-	JZ	.LBB18_8
-; %bb.7:
-	MVI	A, 5
-	CALL	cross_off
-.LBB18_8:
-	LDA	buf+6
-	ORA	A
-	JZ	.LBB18_10
-; %bb.9:
-	MVI	A, 6
-	CALL	cross_off
-.LBB18_10:
-	LDA	buf+7
-	ORA	A
-	JZ	.LBB18_12
-; %bb.11:
-	MVI	A, 7
-	CALL	cross_off
-.LBB18_12:
-	LDA	buf+8
-	ORA	A
-	JZ	.LBB18_14
-; %bb.13:
-	MVI	A, 8
-	CALL	cross_off
-.LBB18_14:
-	LDA	buf+9
-	ORA	A
-	JZ	.LBB18_16
-; %bb.15:
-	MVI	A, 9
-	CALL	cross_off
-.LBB18_16:
-	LDA	buf+10
-	ORA	A
-	JZ	.LBB18_18
-; %bb.17:
-	MVI	A, 0xa
-	CALL	cross_off
-.LBB18_18:
-	LDA	buf+11
-	ORA	A
-	JZ	.LBB18_20
-; %bb.19:
-	MVI	A, 0xb
-	CALL	cross_off
-.LBB18_20:
-	LDA	buf+12
-	ORA	A
-	JZ	.LBB18_22
-; %bb.21:
-	MVI	A, 0xc
-	CALL	cross_off
-.LBB18_22:
-	LDA	buf+13
-	ORA	A
-	JZ	.LBB18_24
-; %bb.23:
-	MVI	A, 0xd
-	CALL	cross_off
-.LBB18_24:
-	LDA	buf+14
-	ORA	A
-	JZ	.LBB18_26
-; %bb.25:
-	MVI	A, 0xe
-	CALL	cross_off
-.LBB18_26:
-	LDA	buf+15
-	ORA	A
-	JZ	.LBB18_28
-; %bb.27:
-	MVI	A, 0xf
-	CALL	cross_off
-.LBB18_28:
-	CALL	count_set
+	MVI	L, 0
+	MOV	A, L
+	JNZ	.LBB15_7
+; %bb.6:                                ;   in Loop: Header=BB15_5 Depth=2
+	INR	A
+	JMP	.LBB15_7
+.LBB15_9:
+	LHLD	.LLo61_0+1
+	XCHG
+	MOV	L, D
+	MOV	H, A
+	MOV	A, L
+	XRA	E
+	MOV	L, A
+	MOV	A, H
+	XRA	D
+	MOV	H, A
+	MOV	A, L
 	OUT	0xed
 	HLT
                                         ; -- End function
-	.local	buf                             ; @buf
-	.comm	buf,252,1
+	.local	flags                           ; @flags
+	.comm	flags,8000,1
 	.addrsig
 	.addrsig_sym __mulqi3
 	.addrsig_sym __v6c_mulqihi3

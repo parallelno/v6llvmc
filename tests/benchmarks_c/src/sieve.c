@@ -1,49 +1,46 @@
-/* sieve - Sieve of Eratosthenes over [0..251]. OUT count of primes (=54).
- * Split into helpers so the v6c backend has shorter live ranges; flat
- * inlined version blew up regalloc on the i8080 GPR set. */
+/* sieve - Sieve of Eratosthenes, port of the z88dk benchmark
+ * (z88dk/support/benchmarks/sieve/sdcc/sieve.c).
+ *
+ * Investigates numbers 2..SIZE-1 for primes using a flat byte array
+ * of "is composite" flags. The hot inner loop crosses off multiples
+ * of each prime starting at i_sq (i*i), advancing i_sq by 2*i+1 to
+ * avoid a multiply.
+ *
+ * The reference reports `count` (number of primes), a u16. To fit the
+ * one-byte bench_finish channel we XOR the high and low bytes; for
+ * SIZE=8000 the count is 1007 (0x03EF) and the checksum is 0xEC.
+ */
 #include "bench.h"
 
-#define N 252
-
-#if defined(__V6C__) || defined(__GNUC__) || defined(__clang__)
-#define NOINLINE __attribute__((noinline))
-#else
-#define NOINLINE
+#ifndef SIZE
+#define SIZE 8000
 #endif
 
-static u8 buf[N];
-
-static NOINLINE void init_buf(void) {
-    u8 i;
-    for (i = 0; i < N; i++) buf[i] = 1;
-    buf[0] = 0;
-    buf[1] = 0;
-}
-
-static NOINLINE void cross_off(u8 p) {
-    /* Walk multiples of p starting at 2*p, using u16 index so codegen
-     * stays simple (no overflow wrap to reason about). */
-    u16 j;
-    for (j = (u16)p + p; j < N; j = (u16)(j + p)) {
-        buf[j] = 0;
-    }
-}
-
-static NOINLINE u8 count_set(void) {
-    u8 c = 0;
-    u8 i;
-    for (i = 0; i < N; i++) if (buf[i]) c = (u8)(c + 1);
-    return c;
-}
+static u8 flags[SIZE];
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
-    u8 i;
+    u16 i, i_sq, k, count;
 
-    init_buf();
-    for (i = 2; i < 16; i++) {
-        if (buf[i]) cross_off(i);
+    /* some compilers do not initialize properly */
+    {
+        u16 n;
+        for (n = 0; n < SIZE; n++) flags[n] = 0;
     }
-    bench_finish(count_set());
+
+    count = SIZE - 2;
+
+    i_sq = 4;
+    for (i = 2; i_sq < SIZE; ++i) {
+        if (!flags[i]) {
+            for (k = i_sq; k < SIZE; k = (u16)(k + i)) {
+                if (!flags[k]) count = (u16)(count - 1);
+                flags[k] = 1;
+            }
+        }
+        i_sq = (u16)(i_sq + i + i + 1);  /* (n+1)^2 = n^2 + 2n + 1 */
+    }
+
+    bench_finish((u8)((u8)count ^ (u8)(count >> 8)));
     return 0;
 }

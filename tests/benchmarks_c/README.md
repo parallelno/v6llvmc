@@ -27,11 +27,11 @@ port 0xED then HLTs.
 | Program | Source | What it stresses |
 |---|---|---|
 | `bsort`   | [src/bsort.c](src/bsort.c)     | bubble-sort 16 i8 values + sum reduction (loops, i8 ALU, indexing) |
-| `sieve`   | [src/sieve.c](src/sieve.c)     | Sieve of Eratosthenes over [0..251] (pointer arithmetic, byte memory) |
+| `sieve`   | [src/sieve.c](src/sieve.c)     | Sieve of Eratosthenes over [0..7999] (pointer arithmetic, byte memory; port of z88dk benchmark) |
 | `fib_crc` | [src/fib_crc.c](src/fib_crc.c) | 24 Fibonacci steps + CRC-16 over the byte stream (i16 add / shift / xor) |
 
 Correctness invariant: every compiler must produce the same checksum byte for
-each program (`bsort`=0xC4, `sieve`=0x36, `fib_crc`=0x2B). The runner aborts
+each program (`bsort`=0xC4, `sieve`=0xEC, `fib_crc`=0x2B). The runner aborts
 with a non-zero exit code on mismatch.
 
 ## Per-compiler glue

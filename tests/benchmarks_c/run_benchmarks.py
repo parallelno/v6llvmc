@@ -34,7 +34,7 @@ ZCC_CFG = REPO / "tools" / "z88dk" / "z88dk" / "lib" / "config"
 V6EMUL = REPO / "tools" / "v6emul" / "v6emul.exe"
 
 PROGRAMS = ["bsort", "sieve", "fib_crc"]
-EXPECTED = {"bsort": 0xC4, "sieve": 0x36, "fib_crc": 0x2B}
+EXPECTED = {"bsort": 0xC4, "sieve": 0xEC, "fib_crc": 0x2B}
 MAX_CYCLES = 50_000_000
 
 
@@ -237,7 +237,7 @@ def main() -> int:
         lines.append("| " + " | ".join(cells) + " |")
     lines.append("")
     lines.append("All compilers produced the same checksum byte per program "
-                 "(`bsort`=0xC4, `sieve`=0x36, `fib_crc`=0x2B), confirming the "
+                 "(`bsort`=0xC4, `sieve`=0xEC, `fib_crc`=0x2B), confirming the "
                  "ROMs are functionally equivalent.")
     lines.append("")
     lines.append("## Compiler invocations")
