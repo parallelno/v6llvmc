@@ -34,7 +34,7 @@ ZCC_CFG = REPO / "tools" / "z88dk" / "z88dk" / "lib" / "config"
 V6EMUL = REPO / "tools" / "v6emul" / "v6emul.exe"
 
 PROGRAMS = ["bsort", "sieve", "fib_crc", "fannkuch", "lfsr16"]
-EXPECTED = {"bsort": 0xC4, "sieve": 0xEC, "fib_crc": 0x2B, "fannkuch": 0x10,
+EXPECTED = {"bsort": 0x98, "sieve": 0xEC, "fib_crc": 0x2B, "fannkuch": 0x10,
             "lfsr16": 0x1D}
 # Generous safety cap: long enough for fannkuch-style N=9 runs (~50-100M cc
 # expected per the z88dk reference) without bailing too early. A real

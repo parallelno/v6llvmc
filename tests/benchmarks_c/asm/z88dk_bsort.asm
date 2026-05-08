@@ -3,7 +3,7 @@
 ;
 ;	Reconstructed for z80 Module Assembler
 ;
-;	Module compile time: Fri May 08 09:10:40 2026
+;	Module compile time: Fri May 08 09:31:30 2026
 
 
 	C_LINE	0,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c"
@@ -35,56 +35,36 @@
 
 
 	C_LINE	2,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::bench_finish::0::1"
-	C_LINE	4,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::bench_finish::0::1"
-	SECTION	rodata_compiler
-._INIT
-	defb	13
-	defb	200
-	defb	7
-	defb	99
-	defb	42
-	defb	1
-	defb	250
-	defb	64
-	defb	180
-	defb	17
-	defb	88
-	defb	33
-	defb	5
-	defb	222
-	defb	100
-	defb	155
-	SECTION	code_compiler
-	C_LINE	9,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::bench_finish::0::1"
+	C_LINE	6,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::bench_finish::0::1"
 
 ; Function main flags 0x00000000 __stdc 
 ; int main(int argc, char * * argv)
 ; parameter 'int argc' at 2 size(2)
 ; parameter 'char * * argv' at 4 size(2)
-	C_LINE	9,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::main::0::2"
+	C_LINE	6,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\bsort.c::main::0::2"
 ._main
 	pop	bc
 	pop	hl
 	push	hl
 	push	bc
 	call	l_gint4sp	;
-	ld	hl,65517	;const
+	ld	hl,65278	;const
 	add	hl,sp
 	ld	sp,hl
 	ld	hl,2	;const
 	add	hl,sp
 	ld	(hl),0
-	jp	i_5	;EOS
-.i_3
+	jp	i_4	;EOS
+.i_2
 	ld	hl,2	;const
 	add	hl,sp
 	inc	(hl)
-.i_5
+.i_4
 	ld	hl,2	;const
 	add	hl,sp
 	ld	a,(hl)
-	sub	16
-	jp	nc,i_4	;
+	sub	255
+	jp	nc,i_3	;
 	ld	hl,3	;const
 	add	hl,sp
 	ex	de,hl
@@ -94,27 +74,28 @@
 	ld	h,0
 	add	hl,de
 	push	hl
-	ld	hl,_INIT
-	ex	de,hl
 	ld	hl,4	;const
 	add	hl,sp
 	ld	l,(hl)
 	ld	h,0
-	add	hl,de
-	ld	a,(hl)
+	ld	de,31
+	call	l_mult
+	ld	bc,7
+	add	hl,bc
 	pop	de
+	ld	a,l
 	ld	(de),a
-	jp	i_3	;EOS
-.i_4
+	jp	i_2	;EOS
+.i_3
 	ld	hl,2	;const
 	add	hl,sp
-	ld	(hl),15
-	jp	i_8	;EOS
-.i_6
+	ld	(hl),254
+	jp	i_7	;EOS
+.i_5
 	ld	hl,2	;const
 	add	hl,sp
 	dec	(hl)
-.i_8
+.i_7
 	ld	hl,2	;const
 	add	hl,sp
 	ld	l,(hl)
@@ -123,16 +104,16 @@
 	and	a
 	jp	z,ASMPC+4
 	scf
-	jp	nc,i_7	;
+	jp	nc,i_6	;
 	ld	hl,1	;const
 	add	hl,sp
 	ld	(hl),0
-	jp	i_11	;EOS
-.i_9
+	jp	i_10	;EOS
+.i_8
 	ld	hl,1	;const
 	add	hl,sp
 	inc	(hl)
-.i_11
+.i_10
 	pop	hl
 	push	hl
 	ld	e,h
@@ -145,7 +126,7 @@
 	sub	l
 	ld	a,d
 	sbc	h
-	jp	nc,i_10	;
+	jp	nc,i_9	;
 	ld	hl,3	;const
 	add	hl,sp
 	push	hl
@@ -175,7 +156,7 @@
 	sub	e
 	ld	a,h
 	sbc	d
-	jp	nc,i_12	;
+	jp	nc,i_11	;
 	ld	hl,0	;const
 	add	hl,sp
 	push	hl
@@ -229,8 +210,8 @@
 	add	hl,sp
 	ld	a,(hl)
 	ld	(de),a
-	jp	i_9	;EOS
-.i_7
+	jp	i_8	;EOS
+.i_6
 	dec	sp
 	pop	hl
 	ld	l,0
@@ -238,17 +219,17 @@
 	ld	hl,3	;const
 	add	hl,sp
 	ld	(hl),0
-	jp	i_15	;EOS
-.i_13
+	jp	i_14	;EOS
+.i_12
 	ld	hl,3	;const
 	add	hl,sp
 	inc	(hl)
-.i_15
+.i_14
 	ld	hl,3	;const
 	add	hl,sp
 	ld	a,(hl)
-	sub	16
-	jp	nc,i_14	;
+	sub	255
+	jp	nc,i_13	;
 	ld	hl,0	;const
 	add	hl,sp
 	push	hl
@@ -270,8 +251,8 @@
 	pop	de
 	ld	a,l
 	ld	(de),a
-	jp	i_13	;EOS
-.i_14
+	jp	i_12	;EOS
+.i_13
 	pop	hl
 	push	hl
 	ld	h,0
@@ -279,7 +260,7 @@
 	call	_bench_finish
 	pop	bc
 	ld	de,0
-	ld	hl,20	;const
+	ld	hl,259	;const
 	add	hl,sp
 	ld	sp,hl
 	ex	de,hl
@@ -289,8 +270,8 @@
 	SECTION	bss_compiler
 	SECTION	code_compiler
 ; --- Start of Optimiser additions ---
-	defc	i_12 = i_9
-	defc	i_10 = i_6
+	defc	i_11 = i_8
+	defc	i_9 = i_5
 
 
 ; --- Start of Static Variables ---

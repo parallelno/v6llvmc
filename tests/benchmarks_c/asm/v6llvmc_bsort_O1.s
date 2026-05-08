@@ -3,21 +3,17 @@
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
 ; %bb.0:
-	LXI	H, INIT
-	LXI	D, __v6c_a.main
-	MVI	A, 0x10
+	LXI	H, __v6c_a.main
+	MVI	E, 0xff
+	MVI	A, 7
 .LBB15_1:                               ; =>This Inner Loop Header: Depth=1
-	MOV	C, M
-	PUSH	PSW
-	MOV	A, C
-	STAX	D
-	POP	PSW
-	INX	D
+	MOV	M, A
+	ADI	0x1f
 	INX	H
-	DCR	A
+	DCR	E
 	JNZ	.LBB15_1
 ; %bb.2:
-	MVI	L, 0xf
+	MVI	L, 0xfe
 	JMP	.LBB15_3
 .LBB15_7:                               ;   in Loop: Header=BB15_3 Depth=1
 .LLo61_0:
@@ -53,7 +49,7 @@ main:                                   ; @main
 .LBB15_8:
 	XRA	A
 	LXI	H, __v6c_a.main
-	MVI	E, 0x10
+	MVI	E, 0xff
 .LBB15_9:                               ; =>This Inner Loop Header: Depth=1
 	ADD	M
 	INX	H
@@ -63,12 +59,8 @@ main:                                   ; @main
 	OUT	0xed
 	HLT
                                         ; -- End function
-	.section	.rodata.cst16,"aM",@progbits,16
-INIT:                                   ; @INIT
-	.ascii	"\r\310\007c*\001\372@\264\021X!\005\336d\233"
-
 	.local	__v6c_a.main                    ; @__v6c_a.main
-	.comm	__v6c_a.main,16,1
+	.comm	__v6c_a.main,255,1
 	.addrsig
 	.addrsig_sym __mulqi3
 	.addrsig_sym __v6c_mulqihi3

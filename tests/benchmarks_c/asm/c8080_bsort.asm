@@ -64,36 +64,44 @@ __init_loop:
 	ld hl, 0
 	ld (__a_1_main), hl
 main:
-; 9 int main(int argc, char **argv) {
+; 6 int main(int argc, char **argv) {
 	ld (__a_2_main), hl
-; 10     (void)argc; (void)argv;
-; 11     u8 a[16];
-; 12     u8 i, j, t;
-; 13 
-; 14     for (i = 0; i < 16; i++) a[i] = INIT[i];
+; 7     (void)argc; (void)argv;
+; 8     u8 a[N];
+; 9     u8 i, j, t;
+; 10 
+; 11     /* Deterministic fill: 255 distinct bytes (gcd(31,256)=1). */
+; 12     for (i = 0; i < N; i++) {
 	xor a
 	ld (main_i), a
 l_0:
-	cp 16
+	cp 255
 	jp nc, l_2
-	ld de, init
-	ld hl, (main_i)
-	ld h, 0
-	add hl, de
-	ld a, (hl)
+; 13         a[i] = (u8)(i * 31 + 7);
 	ld de, main_a
 	ld hl, (main_i)
 	ld h, 0
 	add hl, de
+	ld d, a
+	add a
+	add d
+	add a
+	add d
+	add a
+	add d
+	add a
+	add d
+	add 7
 	ld (hl), a
 	ld a, (main_i)
 	inc a
 	ld (main_i), a
 	jp l_0
 l_2:
+; 14     }
 ; 15 
-; 16     for (i = 15; i != 0; i--) {
-	ld a, 15
+; 16     for (i = (u8)(N - 1); i != 0; i--) {
+	ld a, 254
 	ld (main_i), a
 l_3:
 	or a
@@ -158,10 +166,10 @@ l_5:
 ; 26     u8 sum = 0;
 	xor a
 	ld (main_sum), a
-; 27     for (i = 0; i < 16; i++) sum = (u8)(sum + a[i]);
+; 27     for (i = 0; i < N; i++) sum = (u8)(sum + a[i]);
 	ld (main_i), a
 l_11:
-	cp 16
+	cp 255
 	jp nc, l_13
 	ld de, main_a
 	ld hl, (main_i)
@@ -191,36 +199,19 @@ bench_finish:
         halt
 
 	ret
-init:
-	db 13
-	db 200
-	db 7
-	db 99
-	db 42
-	db 1
-	db 250
-	db 64
-	db 180
-	db 17
-	db 88
-	db 33
-	db 5
-	db 222
-	db 100
-	db 155
 __bss:
 __static_stack:
-	ds 25
+	ds 264
 __end:
-__s___init equ __static_stack + 25
+__s___init equ __static_stack + 264
 __s_main equ __static_stack + 1
-__a_1_main equ __s_main + 20
-__a_2_main equ __s_main + 22
-main_i equ __s_main + 16
+__a_1_main equ __s_main + 259
+__a_2_main equ __s_main + 261
+main_i equ __s_main + 255
 main_a equ __s_main + 0
-main_j equ __s_main + 17
-main_t equ __s_main + 18
-main_sum equ __s_main + 19
+main_j equ __s_main + 256
+main_t equ __s_main + 257
+main_sum equ __s_main + 258
 __s_bench_finish equ __static_stack + 0
 __a_1_bench_finish equ __s_bench_finish + 0
     savebin "C:\Work\Programming\v6llvmc\tests\benchmarks_c\build\c8080_bsort.com", __begin, __bss - __begin
