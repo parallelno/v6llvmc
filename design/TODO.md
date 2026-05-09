@@ -104,21 +104,23 @@ V6C_CMP16_IMM
 V6C_CMP16_ZERO
 
 ///// 8-bit memory
-
-**DONE** V6C_LOAD8_P, V6C_STORE8_P
-**DONE** V6C_STORE8_IMM_P
+**DONE**
+V6C_LOAD8_P, V6C_STORE8_P
+V6C_STORE8_IMM_P
 
 ///// func arg load/store
+**DEFFERED** rare usage, doesnt worth improvements. the better solution is not using stack for funcs args for the static-stack alloc funcs.
 V6C_LOAD8_FI, V6C_STORE8_FI
 V6C_LOAD16_FI, V6C_STORE16_FI
 
 ///// 16-bit memory
-**DONE** V6C_LOAD16_G, V6C_STORE16_G
-**DONE** V6C_LOAD16_P, V6C_STORE16_P
+**DONE**
+V6C_LOAD16_G, V6C_STORE16_G
+V6C_LOAD16_P, V6C_STORE16_P
 
 
 ///// Spill/reload
-
+**DONE**
 V6C_SPILL8, V6C_RELOAD8
 V6C_SPILL16, V6C_RELOAD16
 
