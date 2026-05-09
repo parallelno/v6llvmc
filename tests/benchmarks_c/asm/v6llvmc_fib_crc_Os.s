@@ -2,6 +2,9 @@
 	.section	.text.main,"ax",@progbits
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
+	;=== int main(int arg0, void* arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
 ; %bb.0:
 	XRA	A
 	STA	__v6c_a.main
@@ -9,10 +12,13 @@ main:                                   ; @main
 	INR	A
 	STA	__v6c_a.main+1
 	LDA	__v6c_a.main
+	;--- V6C_BUILD_PAIR ---
 	MOV	H, E
 	MOV	L, A
+	;--- V6C_SPILL16 ---
 	SHLD	.LLo61_4+1
 	LDA	__v6c_a.main+1
+	;--- V6C_BUILD_PAIR ---
 	MOV	B, E
 	MOV	C, A
 	LXI	H, 0xffff
@@ -20,16 +26,20 @@ main:                                   ; @main
 .LBB15_1:                               ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB15_2 Depth 2
                                         ;     Child Loop BB15_6 Depth 2
+	;--- V6C_SPILL16 ---
 	XCHG
 	SHLD	.LLo61_3+1
 	XCHG
+	;--- V6C_SPILL16 ---
 	PUSH	H
 	MOV	L, C
 	MOV	H, B
 	SHLD	.LLo61_2+1
 	POP	H
+	;--- V6C_RELOAD16 ---
 .LLo61_4:
 	LXI	D, 0
+	;--- V6C_ADD16 ---
 	MOV	A, E
 	ADD	C
 	MOV	C, A
@@ -37,18 +47,21 @@ main:                                   ; @main
 	ADC	B
 	MOV	B, A
 	LXI	D, 0xff
+	;--- V6C_SPILL16 ---
 	PUSH	H
 	MOV	L, C
 	MOV	H, B
 	SHLD	.LLo61_0+1
 	SHLD	.LLo61_1+1
 	POP	H
+	;--- V6C_AND16 ---
 	MOV	A, C
 	ANA	E
 	MOV	C, A
 	MOV	A, B
 	ANA	D
 	MOV	B, A
+	;--- V6C_XOR16 ---
 	MOV	A, C
 	XRA	L
 	MOV	L, A
@@ -59,12 +72,14 @@ main:                                   ; @main
 .LBB15_2:                               ;   Parent Loop BB15_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	LXI	D, 1
+	;--- V6C_AND16 ---
 	MOV	A, L
 	ANA	E
 	MOV	E, A
 	MOV	A, H
 	ANA	D
 	MOV	D, A
+	;--- V6C_SRL16 ---
 	MOV	A, H
 	ORA	A
 	RAR
@@ -72,11 +87,13 @@ main:                                   ; @main
 	MOV	A, L
 	RAR
 	MOV	L, A
+	;--- V6C_CMP16_ZERO ---
 	MOV	A, D
 	ORA	E
 	JZ	.LBB15_4
 ; %bb.3:                                ;   in Loop: Header=BB15_2 Depth=2
 	LXI	D, 0xa001
+	;--- V6C_XOR16 ---
 	MOV	A, L
 	XRA	E
 	MOV	L, A
@@ -84,15 +101,20 @@ main:                                   ; @main
 	XRA	D
 	MOV	H, A
 .LBB15_4:                               ;   in Loop: Header=BB15_2 Depth=2
+	;--- V6C_DCX16 ---
 	DCX	B
+	;--- V6C_BR_CC16_IMM ---
 	MOV	A, B
 	ORA	C
 	JNZ	.LBB15_2
 ; %bb.5:                                ;   in Loop: Header=BB15_1 Depth=1
+	;--- V6C_RELOAD16 ---
 .LLo61_1:
 	LXI	D, 0
+	;--- V6C_SRL16 ---
 	MOV	E, D
 	MOV	D, B
+	;--- V6C_XOR16 ---
 	MOV	A, L
 	XRA	E
 	MOV	L, A
@@ -103,12 +125,14 @@ main:                                   ; @main
 .LBB15_6:                               ;   Parent Loop BB15_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	LXI	D, 1
+	;--- V6C_AND16 ---
 	MOV	A, L
 	ANA	E
 	MOV	E, A
 	MOV	A, H
 	ANA	D
 	MOV	D, A
+	;--- V6C_SRL16 ---
 	MOV	A, H
 	ORA	A
 	RAR
@@ -116,11 +140,13 @@ main:                                   ; @main
 	MOV	A, L
 	RAR
 	MOV	L, A
+	;--- V6C_CMP16_ZERO ---
 	MOV	A, D
 	ORA	E
 	JZ	.LBB15_8
 ; %bb.7:                                ;   in Loop: Header=BB15_6 Depth=2
 	LXI	D, 0xa001
+	;--- V6C_XOR16 ---
 	MOV	A, L
 	XRA	E
 	MOV	L, A
@@ -128,23 +154,31 @@ main:                                   ; @main
 	XRA	D
 	MOV	H, A
 .LBB15_8:                               ;   in Loop: Header=BB15_6 Depth=2
+	;--- V6C_DCX16 ---
 	DCX	B
+	;--- V6C_BR_CC16_IMM ---
 	MOV	A, B
 	ORA	C
 	JNZ	.LBB15_6
 ; %bb.9:                                ;   in Loop: Header=BB15_1 Depth=1
+	;--- V6C_RELOAD16 ---
 .LLo61_3:
 	LXI	D, 0
+	;--- V6C_INX16 ---
 	INX	D
+	;--- V6C_RELOAD16 ---
 .LLo61_2:
 	LXI	B, 0
+	;--- V6C_SPILL16 ---
 	PUSH	H
 	MOV	L, C
 	MOV	H, B
 	SHLD	.LLo61_4+1
 	POP	H
+	;--- V6C_RELOAD16 ---
 .LLo61_0:
 	LXI	B, 0
+	;--- V6C_BR_CC16_IMM ---
 	MVI	A, 0x18
 	CMP	E
 	JNZ	.LBB15_1

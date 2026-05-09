@@ -99,7 +99,8 @@ def build_v6llvmc(prog: str, opt: str) -> Result:
     subprocess.run(
         [str(V6C_CLANG), "-target", "i8080-unknown-v6c",
          f"-{opt}",
-         "-S", str(SRC / f"{prog}.c"), "-o", str(asm)],
+         "-S", "-mllvm", "-mv6c-annotate-pseudos",
+         str(SRC / f"{prog}.c"), "-o", str(asm)],
         capture_output=True, text=True,
     )
     cyc, chk = run_emul(rom, 0x0100)

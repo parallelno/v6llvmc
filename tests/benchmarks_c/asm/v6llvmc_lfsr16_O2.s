@@ -2,40 +2,52 @@
 	.section	.text.main,"ax",@progbits
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
+	;=== int main(int arg0, void* arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
 ; %bb.0:
 	LXI	H, 0xace1
+	;--- V6C_STORE16_G ---
 	SHLD	__v6c_a.main
 	LXI	H, 0
 	LXI	D, 0x1000
+	;--- V6C_LOAD16_G ---
 	LDA	__v6c_a.main
 	MOV	C, A
 	LDA	__v6c_a.main+1
 	MOV	B, A
 	JMP	.LBB15_1
 .LBB15_3:                               ;   in Loop: Header=BB15_1 Depth=1
+	;--- V6C_RELOAD16 ---
 	LHLD	.LLo61_0+1
 .LBB15_4:                               ;   in Loop: Header=BB15_1 Depth=1
+	;--- V6C_XOR16 ---
 	MOV	A, C
 	XRA	L
 	MOV	L, A
 	MOV	A, B
 	XRA	H
 	MOV	H, A
+	;--- V6C_DCX16 ---
 	DCX	D
+	;--- V6C_BR_CC16_IMM ---
 	MOV	A, D
 	ORA	E
 	JZ	.LBB15_5
 .LBB15_1:                               ; =>This Inner Loop Header: Depth=1
+	;--- V6C_SPILL16 ---
 	SHLD	.LLo61_0+1
 	MOV	H, B
 	MOV	L, C
 	LXI	B, 1
+	;--- V6C_AND16 ---
 	MOV	A, L
 	ANA	C
 	MOV	C, A
 	MOV	A, H
 	ANA	B
 	MOV	B, A
+	;--- V6C_SPILL16 ---
 	PUSH	H
 	MOV	L, C
 	MOV	H, B
@@ -43,6 +55,7 @@ main:                                   ; @main
 	POP	H
 	MOV	B, H
 	MOV	C, L
+	;--- V6C_SRL16 ---
 	MOV	A, B
 	ORA	A
 	RAR
@@ -50,24 +63,30 @@ main:                                   ; @main
 	MOV	A, C
 	RAR
 	MOV	C, A
+	;--- V6C_RELOAD16 ---
 .LLo61_1:
 	LXI	H, 0
+	;--- V6C_CMP16_ZERO ---
 	MOV	A, H
 	ORA	L
 	JZ	.LBB15_3
 ; %bb.2:                                ;   in Loop: Header=BB15_1 Depth=1
 	LXI	H, 0xb400
+	;--- V6C_XOR16 ---
 	MOV	A, C
 	XRA	L
 	MOV	C, A
 	MOV	A, B
 	XRA	H
 	MOV	B, A
+	;--- V6C_RELOAD16 ---
 .LLo61_0:
 	LXI	H, 0
 	JMP	.LBB15_4
 .LBB15_5:
+	;--- V6C_SRL16 ---
 	MOV	E, H
+	;--- V6C_XOR16 ---
 	MOV	A, E
 	XRA	L
 	MOV	L, A

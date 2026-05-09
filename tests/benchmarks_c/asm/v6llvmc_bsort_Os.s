@@ -2,55 +2,75 @@
 	.section	.text.main,"ax",@progbits
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
+	;=== int main(int arg0, void* arg1) ===
+	;  arg0 = HL
+	;  arg1 = DE
 ; %bb.0:
 	LXI	H, __v6c_a.main
 	MVI	E, 0xff
 	MVI	A, 7
 .LBB15_1:                               ; =>This Inner Loop Header: Depth=1
+	;--- V6C_STORE8_P ---
 	MOV	M, A
 	ADI	0x1f
+	;--- V6C_INX16 ---
 	INX	H
 	DCR	E
+	;--- V6C_BRCOND ---
 	JNZ	.LBB15_1
 ; %bb.2:
 	MVI	L, 0xfe
 .LBB15_3:                               ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB15_4 Depth 2
 	LXI	B, __v6c_a.main
+	;--- V6C_SPILL8 ---
 	MOV	A, L
 	STA	.LLo61_0+1
 	LXI	D, __v6c_a.main
 .LBB15_4:                               ;   Parent Loop BB15_3 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
+	;--- V6C_LOAD8_P ---
 	LDAX	B
 	MOV	H, A
+	;--- V6C_INX16 ---
 	INX	D
+	;--- V6C_LOAD8_P ---
 	LDAX	D
 	CMP	H
+	;--- V6C_BRCOND ---
 	JNC	.LBB15_6
 ; %bb.5:                                ;   in Loop: Header=BB15_4 Depth=2
+	;--- V6C_STORE8_P ---
 	STAX	B
+	;--- V6C_INX16 ---
 	INX	B
+	;--- V6C_STORE8_P ---
 	MOV	A, H
 	STAX	B
 .LBB15_6:                               ;   in Loop: Header=BB15_4 Depth=2
 	DCR	L
 	MOV	B, D
 	MOV	C, E
+	;--- V6C_BRCOND ---
 	JNZ	.LBB15_4
 ; %bb.7:                                ;   in Loop: Header=BB15_3 Depth=1
+	;--- V6C_RELOAD8 ---
 .LLo61_0:
 	MVI	L, 0
 	DCR	L
+	;--- V6C_BRCOND ---
 	JNZ	.LBB15_3
 ; %bb.8:
 	XRA	A
 	LXI	H, __v6c_a.main
 	MVI	E, 0xff
 .LBB15_9:                               ; =>This Inner Loop Header: Depth=1
+	;--- V6C_ADD_M_P ---
 	ADD	M
+	;--- V6C_INX16 ---
 	INX	H
 	DCR	E
+	;--- V6C_BRCOND ---
 	JNZ	.LBB15_9
 ; %bb.10:
 	OUT	0xed
