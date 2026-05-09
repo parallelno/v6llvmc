@@ -49,6 +49,7 @@ main:                                   ; @main
 	DAD	D
 	;--- V6C_LOAD8_P ---
 	MOV	A, M
+	;--- V6C_CMP8_ZERO ---
 	ORA	A
 	;--- V6C_BRCOND ---
 	JNZ	.LBB15_8
@@ -65,6 +66,7 @@ main:                                   ; @main
 	SHLD	.LLo61_3+1
 	;--- V6C_LOAD8_P ---
 	LDAX	B
+	;--- V6C_CMP8_ZERO ---
 	ORA	A
 	MVI	L, 0
 	MOV	A, L

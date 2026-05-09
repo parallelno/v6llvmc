@@ -1,23 +1,21 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
-; RUN: llc -march=v6c -v6c-disable-peephole < %s | FileCheck %s --check-prefix=DISABLED
 
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
 target triple = "i8080-unknown-v6c"
 
 declare dso_local i8 @bar(i8 noundef) local_unnamed_addr
 
-; O38: MOV A,r; ORA A; JZ → XRA A; CMP r; JZ
-; The XRA A sets A=0, and LoadImmCombine eliminates downstream MVI A,0.
+; O80 (formerly O38): zero-tests no longer emit MOV A,r; ORA A. The
+; V6C_CMP8_ZERO pseudo expands by liveness:
+;   %x in A, tested first      → ORA A      (shape 1)
+;   %y in B, tested with A dead → XRA A; CMP B (shape 2)
 ;
 ; CHECK-LABEL: test_xra_cmp_jz:
+; CHECK:       ORA A
 ; CHECK:       XRA A
 ; CHECK-NEXT:  CMP B
-; CHECK-NOT:   ORA A
-; CHECK-NOT:   MVI A, 0
-;
-; DISABLED-LABEL: test_xra_cmp_jz:
-; DISABLED:       MOV A, B
-; DISABLED-NEXT:  ORA A
+; CHECK-NOT:   MOV A, B
+; CHECK-NOT:   CPI
 define dso_local i8 @test_xra_cmp_jz(i8 noundef %x, i8 noundef %y) local_unnamed_addr {
   %cmpx = icmp eq i8 %x, 0
   br i1 %cmpx, label %test_y, label %call_bar

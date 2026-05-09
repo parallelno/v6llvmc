@@ -39,7 +39,6 @@ main:                                   ; @main
 	MOV	C, L
 	;--- V6C_SRL16 ---
 	MOV	A, B
-	ORA	A
 	RAR
 	MOV	B, A
 	MOV	A, C

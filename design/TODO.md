@@ -89,46 +89,45 @@ new: xchg; lxi h, offset; dad sp; mov reg8, m; xchg; 40cc
 old: clobbers hl, which can lead to spilling or less optimal
 ===========================
 
-///// Control flow / select
+## Control flow / select
 
-V6C_BRCOND
-V6C_SELECT_CC
-V6C_SELECT_CC16
-V6C_BR_CC16
-V6C_BR_CC16_IMM
+**DONE** V6C_BRCOND
+**DONE** V6C_SELECT_CC
+**DONE** V6C_SELECT_CC16
+**DONE** V6C_BR_CC16
+**DONE** V6C_BR_CC16_IMM
 
-///// Comparisons
-
+## Comparisons
+**DONE** V6C_CMP8_ZERO
 V6C_CMP16
 V6C_CMP16_IMM
 V6C_CMP16_ZERO
 
-///// 8-bit memory
-**DONE**
-V6C_LOAD8_P, V6C_STORE8_P
-V6C_STORE8_IMM_P
+## 8-bit memory
+**DONE** V6C_LOAD8_P, V6C_STORE8_P
+**DONE** V6C_STORE8_IMM_P
 
-///// func arg load/store
+## func arg load/store
 **DEFFERED** rare usage, doesnt worth improvements. the better solution is not using stack for funcs args for the static-stack alloc funcs.
-V6C_LOAD8_FI, V6C_STORE8_FI
-V6C_LOAD16_FI, V6C_STORE16_FI
+**DEFFERED** V6C_LOAD8_FI, V6C_STORE8_FI
+**DEFFERED** V6C_LOAD16_FI, V6C_STORE16_FI
 
-///// 16-bit memory
-**DONE**
-V6C_LOAD16_G, V6C_STORE16_G
-V6C_LOAD16_P, V6C_STORE16_P
+## 16-bit memory
+**DONE** V6C_LOAD16_G, V6C_STORE16_G
+**DONE** V6C_LOAD16_P, V6C_STORE16_P
 
 
-///// Spill/reload
-**DONE**
-V6C_SPILL8, V6C_RELOAD8
-V6C_SPILL16, V6C_RELOAD16
+## Spill/reload
+**DONE** V6C_SPILL8, V6C_RELOAD8
+**DONE** V6C_SPILL16, V6C_RELOAD16
 
-///// Arithmetic / address
-
+## Arithmetic / address
 **DONE** V6C_LEA_FI
 V6C_DAD
 V6C_INX16, V6C_DCX16
 V6C_ROTL16_1
 V6C_BUILD_PAIR
 V6C_SEXT
+V6C_SRL16
+V6C_AND16
+V6C_XOR16

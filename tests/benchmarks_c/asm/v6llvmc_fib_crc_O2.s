@@ -87,7 +87,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -117,7 +116,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -147,7 +145,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -177,7 +174,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -207,7 +203,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -237,7 +232,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -267,7 +261,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -297,7 +290,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -340,7 +332,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -370,7 +361,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -400,7 +390,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -430,7 +419,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -460,7 +448,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -490,7 +477,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -520,7 +506,6 @@ main:                                   ; @main
 	MOV	D, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L
@@ -556,7 +541,6 @@ main:                                   ; @main
 	MOV	B, A
 	;--- V6C_SRL16 ---
 	MOV	A, H
-	ORA	A
 	RAR
 	MOV	H, A
 	MOV	A, L

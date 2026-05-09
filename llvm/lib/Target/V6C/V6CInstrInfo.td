@@ -1009,6 +1009,24 @@ def V6C_CMP16_ZERO : V6CPseudo<(outs), (ins GR16:$src),
     "# CMP16_ZERO $src",
     [(set FLAGS, (V6Ccmpzero i16:$src))]>;
 
+// O80: 8-bit zero-test comparison. Mirrors V6C_CMP16_ZERO for i8.
+// Avoids the Acc:$lhs constraint of CPI 0, which forces a MOV A,r
+// preamble (and full save/restore when A is live across the test).
+// Expanded post-RA in V6CInstrInfo::expandPostRAPseudo into one of:
+//   src=A          → ORA A                     (1B / 4cc)
+//   src≠A, A dead  → XRA A; CMP src            (2B / 8cc, O38 path)
+//   src≠A, A live  → INR src; DCR src          (2B / 16cc, A-preserving)
+// Defs = [FLAGS] only — the INR/DCR path preserves A. Shape 1/2 do
+// touch A, but post-RA expansion adds the def via BuildMI directly.
+// Pattern (V6Ccmp i8, 0) is more specific than CPI's
+// (V6Ccmp i8, imm:$imm), so ISel prefers this pseudo for the
+// zero-compare case. AddedComplexity = 10 ensures the disambiguation
+// is robust against future pattern reorderings.
+let Defs = [FLAGS], AddedComplexity = 10 in
+def V6C_CMP8_ZERO : V6CPseudo<(outs), (ins GR8:$src),
+    "# CMP8_ZERO $src",
+    [(set FLAGS, (V6Ccmp i8:$src, (i8 0)))]>;
+
 // 16-bit comparison (for use in i16 BR_CC lowering).
 // Produces FLAGS via subtraction (SUB lo, SBB hi).
 // FLAGS first in Defs (see CMP16_ZERO note).
