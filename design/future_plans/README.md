@@ -76,6 +76,7 @@
 | O76 | V6C_LOAD8_P Per-Shape Redesign (SpareR-A + universal XCHG bypass for addr=DE/A-live, eliminates PSW-wrap on hot A-live paths) — **DONE** | [O76_V6C_LOAD8_P_redesign.md](O76_V6C_LOAD8_P_redesign.md) | V6C |
 | O77 | V6C_STORE8_P Per-Shape Redesign (SpareR-A + universal XCHG bypass for addr=DE/A-live; companion to O76, no DE-clobber edge case) | [O77_V6C_STORE8_P_redesign.md](O77_V6C_STORE8_P_redesign.md) | V6C |
 | O78 | V6C_STORE8_IMM_P Per-Shape Redesign (A-dead → `MVI A,imm; STAX rp` for addr∈{BC,DE}; DE-routing for `addr=BC, HL live, DE dead`) — **DONE** | [O78_V6C_STORE8_IMM_P_redesign.md](O78_V6C_STORE8_IMM_P_redesign.md) | V6C |
+| O79 | `MVI R,NN` + `ALU R` → `ALU-Immediate NN` Fold (non-adjacent, dead-R) | [O79_mvi_alu_reg_to_alu_imm_fold.md](O79_mvi_alu_reg_to_alu_imm_fold.md) | V6C |
 | O-LLD | Native ld.lld Linker (replaces Python `v6c_link.py`) | [../plan_O_LLD_native_linker.md](../plan_O_LLD_native_linker.md) | V6C |
 | O-AsmInterop | Asm-Interop Overhaul (i8080 mnemonics, free-list CC, MC AsmParser, V6C resource headers, retire libv6c-builtins) | [../plan_asm_interop_overhaul.md](../plan_asm_interop_overhaul.md) | V6C |
 ---
@@ -151,23 +152,24 @@
 | O76 | V6C_LOAD8_P SpareR-A + XCHG bypass | V6C | −12cc/fire (SpareR), −28cc & −1B/fire (XCHG bypass for any addr=DE, A-live, non-A dst) | Med-High (any A-live load through BC/DE with non-A dst) | Low-Med | Low | None (composes with O70-style SpareR helpers from O71/O72) |
 | O77 | V6C_STORE8_P SpareR-A + XCHG bypass | V6C | −12cc/fire (SpareR), −28cc & −1B/fire (XCHG bypass for any addr=DE, A-live, non-A src; universally safe — body is read-only) | Med-High (any A-live store through BC/DE with non-A src) | Low-Med | Low | O76 (reuses `findDeadGR8AtMI` helper) |
 | O78 | V6C_STORE8_IMM_P per-shape redesign | V6C | −3B/−12–40cc per fire (BC + A dead); −1B/−4cc per fire (DE + A dead); −1B/−20cc per fire (BC + HL live + DE dead) | Med-High (any `*p = const` to BC/DE) | Low | Very Low | O46/O49 in tree; reuses `isRegDeadAtMI` |
+| O79 | `MVI R,NN` + `ALU R` → `ALU-Immediate NN` fold | V6C | −1B / −4cc per fire (plus frees R for RA) | High (residual after O13; common post-O64 reload+ALU shape) | Low | Very Low | None (composes with O13) |
 | O-LLD | Native ld.lld linker (replaces Python `v6c_link.py`) | V6C | toolchain hardening | One-shot | Med-High | Low | lld build wired in |
 
 ### Implementation order
 
 **Phase 1 — Quick wins (Low complexity, immediate benefit)**:
 
-1. ~~**O14** — trivial tail-call peephole, 18cc savings, ~15 lines~~ ✅
-2. ~~**O18** — loop counter DCR+JNZ peephole, 20cc savings per iteration, ~40 lines~~ ✅
-3. ~~**O17** — redundant flag elimination, 4cc+1B per instance, ~50 lines~~ ✅
-4. ~~**O11** — cost model infrastructure, enables cost-aware decisions everywhere~~ ✅
-5. ~~**O13** — register value tracking peephole, saves bytes on MVI→MOV/INR~~ ✅
-6. ~~**O6** — simple ISel pattern for LDA/STA~~ ✅
+1. ✅ O14_tail_call_optimization.md
+2. ✅ O18_loop_counter_peephole.md
+3. ✅ O17_redundant_flag_elimination.md
+4. ✅ O11_dual_cost_model.md
+5. ✅ O13_load_immediate_combining.md
+6. ✅ O06_lda_sta_absolute_addr.md
 
 **Phase 2 — Quick extensions (Low complexity, builds on completed work)**:
 
-7. ~~**O21** — LHLD/SHLD for i16 globals, ISel patterns like O6, ~20 lines~~ ✅
-8. ~~**O23** — conditional tail call, extends O14 peephole, ~20 lines~~ ✅
+7. ✅ O21_lhld_shld_absolute_addr.md
+8. ✅ O23_conditional_tail_call.md
 9. ~~**O27** — i16 zero-test (MOV A,H; ORA L), 10B+24cc per zero comparison, ~15 lines~~ ✅
 10. ~~**O32** — XCHG in copyPhysReg, 1B+12cc per DE↔HL copy, ~10 lines~~ ✅
 11. ~~**O33** — XCHG peephole relaxation, drop isRegLiveBefore guard, ~10 lines~~ ✅
@@ -202,6 +204,7 @@
 40. ~~**O76** — V6C_LOAD8_P per-shape redesign: SpareR-A path (dead GR8 instead of PSW-wrap) + universal XCHG bypass for `addr=DE, A live, dst≠A` (3B/16cc, all six non-A dsts via partner-MOV trick), ~80 lines.~~ ✅
 41. ~~**O77** — V6C_STORE8_P per-shape redesign: companion to O76. SpareR-A for `addr=BC, A live` (−12cc/fire) + XCHG bypass for `addr=DE, A live, src≠A` (3B/16cc, −28cc & −1B/fire). XCHG bypass is universally safe — store body is read-only so XCHG2 is exact inverse of XCHG1, no DE-clobber edge case. ~60 lines, reuses `findDeadGR8AtMI` from O76.~~ ✅
 42. ~~**O78** — V6C_STORE8_IMM_P per-shape redesign: A-dead path (`MVI A,imm; STAX rp` for `addr∈{BC,DE}`, 3B/16cc, −3B/−40cc on the worst BC+HL-live shape) + DE-routing (`MOV D,B; MOV E,C; XCHG; MVI M; XCHG` for `addr=BC, HL live, DE dead`, −1B/−20cc). Composes with O55 (`MVI A,0`→`XRA A`). ~50 lines, reuses `isRegDeadAtMI`.~~ ✅
+43. **O79** — `MVI R,NN` + `ALU R` → `ALU-Immediate NN` fold (non-adjacent, dead-R). Post-RA peephole in `V6CPeephole`; covers all 8 ALU ops (`ADD/SUB/ANA/ORA/ADC/SBB/XRA/CMP`). −1B / −4cc per fire plus frees `R` across the gap. Common residual after O13/O64 (reloaded constant consumed by next ALU op). ~80 lines.
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 
