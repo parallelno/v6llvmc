@@ -74,7 +74,7 @@ Enter this phase after all implementation plan steps are complete.
 - v6llvmc old asm.
 - v6llvmc new asm.
 - Comparisen table for c8080, v6llvmc old, v6llvmc new that includes CPU cycles, length in bytes for each function.
-Details in `tests\features\README.md`.
+Details in `tests\features\result.md`.
 
 ---
 

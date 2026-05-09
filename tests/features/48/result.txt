@@ -1,73 +1,330 @@
 O69: Direct Frame-Index Memory Pseudos
+=======================================
 
 Purpose
 -------
-Exercise direct stack-relative i8/i16 loads and stores selected before register allocation:
+Exercise direct stack-relative i8/i16 loads and stores selected before
+register allocation:
 
-- V6C_LOAD8_FI
-- V6C_LOAD16_FI
-- V6C_STORE8_FI
-- V6C_STORE16_FI
+  - V6C_LOAD8_FI
+  - V6C_LOAD16_FI
+  - V6C_STORE8_FI
+  - V6C_STORE16_FI
+
+The "old" baseline is produced with the O69 selector hooks
+(`ISD::LOAD`/`ISD::STORE` cases in `V6CISelDAGToDAG.cpp`) temporarily
+disabled so that frame-index loads and stores fall back to the prior
+`V6C_LEA_FI` + `V6C_LOAD*_P` / `V6C_STORE*_P` shape.
 
 Build commands
 --------------
 Reference c8080 assembly:
   tools\c8080\c8080.exe tests\features\48\c8080.c -a tests\features\48\c8080.asm
 
-V6C assembly verification:
-  llvm-build\bin\clang -target i8080-unknown-v6c -O3 -S tests\features\48\v6llvmc.c -o tests\features\48\v6llvmc_new01.asm -mllvm -mv6c-annotate-pseudos -mllvm -v6c-disable-alloca-promote -mllvm -v6c-disable-static-stack-alloc
+V6C with O69 disabled:
+  llvm-build\bin\clang -target i8080-unknown-v6c -O3 -S \
+      tests\features\48\v6llvmc.c -o tests\features\48\v6llvmc_old.asm \
+      -mllvm -mv6c-annotate-pseudos \
+      -mllvm -v6c-disable-alloca-promote \
+      -mllvm -v6c-disable-static-stack-alloc
 
-Assembly line counts
---------------------
-c8080.asm:          176
-v6llvmc_old.asm:    146
-v6llvmc_new01.asm:  146
+V6C with O69 enabled:
+  llvm-build\bin\clang -target i8080-unknown-v6c -O3 -S \
+      tests\features\48\v6llvmc.c -o tests\features\48\v6llvmc_new01.asm \
+      -mllvm -mv6c-annotate-pseudos \
+      -mllvm -v6c-disable-alloca-promote \
+      -mllvm -v6c-disable-static-stack-alloc
 
-Note: tests/features/48 was created after the implementation patch, so v6llvmc_old.asm is a current compiler snapshot rather than a pre-O69 historical baseline.
+C test case
+-----------
+typedef unsigned char u8;
 
-Observed direct FI pseudo coverage
-----------------------------------
-v6llvmc_new01.asm contains:
+volatile u8 g8;
+volatile int g16;
 
-- V6C_LOAD8_FI in load8_stack_arg
-- V6C_LOAD16_FI in load16_stack_arg
-- V6C_STORE8_FI in store8_local
-- V6C_LOAD8_FI in store8_local reload
-- V6C_STORE16_FI in store16_local
-- V6C_LOAD16_FI in store16_local reload
+__attribute__((noinline))
+u8 load8_stack_arg(u8 a0, u8 a1, u8 a2, u8 a3,
+                   u8 a4, u8 a5, u8 a6, u8 a7) {
+    return a7;
+}
 
-Representative output
----------------------
+__attribute__((noinline))
+int load16_stack_arg(int a0, int a1, int a2, int a3) {
+    return a0 + a1 + a2 + a3;
+}
+
+__attribute__((noinline))
+u8 store8_local(u8 x) {
+    volatile u8 slot;
+    slot = x;
+    return slot;
+}
+
+__attribute__((noinline))
+int store16_local(int x) {
+    volatile int slot;
+    slot = x;
+    return slot;
+}
+
+int main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    g8  = load8_stack_arg(1, 2, 3, 4, 5, 6, 7, 8);
+    g16 = load16_stack_arg(1, 2, 3, 4);
+    g8  = store8_local(g8);
+    g16 = store16_local(g16);
+    __builtin_v6c_out(0xED, g8);
+    __builtin_v6c_out(0xED, (unsigned char)g16);
+    __builtin_v6c_hlt();
+    return 0;
+}
+
+c8080 reference (Z80 source rewritten in i8080 mnemonics)
+---------------------------------------------------------
 load8_stack_arg:
-  ;--- V6C_LOAD8_FI ---
-  LXI H, 2
-  DAD SP
-  MOV A, M
+    STA  __a_8_load8_stack_arg
+    RET
 
 load16_stack_arg:
-  ;--- V6C_LOAD16_FI ---
-  LXI H, 2
-  DAD SP
-  MOV C, M
-  INX H
-  MOV B, M
+    SHLD __a_4_load16_stack_arg
+    LHLD __a_1_load16_stack_arg
+    XCHG
+    LHLD __a_2_load16_stack_arg
+    DAD  D
+    XCHG
+    LHLD __a_3_load16_stack_arg
+    DAD  D
+    XCHG
+    LHLD __a_4_load16_stack_arg
+    DAD  D
+    RET
 
 store8_local:
-  ;--- V6C_STORE8_FI ---
-  LXI H, 0
-  DAD SP
-  MOV M, A
+    STA  __a_1_store8_local
+    STA  store8_local_slot
+    RET
 
 store16_local:
-  ;--- V6C_STORE16_FI ---
-  LXI H, 0
-  DAD SP
-  MOV M, C
-  INX H
-  MOV M, B
+    SHLD __a_1_store16_local
+    SHLD store16_local_slot
+    RET
 
-Regression notes
-----------------
-- Targeted O69 lit test passed: llvm-project/llvm/test/CodeGen/V6C/frame-index-direct-fi.ll
-- Golden tests passed: 16/16
-- Full lit run passed 121/122. Remaining failure is unrelated lsr-strategy-size.ll expecting .comm __v6c_ss.axpy3,10,1 while current code emits 12.
+main:
+    SHLD __a_1_main
+    SHLD __a_2_main
+    MVI  A, 1
+    STA  __a_1_load8_stack_arg
+    MVI  A, 2
+    STA  __a_2_load8_stack_arg
+    MVI  A, 3
+    STA  __a_3_load8_stack_arg
+    MVI  A, 4
+    STA  __a_4_load8_stack_arg
+    MVI  A, 5
+    STA  __a_5_load8_stack_arg
+    MVI  A, 6
+    STA  __a_6_load8_stack_arg
+    MVI  A, 7
+    STA  __a_7_load8_stack_arg
+    MVI  A, 8
+    CALL load8_stack_arg
+    STA  g8
+    LXI  H, 1
+    SHLD __a_1_load16_stack_arg
+    LXI  H, 2
+    SHLD __a_2_load16_stack_arg
+    LXI  H, 3
+    SHLD __a_3_load16_stack_arg
+    LXI  H, 4
+    CALL load16_stack_arg
+    SHLD g16
+    LDA  g8
+    CALL store8_local
+    STA  g8
+    LHLD g16
+    CALL store16_local
+    SHLD g16
+    LXI  H, 0
+    RET
+
+v6llvmc OLD (O69 disabled)
+--------------------------
+load8_stack_arg:
+    ;--- V6C_LEA_FI ---
+    LXI  H, 2
+    DAD  SP
+    XCHG
+    ;--- V6C_LOAD8_P ---
+    LDAX D
+    RET
+
+load16_stack_arg:
+    ;--- V6C_ADD16 ---
+    DAD  D
+    DAD  B
+    XCHG
+    ;--- V6C_LEA_FI ---
+    LXI  H, 2
+    DAD  SP
+    MOV  B, H
+    MOV  C, L
+    ;--- V6C_LOAD16_P ---
+    LDAX B
+    MOV  L, A
+    INX  B
+    LDAX B
+    MOV  H, A
+    DAD  D
+    RET
+
+store8_local:
+    LXI  H, 0xffff
+    DAD  SP
+    SPHL
+    ;--- V6C_LEA_FI ---
+    LXI  H, 0
+    DAD  SP
+    XCHG
+    ;--- V6C_STORE8_P ---
+    STAX D
+    ;--- V6C_LOAD8_P ---
+    LDAX D
+    LXI  H, 1
+    DAD  SP
+    SPHL
+    RET
+
+store16_local:
+    PUSH PSW
+    XCHG
+    ;--- V6C_LEA_FI ---
+    LXI  H, 0
+    DAD  SP
+    MOV  B, H
+    MOV  C, L
+    ;--- V6C_STORE16_P ---
+    MOV  A, E
+    STAX B
+    INX  B
+    MOV  A, D
+    STAX B
+    DCX  B
+    ;--- V6C_LOAD16_P ---
+    LDAX B
+    MOV  L, A
+    INX  B
+    LDAX B
+    MOV  H, A
+    POP  PSW
+    RET
+
+v6llvmc NEW (O69 enabled)
+-------------------------
+load8_stack_arg:
+    ;--- V6C_LOAD8_FI ---
+    LXI  H, 2
+    DAD  SP
+    MOV  A, M
+    RET
+
+load16_stack_arg:
+    ;--- V6C_ADD16 ---
+    DAD  D
+    DAD  B
+    XCHG
+    ;--- V6C_LOAD16_FI ---
+    LXI  H, 2
+    DAD  SP
+    MOV  C, M
+    INX  H
+    MOV  B, M
+    XCHG
+    DAD  B
+    RET
+
+store8_local:
+    LXI  H, 0xffff
+    DAD  SP
+    SPHL
+    ;--- V6C_STORE8_FI ---
+    LXI  H, 0
+    DAD  SP
+    MOV  M, A
+    ;--- V6C_LOAD8_FI ---
+    LXI  H, 0
+    DAD  SP
+    MOV  A, M
+    LXI  H, 1
+    DAD  SP
+    SPHL
+    RET
+
+store16_local:
+    PUSH PSW
+    MOV  B, H
+    MOV  C, L
+    ;--- V6C_STORE16_FI ---
+    LXI  H, 0
+    DAD  SP
+    MOV  M, C
+    INX  H
+    MOV  M, B
+    ;--- V6C_LOAD16_FI ---
+    LXI  H, 0
+    DAD  SP
+    MOV  E, M
+    INX  H
+    MOV  D, M
+    XCHG
+    POP  PSW
+    RET
+
+Per-function comparison (i8080 reference timings)
+-------------------------------------------------
+                       c8080            v6llvmc OLD       v6llvmc NEW       NEW vs OLD
+function               bytes  cycles    bytes  cycles     bytes  cycles     dB    dcc
+load8_stack_arg          4      23        7      41          6      37      -1     -4
+load16_stack_arg        22     132       15     103         12      87      -3    -16
+store8_local             7      36       18     108         21     114      +3     +6
+store16_local            7      42       19     128         18     123      -1     -5
+                       ----   ----      ----   ----        ----   ----     ----   ----
+sum (4 funcs)           40     233       59     380         57     361      -2    -19
+
+Notes
+-----
+- load8_stack_arg: OLD used `LXI H,2; DAD SP; XCHG; LDAX D` (LEA via HL,
+  hand-off to DE, then LDAX). NEW collapses to `LXI H,2; DAD SP; MOV A,M`,
+  removing the XCHG and the DE temporary entirely.
+- load16_stack_arg: OLD selected BC for the FI address, forcing a
+  `MOV B,H; MOV C,L` copy and a 5-instruction `LDAX B / INX B / LDAX B`
+  load chain. NEW reads directly into BC through the M operand
+  (`MOV C,M; INX H; MOV B,M`) and adds a single XCHG to swap BC into
+  position for `DAD B`.
+- store8_local: OLD held the FI address pinned in DE across both the
+  store and the reload. NEW emits two independent FI sequences
+  (`LXI;DAD SP` twice) because each direct FI pseudo recomputes the
+  address. Single-use is faster, but two uses against the same slot
+  cost +3B/+6cc here. This is the pseudo's expected trade-off and
+  documented in the future plan: the address temporary is removed
+  pre-RA at the cost of duplicated address arithmetic if RA decides
+  not to materialize a separate LEA.
+- store16_local: NEW removes the `STAX/LDAX B` round-trip and uses
+  direct `MOV M,C/B` + `MOV E,M / MOV D,M` over HL. One XCHG remains
+  to deliver the loaded value into HL for the return. Net -1B/-5cc.
+- main is identical in both builds (no frame-index loads/stores in
+  main itself; the volatile globals route through V6C_LOAD16_G /
+  V6C_STORE16_G).
+
+Direct FI pseudo coverage in v6llvmc_new01.asm
+----------------------------------------------
+  V6C_LOAD8_FI    in load8_stack_arg, store8_local (reload)
+  V6C_LOAD16_FI   in load16_stack_arg, store16_local (reload)
+  V6C_STORE8_FI   in store8_local
+  V6C_STORE16_FI  in store16_local
+
+Verification of "files differ"
+------------------------------
+File hashes after rebuilds:
+  v6llvmc_old.asm   171 lines (O69 selectors stubbed `break;` early)
+  v6llvmc_new01.asm 161 lines (O69 enabled)
+  -> the two files now differ as expected.

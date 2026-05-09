@@ -4,18 +4,20 @@
 load8_stack_arg:                        ; @load8_stack_arg
 	;=== char load8_stack_arg(char arg0, char arg1, char arg2, char arg3, char arg4, char arg5, char arg6, char arg7) ===
 	;  arg0 = A
-	;  arg1 = E
+	;  arg1 = B
 	;  arg2 = C
-	;  arg3 = stack
-	;  arg4 = stack
-	;  arg5 = stack
-	;  arg6 = stack
+	;  arg3 = D
+	;  arg4 = E
+	;  arg5 = L
+	;  arg6 = H
 	;  arg7 = stack
 ; %bb.0:
-	;--- V6C_LOAD8_FI ---
+	;--- V6C_LEA_FI ---
 	LXI	H, 2
 	DAD	SP
-	MOV	A, M
+	XCHG
+	;--- V6C_LOAD8_P ---
+	LDAX	D
 	RET
                                         ; -- End function
 	.section	.text.load16_stack_arg,"ax",@progbits
@@ -32,15 +34,19 @@ load16_stack_arg:                       ; @load16_stack_arg
 	;--- V6C_ADD16 ---
 	DAD	B
 	XCHG
-	;--- V6C_LOAD16_FI ---
+	;--- V6C_LEA_FI ---
 	LXI	H, 2
 	DAD	SP
-	MOV	C, M
-	INX	H
-	MOV	B, M
+	MOV	B, H
+	MOV	C, L
+	;--- V6C_LOAD16_P ---
+	LDAX	B
+	MOV	L, A
+	INX	B
+	LDAX	B
+	MOV	H, A
 	;--- V6C_ADD16 ---
-	XCHG
-	DAD	B
+	DAD	D
 	RET
                                         ; -- End function
 	.section	.text.store8_local,"ax",@progbits
@@ -52,14 +58,14 @@ store8_local:                           ; @store8_local
 	LXI	H, 0xffff
 	DAD	SP
 	SPHL
-	;--- V6C_STORE8_FI ---
+	;--- V6C_LEA_FI ---
 	LXI	H, 0
 	DAD	SP
-	MOV	M, A
-	;--- V6C_LOAD8_FI ---
-	LXI	H, 0
-	DAD	SP
-	MOV	A, M
+	XCHG
+	;--- V6C_STORE8_P ---
+	STAX	D
+	;--- V6C_LOAD8_P ---
+	LDAX	D
 	LXI	H, 1
 	DAD	SP
 	SPHL
@@ -71,25 +77,27 @@ store16_local:                          ; @store16_local
 	;=== int store16_local(int arg0) ===
 	;  arg0 = HL
 ; %bb.0:
-	XCHG
 	PUSH	PSW
 	XCHG
+	;--- V6C_LEA_FI ---
+	LXI	H, 0
+	DAD	SP
 	MOV	B, H
 	MOV	C, L
-	;--- V6C_STORE16_FI ---
-	LXI	H, 0
-	DAD	SP
-	MOV	M, C
-	INX	H
-	MOV	M, B
-	;--- V6C_LOAD16_FI ---
-	LXI	H, 0
-	DAD	SP
-	MOV	E, M
-	INX	H
-	MOV	D, M
+	;--- V6C_STORE16_P ---
+	MOV	A, E
+	STAX	B
+	INX	B
+	MOV	A, D
+	STAX	B
+	DCX	B
+	;--- V6C_LOAD16_P ---
+	LDAX	B
+	MOV	L, A
+	INX	B
+	LDAX	B
+	MOV	H, A
 	POP	PSW
-	XCHG
 	RET
                                         ; -- End function
 	.section	.text.main,"ax",@progbits
@@ -113,6 +121,7 @@ main:                                   ; @main
 	LXI	D, 2
 	LXI	B, 3
 	CALL	load16_stack_arg
+	;--- V6C_STORE16_G ---
 	PUSH	H
 	LDA	g8
 	CALL	store8_local
@@ -120,6 +129,7 @@ main:                                   ; @main
 	;--- V6C_LOAD16_G ---
 	POP	H
 	CALL	store16_local
+	;--- V6C_STORE16_G ---
 	PUSH	H
 	LDA	g8
 	OUT	0xed
@@ -129,9 +139,7 @@ main:                                   ; @main
 	OUT	0xed
 	HLT
 	LXI	H, 0
-	XCHG
 	POP	PSW
-	XCHG
 	RET
                                         ; -- End function
 	.section	.bss,"aw",@nobits
@@ -144,5 +152,20 @@ g16:
 	DW	0                               ; 0x0
 
 	.addrsig
+	.addrsig_sym __mulqi3
+	.addrsig_sym __v6c_mulqihi3
+	.addrsig_sym __mulhi3
+	.addrsig_sym __v6c_udivmod16_body
+	.addrsig_sym __udivhi3
+	.addrsig_sym __umodhi3
+	.addrsig_sym __udivmodhi4
+	.addrsig_sym __divmodhi4
+	.addrsig_sym __v6c_neg_hl_body
+	.addrsig_sym __v6c_neg_de_body
+	.addrsig_sym __divhi3
+	.addrsig_sym __modhi3
+	.addrsig_sym __ashlhi3
+	.addrsig_sym __lshrhi3
+	.addrsig_sym __ashrhi3
 	.addrsig_sym g8
 	.addrsig_sym g16

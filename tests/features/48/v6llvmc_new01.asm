@@ -4,12 +4,12 @@
 load8_stack_arg:                        ; @load8_stack_arg
 	;=== char load8_stack_arg(char arg0, char arg1, char arg2, char arg3, char arg4, char arg5, char arg6, char arg7) ===
 	;  arg0 = A
-	;  arg1 = E
+	;  arg1 = B
 	;  arg2 = C
-	;  arg3 = stack
-	;  arg4 = stack
-	;  arg5 = stack
-	;  arg6 = stack
+	;  arg3 = D
+	;  arg4 = E
+	;  arg5 = L
+	;  arg6 = H
 	;  arg7 = stack
 ; %bb.0:
 	;--- V6C_LOAD8_FI ---
@@ -71,9 +71,7 @@ store16_local:                          ; @store16_local
 	;=== int store16_local(int arg0) ===
 	;  arg0 = HL
 ; %bb.0:
-	XCHG
 	PUSH	PSW
-	XCHG
 	MOV	B, H
 	MOV	C, L
 	;--- V6C_STORE16_FI ---
@@ -88,8 +86,8 @@ store16_local:                          ; @store16_local
 	MOV	E, M
 	INX	H
 	MOV	D, M
-	POP	PSW
 	XCHG
+	POP	PSW
 	RET
                                         ; -- End function
 	.section	.text.main,"ax",@progbits
@@ -113,6 +111,7 @@ main:                                   ; @main
 	LXI	D, 2
 	LXI	B, 3
 	CALL	load16_stack_arg
+	;--- V6C_STORE16_G ---
 	PUSH	H
 	LDA	g8
 	CALL	store8_local
@@ -120,6 +119,7 @@ main:                                   ; @main
 	;--- V6C_LOAD16_G ---
 	POP	H
 	CALL	store16_local
+	;--- V6C_STORE16_G ---
 	PUSH	H
 	LDA	g8
 	OUT	0xed
@@ -129,9 +129,7 @@ main:                                   ; @main
 	OUT	0xed
 	HLT
 	LXI	H, 0
-	XCHG
 	POP	PSW
-	XCHG
 	RET
                                         ; -- End function
 	.section	.bss,"aw",@nobits
@@ -144,5 +142,20 @@ g16:
 	DW	0                               ; 0x0
 
 	.addrsig
+	.addrsig_sym __mulqi3
+	.addrsig_sym __v6c_mulqihi3
+	.addrsig_sym __mulhi3
+	.addrsig_sym __v6c_udivmod16_body
+	.addrsig_sym __udivhi3
+	.addrsig_sym __umodhi3
+	.addrsig_sym __udivmodhi4
+	.addrsig_sym __divmodhi4
+	.addrsig_sym __v6c_neg_hl_body
+	.addrsig_sym __v6c_neg_de_body
+	.addrsig_sym __divhi3
+	.addrsig_sym __modhi3
+	.addrsig_sym __ashlhi3
+	.addrsig_sym __lshrhi3
+	.addrsig_sym __ashrhi3
 	.addrsig_sym g8
 	.addrsig_sym g16
