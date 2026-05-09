@@ -1,0 +1,390 @@
+Feature 60 — O78: V6C_STORE8_IMM_P Per-Shape Redesign
+=====================================================
+
+
+================================================================
+1. C test case
+================================================================
+
+tests/features/60/v6llvmc.c
+---------------------------
+
+  // O78 — V6C_STORE8_IMM_P per-shape redesign feature test.
+  //
+  // Free-list CC pinning: 1st i16 arg → HL, 2nd → DE, 3rd → BC.
+  // Inline-asm OUT 0xde sinks pin liveness for each operand.
+  // Each store writes the constant 0x42.
+
+  #include <stdint.h>
+
+  // Row 1: addr=HL.
+  void test_hl(uint8_t *hl_ptr) {
+      *hl_ptr = 0x42;
+  }
+
+  // Row 2: addr=BC, A dead.
+  void test_bc_a_dead(unsigned hl_keep, unsigned de_keep, uint8_t *bc_ptr) {
+      *bc_ptr = 0x42;
+      asm volatile ("OUT 0xde" :: "r"(hl_keep));
+      asm volatile ("OUT 0xde" :: "r"(de_keep));
+  }
+
+  // Row 3: addr=DE, A dead.
+  void test_de_a_dead(unsigned hl_keep, uint8_t *de_ptr) {
+      *de_ptr = 0x42;
+      asm volatile ("OUT 0xde" :: "r"(hl_keep));
+  }
+
+  // Row 4: addr=DE, A live.
+  void test_de_a_live(unsigned hl_keep, uint8_t *de_ptr, uint8_t a_keep) {
+      *de_ptr = 0x42;
+      asm volatile ("OUT 0xde" :: "a"(a_keep));
+      asm volatile ("OUT 0xde" :: "r"(hl_keep));
+  }
+
+  // Row 5: addr=BC, A live, HL dead. (HL sunk before the store.)
+  void test_bc_hl_dead(unsigned hl_keep, unsigned de_keep,
+                       uint8_t *bc_ptr, uint8_t a_keep) {
+      asm volatile ("OUT 0xde" :: "r"(hl_keep));
+      *bc_ptr = 0x42;
+      asm volatile ("OUT 0xde" :: "a"(a_keep));
+      asm volatile ("OUT 0xde" :: "r"(de_keep));
+  }
+
+  // Row 6: addr=BC, A live, HL live, DE dead. (DE sunk before the store.)
+  void test_bc_de_dead(unsigned hl_keep, unsigned de_keep,
+                       uint8_t *bc_ptr, uint8_t a_keep) {
+      asm volatile ("OUT 0xde" :: "r"(de_keep));
+      *bc_ptr = 0x42;
+      asm volatile ("OUT 0xde" :: "a"(a_keep));
+      asm volatile ("OUT 0xde" :: "r"(hl_keep));
+  }
+
+  // Row 7: addr=BC, all live.
+  void test_bc_all_live(unsigned hl_keep, unsigned de_keep,
+                        uint8_t *bc_ptr, uint8_t a_keep) {
+      *bc_ptr = 0x42;
+      asm volatile ("OUT 0xde" :: "a"(a_keep));
+      asm volatile ("OUT 0xde" :: "r"(hl_keep));
+      asm volatile ("OUT 0xde" :: "r"(de_keep));
+  }
+
+  volatile uint8_t  g_a    = 0x12;
+  volatile uint8_t  g_buf[1] = { 0x00 };
+  volatile unsigned g_hl   = 0x1234;
+  volatile unsigned g_de   = 0x5678;
+
+  int main(int argc, char **argv) {
+      (void)argc; (void)argv;
+      uint8_t *p = (uint8_t *)g_buf;
+      test_hl(p);
+      test_bc_a_dead(g_hl, g_de, p);
+      test_de_a_dead(g_hl, p);
+      test_de_a_live(g_hl, p, g_a);
+      test_bc_hl_dead(g_hl, g_de, p, g_a);
+      test_bc_de_dead(g_hl, g_de, p, g_a);
+      test_bc_all_live(g_hl, g_de, p, g_a);
+      return 0;
+  }
+
+
+tests/features/60/c8080.c — shape-equivalent plain C
+----------------------------------------------------
+c8080 cannot pin physical registers; sinks are written to a global
+`g_sink` instead of `OUT 0xde`. Same seven test functions named
+`store_hl`, `store_bc_a_dead`, `store_de_a_dead`, `store_de_a_live`,
+`store_bc_hl_dead`, `store_bc_de_dead`, `store_bc_all_live` plus
+`main()` that invokes each.
+
+
+================================================================
+2. c8080 ASM — main + dependents (Z80 → i8080 mnemonics)
+================================================================
+
+main:
+        LXI     H, 0
+        SHLD    __a_1_main                  ; argc spill
+        SHLD    __a_2_main                  ; argv spill
+        LXI     H, g_buf
+        SHLD    main_p
+        CALL    store_hl
+        LHLD    g_hl
+        SHLD    __a_1_store_bc_a_dead
+        LHLD    g_de
+        SHLD    __a_2_store_bc_a_dead
+        LHLD    main_p
+        CALL    store_bc_a_dead
+        LHLD    g_hl
+        SHLD    __a_1_store_de_a_dead
+        LHLD    main_p
+        CALL    store_de_a_dead
+        LHLD    g_hl
+        SHLD    __a_1_store_de_a_live
+        LHLD    main_p
+        SHLD    __a_2_store_de_a_live
+        LDA     g_a
+        CALL    store_de_a_live
+        LHLD    g_hl
+        SHLD    __a_1_store_bc_hl_dead
+        LHLD    g_de
+        SHLD    __a_2_store_bc_hl_dead
+        LHLD    main_p
+        SHLD    __a_3_store_bc_hl_dead
+        LDA     g_a
+        CALL    store_bc_hl_dead
+        LHLD    g_hl
+        SHLD    __a_1_store_bc_de_dead
+        LHLD    g_de
+        SHLD    __a_2_store_bc_de_dead
+        LHLD    main_p
+        SHLD    __a_3_store_bc_de_dead
+        LDA     g_a
+        CALL    store_bc_de_dead
+        LHLD    g_hl
+        SHLD    __a_1_store_bc_all_live
+        LHLD    g_de
+        SHLD    __a_2_store_bc_all_live
+        LHLD    main_p
+        SHLD    __a_3_store_bc_all_live
+        LDA     g_a
+        CALL    store_bc_all_live
+        LXI     H, 0
+        RET
+
+store_hl:                                   ; pointer arrives in HL
+        SHLD    __a_1_store_hl              ; spill p
+        MVI     M, 0x42                     ; *p = 0x42
+        RET
+
+store_bc_a_dead:
+        SHLD    __a_3_store_bc_a_dead       ; spill p (HL)
+        MVI     M, 0x42                     ; *p = 0x42
+        LDA     __a_1_store_bc_a_dead       ; (u8)hl_keep — DSE'd, A overwritten
+        LDA     __a_2_store_bc_a_dead       ; (u8)de_keep
+        STA     g_sink
+        RET
+
+store_de_a_dead:
+        SHLD    __a_2_store_de_a_dead       ; spill p
+        MVI     M, 0x42
+        LDA     __a_1_store_de_a_dead       ; (u8)hl_keep
+        STA     g_sink
+        RET
+
+store_de_a_live:
+        STA     __a_3_store_de_a_live       ; spill a_keep
+        LHLD    __a_2_store_de_a_live       ; reload p
+        MVI     M, 0x42
+        LDA     __a_1_store_de_a_live       ; (u8)hl_keep
+        STA     g_sink
+        RET
+
+store_bc_hl_dead:
+        STA     __a_4_store_bc_hl_dead      ; spill a_keep
+        LDA     __a_1_store_bc_hl_dead      ; (u8)hl_keep — DSE'd
+        LHLD    __a_3_store_bc_hl_dead      ; reload p
+        MVI     M, 0x42
+        LDA     __a_4_store_bc_hl_dead      ; reload a_keep — DSE'd
+        LDA     __a_2_store_bc_hl_dead      ; (u8)de_keep
+        STA     g_sink
+        RET
+
+store_bc_de_dead:                           ; same shape as _hl_dead
+        STA     __a_4_store_bc_de_dead
+        LDA     __a_2_store_bc_de_dead
+        LHLD    __a_3_store_bc_de_dead
+        MVI     M, 0x42
+        LDA     __a_4_store_bc_de_dead
+        LDA     __a_1_store_bc_de_dead
+        STA     g_sink
+        RET
+
+store_bc_all_live:
+        STA     __a_4_store_bc_all_live
+        LHLD    __a_3_store_bc_all_live
+        MVI     M, 0x42
+        LDA     __a_1_store_bc_all_live
+        LDA     __a_2_store_bc_all_live
+        STA     g_sink
+        RET
+
+
+================================================================
+3. c8080 stats — body bytes / cycles per function (incl. RET)
+================================================================
+
+Timings (docs/V6CInstructionTimings.md):
+  LHLD/SHLD = 3B/20cc, LDA/STA = 3B/16cc, LXI = 3B/10cc,
+  MVI M,imm = 2B/12cc, CALL = 3B/24cc, RET = 1B/12cc.
+
+  store_hl           ............  6 B /  44 cc
+  store_bc_a_dead    ............ 15 B /  92 cc
+  store_de_a_dead    ............ 12 B /  76 cc
+  store_de_a_live    ............ 13 B /  92 cc
+  store_bc_hl_dead   ............ 21 B / 124 cc
+  store_bc_de_dead   ............ 21 B / 124 cc
+  store_bc_all_live  ............ 18 B / 108 cc
+  main               ............ 109 B / 720 cc
+
+
+================================================================
+4. v6llvmc OLD ASM (tests/features/60/v6llvmc_old.asm)
+================================================================
+
+test_hl:                                ; addr=HL
+        MVI     M, 0x42
+        RET
+
+test_bc_a_dead:                         ; addr=BC, OLD: PUSH H envelope
+        PUSH    H
+        MOV     L, C
+        MOV     H, B
+        MVI     M, 0x42
+        POP     H
+        OUT     0xde                    ; sink hl_keep
+        OUT     0xde                    ; sink de_keep
+        RET
+
+test_de_a_dead:                         ; addr=DE, OLD: XCHG envelope
+        XCHG
+        MVI     M, 0x42
+        XCHG
+        OUT     0xde                    ; sink hl_keep
+        RET
+
+test_de_a_live:                         ; addr=DE, A live
+        XCHG
+        MVI     M, 0x42
+        XCHG
+        OUT     0xde                    ; sink a_keep
+        OUT     0xde                    ; sink hl_keep
+        RET
+
+test_bc_hl_dead:                        ; addr=BC, HL dead
+        OUT     0xde                    ; sink hl_keep (HL now dead)
+        MOV     L, C
+        MOV     H, B
+        MVI     M, 0x42
+        OUT     0xde                    ; sink a_keep
+        OUT     0xde                    ; sink de_keep
+        RET
+
+test_bc_de_dead:                        ; addr=BC, OLD: PUSH H envelope
+        OUT     0xde                    ; sink de_keep (DE now dead)
+        PUSH    H
+        MOV     L, C
+        MOV     H, B
+        MVI     M, 0x42
+        POP     H
+        OUT     0xde                    ; sink a_keep
+        OUT     0xde                    ; sink hl_keep
+        RET
+
+test_bc_all_live:                       ; addr=BC, all live
+        PUSH    H
+        MOV     L, C
+        MOV     H, B
+        MVI     M, 0x42
+        POP     H
+        OUT     0xde                    ; sink a_keep
+        OUT     0xde                    ; sink hl_keep
+        OUT     0xde                    ; sink de_keep
+        RET
+
+
+================================================================
+5. v6llvmc NEW ASM (tests/features/60/v6llvmc_new01.asm)
+================================================================
+
+test_hl:                                ; row 1 — unchanged
+        MVI     M, 0x42
+        RET
+
+test_bc_a_dead:                         ; row 2 ★ NEW: STAX path
+        MVI     A, 0x42
+        STAX    B
+        OUT     0xde
+        OUT     0xde
+        RET
+
+test_de_a_dead:                         ; row 3 ★ NEW: STAX path
+        MVI     A, 0x42
+        STAX    D
+        OUT     0xde
+        RET
+
+test_de_a_live:                         ; row 4 — unchanged
+        XCHG
+        MVI     M, 0x42
+        XCHG
+        OUT     0xde
+        OUT     0xde
+        RET
+
+test_bc_hl_dead:                        ; row 5 — unchanged
+        OUT     0xde
+        MOV     L, C
+        MOV     H, B
+        MVI     M, 0x42
+        OUT     0xde
+        OUT     0xde
+        RET
+
+test_bc_de_dead:                        ; row 6 ★ NEW: MOV D,B / MOV E,C / XCHG envelope
+        OUT     0xde
+        MOV     D, B
+        MOV     E, C
+        XCHG
+        MVI     M, 0x42
+        XCHG
+        OUT     0xde
+        OUT     0xde
+        RET
+
+test_bc_all_live:                       ; row 7 — unchanged (legacy fallback)
+        PUSH    H
+        MOV     L, C
+        MOV     H, B
+        MVI     M, 0x42
+        POP     H
+        OUT     0xde
+        OUT     0xde
+        OUT     0xde
+        RET
+
+
+================================================================
+6. Comparison — bytes / cycles per function (full body, incl. RET)
+================================================================
+
+Timings: PUSH H = 1B/16cc, POP H = 1B/12cc, MOV r,r = 1B/8cc,
+MVI M,imm = 2B/12cc, MVI A,imm = 2B/8cc, STAX = 1B/8cc, XCHG = 1B/4cc,
+OUT n = 2B/10cc, RET = 1B/12cc.
+
+| Function          | c8080            | v6llvmc OLD     | v6llvmc NEW    | Δ (NEW vs OLD)   |
+|-------------------|------------------|-----------------|----------------|------------------|
+| test_hl           |  6 B /  44 cc    |  3 B /  24 cc   |  3 B /  24 cc  |   0 B /   0 cc   |
+| test_bc_a_dead    | 15 B /  92 cc    | 11 B /  88 cc   |  8 B /  48 cc  |  −3 B / −40 cc ★ |
+| test_de_a_dead    | 12 B /  76 cc    |  7 B /  42 cc   |  6 B /  38 cc  |  −1 B /  −4 cc ★ |
+| test_de_a_live    | 13 B /  92 cc    |  9 B /  52 cc   |  9 B /  52 cc  |   0 B /   0 cc   |
+| test_bc_hl_dead   | 21 B / 124 cc    | 11 B /  70 cc   | 11 B /  70 cc  |   0 B /   0 cc   |
+| test_bc_de_dead   | 21 B / 124 cc    | 13 B /  98 cc   | 13 B /  78 cc  |   0 B / −20 cc ★ |
+| test_bc_all_live  | 18 B / 108 cc    | 13 B /  98 cc   | 13 B /  98 cc  |   0 B /   0 cc   |
+| **Total (7)**     | 106 B / 660 cc   | 67 B / 472 cc   | 63 B / 408 cc  |  −4 B / −64 cc   |
+
+Wins land on three of the seven shapes (rows 2, 3, 6); the other four
+were already optimal under the old expander. The `main()` driver is
+unchanged between OLD and NEW — store-shape selection is local to
+each callee.
+
+
+================================================================
+7. Test status
+================================================================
+
+- Lit: `llvm-project/llvm/test/CodeGen/V6C/store8imm-shape-redesign.ll`
+       (7 CHECK blocks, one per row) — PASS.
+- `python tests\run_all.py` → 134/134 PASS (lit + golden).
+- Benchmarks (bsort/sieve/fib_crc/fannkuch/lfsr16) — all checksums
+  unchanged, no size/cycle regressions across O1/O2/Os.
+- Mirror synced via `scripts\sync_llvm_mirror.ps1`.

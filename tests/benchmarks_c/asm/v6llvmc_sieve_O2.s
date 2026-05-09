@@ -89,9 +89,8 @@ main:                                   ; @main
 	MOV	D, A
 	XCHG
 	SHLD	.LLo61_0+1
-	MOV	L, C
-	MOV	H, B
-	MVI	M, 1
+	MVI	A, 1
+	STAX	B
 .LLo61_1:
 	LXI	H, 0
 	MOV	A, C

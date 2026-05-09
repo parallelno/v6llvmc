@@ -2458,12 +2458,54 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
 
   case V6C::V6C_STORE8_IMM_P: {
     // Operands: 0=$imm(imm8), 1=$addr(GR16).
+    // Per-shape dispatch (O78). See design/future_plans/O78_*.md.
     int64_t Imm = MI.getOperand(0).getImm();
     Register AddrReg = MI.getOperand(1).getReg();
-    expandMemOpM(MBB, MI, *this, RI, AddrReg,
-        [&](MachineBasicBlock &B, MachineBasicBlock::iterator Ip) {
-          BuildMI(B, Ip, DL, get(V6C::MVIM)).addImm(Imm);
-        });
+
+    if (AddrReg == V6C::HL) {
+      // Row 1: direct.  2B / 12cc.
+      BuildMI(MBB, MI, DL, get(V6C::MVIM)).addImm(Imm);
+    } else {
+      bool ADead = isRegDeadAtMI(V6C::A, MI, MBB, &RI);
+      if (ADead) {
+        // Rows 2/3: A dead → MVI A, imm; STAX rp.  3B / 16cc.
+        BuildMI(MBB, MI, DL, get(V6C::MVIr), V6C::A).addImm(Imm);
+        BuildMI(MBB, MI, DL, get(V6C::STAX))
+            .addReg(V6C::A).addReg(AddrReg);
+      } else if (AddrReg == V6C::DE) {
+        // Row 4: A live, addr=DE → XCHG bypass.  4B / 20cc.
+        BuildMI(MBB, MI, DL, get(V6C::XCHG));
+        BuildMI(MBB, MI, DL, get(V6C::MVIM)).addImm(Imm);
+        BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      } else {
+        // AddrReg == V6C::BC, A live.
+        bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+        bool DEDead = isRegDeadAtMI(V6C::DE, MI, MBB, &RI);
+        if (HLDead) {
+          // Row 5: BC + HL dead.  4B / 28cc.
+          BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::L).addReg(V6C::C);
+          BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::H).addReg(V6C::B);
+          BuildMI(MBB, MI, DL, get(V6C::MVIM)).addImm(Imm);
+        } else if (DEDead) {
+          // Row 6: BC + HL live + DE dead → DE-route.  5B / 36cc.
+          BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::D).addReg(V6C::B);
+          BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::E).addReg(V6C::C);
+          BuildMI(MBB, MI, DL, get(V6C::XCHG));
+          BuildMI(MBB, MI, DL, get(V6C::MVIM)).addImm(Imm);
+          BuildMI(MBB, MI, DL, get(V6C::XCHG));
+        } else {
+          // Row 7: BC, all live → PUSH H envelope (legacy).  6B / 56cc.
+          BuildMI(MBB, MI, DL, get(V6C::PUSH))
+              .addReg(V6C::HL, RegState::Kill)
+              .addReg(V6C::SP, RegState::ImplicitDefine);
+          BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::L).addReg(V6C::C);
+          BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::H).addReg(V6C::B);
+          BuildMI(MBB, MI, DL, get(V6C::MVIM)).addImm(Imm);
+          BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL)
+              .addReg(V6C::SP, RegState::ImplicitDefine);
+        }
+      }
+    }
     MI.eraseFromParent();
     return true;
   }

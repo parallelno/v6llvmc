@@ -108,3 +108,4 @@
 1.380801e-01 store16g-shapes.ll
 9.101057e-02 o75-flag-arith-fold.ll
 9.902906e-02 load8p-shape-redesign.ll
+1.600673e-01 store8imm-shape-redesign.ll

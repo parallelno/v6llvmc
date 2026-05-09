@@ -75,6 +75,7 @@
 | O74 | V6C_STORE16_G Per-Shape Redesign (drop `Defs=[HL]`, STA-pair when A dead, companion to O73) — **DONE** | [O74_V6C_STORE16_G_redesign.md](O74_V6C_STORE16_G_redesign.md) | V6C |
 | O76 | V6C_LOAD8_P Per-Shape Redesign (SpareR-A + universal XCHG bypass for addr=DE/A-live, eliminates PSW-wrap on hot A-live paths) — **DONE** | [O76_V6C_LOAD8_P_redesign.md](O76_V6C_LOAD8_P_redesign.md) | V6C |
 | O77 | V6C_STORE8_P Per-Shape Redesign (SpareR-A + universal XCHG bypass for addr=DE/A-live; companion to O76, no DE-clobber edge case) | [O77_V6C_STORE8_P_redesign.md](O77_V6C_STORE8_P_redesign.md) | V6C |
+| O78 | V6C_STORE8_IMM_P Per-Shape Redesign (A-dead → `MVI A,imm; STAX rp` for addr∈{BC,DE}; DE-routing for `addr=BC, HL live, DE dead`) — **DONE** | [O78_V6C_STORE8_IMM_P_redesign.md](O78_V6C_STORE8_IMM_P_redesign.md) | V6C |
 | O-LLD | Native ld.lld Linker (replaces Python `v6c_link.py`) | [../plan_O_LLD_native_linker.md](../plan_O_LLD_native_linker.md) | V6C |
 | O-AsmInterop | Asm-Interop Overhaul (i8080 mnemonics, free-list CC, MC AsmParser, V6C resource headers, retire libv6c-builtins) | [../plan_asm_interop_overhaul.md](../plan_asm_interop_overhaul.md) | V6C |
 ---
@@ -149,6 +150,7 @@
 | O69 | Direct Frame-Index Memory Pseudos | V6C | 32cc, 4B per i16 stack-arg load; removes address temporaries for i8/i16 stores too | Medium (stack args / frame-index loads/stores) | Low-Med | Medium | Stack-arg correctness fixes; frame-index load/store selection |
 | O76 | V6C_LOAD8_P SpareR-A + XCHG bypass | V6C | −12cc/fire (SpareR), −28cc & −1B/fire (XCHG bypass for any addr=DE, A-live, non-A dst) | Med-High (any A-live load through BC/DE with non-A dst) | Low-Med | Low | None (composes with O70-style SpareR helpers from O71/O72) |
 | O77 | V6C_STORE8_P SpareR-A + XCHG bypass | V6C | −12cc/fire (SpareR), −28cc & −1B/fire (XCHG bypass for any addr=DE, A-live, non-A src; universally safe — body is read-only) | Med-High (any A-live store through BC/DE with non-A src) | Low-Med | Low | O76 (reuses `findDeadGR8AtMI` helper) |
+| O78 | V6C_STORE8_IMM_P per-shape redesign | V6C | −3B/−12–40cc per fire (BC + A dead); −1B/−4cc per fire (DE + A dead); −1B/−20cc per fire (BC + HL live + DE dead) | Med-High (any `*p = const` to BC/DE) | Low | Very Low | O46/O49 in tree; reuses `isRegDeadAtMI` |
 | O-LLD | Native ld.lld linker (replaces Python `v6c_link.py`) | V6C | toolchain hardening | One-shot | Med-High | Low | lld build wired in |
 
 ### Implementation order
@@ -198,7 +200,8 @@
 38. ~~**O68** — wide SHL/ROTL by 1 via `DAD H`. Phase 1 (i16 `<<1`) is already de-facto delivered via O40 + `LowerSHL_i16` (no patch needed). **Phase 2 ✅** (`rotl i16, 1` → `DAD H; MOV A,L; ACI 0; MOV L,A`, 5B/36cc, saves −12B/−64cc per rotate; clobbers A, no liveness regression). Phase 3 (i32) deferred (~200 LOC of new infrastructure required — multi-result SDNode + glue, no `ReplaceNodeResults` hook today).~~ ✅
 39. ~~**O69** — select direct frame-index memory pseudos, removing address temporaries before RA, ~100 lines.~~ ✅
 40. ~~**O76** — V6C_LOAD8_P per-shape redesign: SpareR-A path (dead GR8 instead of PSW-wrap) + universal XCHG bypass for `addr=DE, A live, dst≠A` (3B/16cc, all six non-A dsts via partner-MOV trick), ~80 lines.~~ ✅
-41. **O77** — V6C_STORE8_P per-shape redesign: companion to O76. SpareR-A for `addr=BC, A live` (−12cc/fire) + XCHG bypass for `addr=DE, A live, src≠A` (3B/16cc, −28cc & −1B/fire). XCHG bypass is universally safe — store body is read-only so XCHG2 is exact inverse of XCHG1, no DE-clobber edge case. ~60 lines, reuses `findDeadGR8AtMI` from O76.
+41. ~~**O77** — V6C_STORE8_P per-shape redesign: companion to O76. SpareR-A for `addr=BC, A live` (−12cc/fire) + XCHG bypass for `addr=DE, A live, src≠A` (3B/16cc, −28cc & −1B/fire). XCHG bypass is universally safe — store body is read-only so XCHG2 is exact inverse of XCHG1, no DE-clobber edge case. ~60 lines, reuses `findDeadGR8AtMI` from O76.~~ ✅
+42. **O78** — V6C_STORE8_IMM_P per-shape redesign: A-dead path (`MVI A,imm; STAX rp` for `addr∈{BC,DE}`, 3B/16cc, −3B/−40cc on the worst BC+HL-live shape) + DE-routing (`MOV D,B; MOV E,C; XCHG; MVI M; XCHG` for `addr=BC, HL live, DE dead`, −1B/−20cc). Composes with O55 (`MVI A,0`→`XRA A`). ~50 lines, reuses `isRegDeadAtMI`.
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
 
