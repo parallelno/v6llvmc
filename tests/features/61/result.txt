@@ -1,0 +1,254 @@
+Feature 61 — O79: MVI R,NN + ALU R → ALU-immediate fold
+=======================================================
+
+Summary
+-------
+Post-RA peephole `foldMviAluImm` rewrites the two-instruction sequence
+`MVI R, NN` followed by `ALU R` (where R is a non-A GR8) into the
+single-instruction ALU-immediate `<ALUI> NN` on the accumulator. The
+fold is gated on R being dead after the consumer and forward-scans
+across only side-effect-free, non-clobbering instructions. The pass
+preserves any pre-instruction symbol attached to the original MVI,
+which means O61 patched-reload landing pad labels (`.LLo61_<n>:`) and
+their backing relocations (`STA <Sym>+1` / `SHLD <Sym>+1`) survive
+the fold.
+
+The interesting trigger in this test is `fold_spill`: with eight i8
+parameters, RA has to spill at least one carrier through a non-A
+GR8, which O61 lowers to a patched landing pad whose reload site is
+`MVI L, 0; XRA L`. That sequence is exactly the new fold target.
+
+The simple `fold_*` functions are already lowered as ALU-immediate by
+ISel, so O79 does not change them — they are listed for completeness
+to document that the fold does not regress the trivial cases.
+
+
+================================================================
+1. C test case (tests/features/61/v6llvmc.c)
+================================================================
+
+  typedef unsigned char u8;
+  extern volatile u8 g_sink;
+
+  u8 fold_add(u8 a) { return a + 0x0F; }
+  u8 fold_sub(u8 a) { return a - 0x05; }
+  u8 fold_and(u8 a) { return a & 0xF0; }
+  u8 fold_or (u8 a) { return a | 0x01; }
+  u8 fold_xor(u8 a) { return a ^ 0x55; }
+  int fold_cmp(u8 a) { return (a == 0x42) ? 1 : 0; }
+  u8 fold_chain(u8 a) { return ((a + 5) & 0xF0) ^ 0x10; }
+
+  u8 fold_spill(u8 x0, u8 x1, u8 x2, u8 x3,
+                u8 x4, u8 x5, u8 x6, u8 x7) {
+      u8 s = x0;
+      s ^= x1; s ^= x2; s ^= x3;
+      s ^= x4; s ^= x5; s ^= x6;
+      s ^= x7;
+      return s;
+  }
+
+  volatile u8 g_sink;
+
+  int main(int argc, char **argv) {
+      (void)argc; (void)argv;
+      g_sink = fold_add(0x10);
+      g_sink = fold_sub(0x10);
+      g_sink = fold_and(0xAB);
+      g_sink = fold_or(0xAA);
+      g_sink = fold_xor(0xAA);
+      g_sink = (u8)fold_cmp(0x42);
+      g_sink = fold_chain(0x07);
+      g_sink = fold_spill(1, 2, 3, 4, 5, 6, 7, 8);
+      return 0;
+  }
+
+
+================================================================
+2. c8080 ASM (tests/features/61/c8080.asm, converted to i8080)
+================================================================
+
+fold_add:                ; +F
+        STA  __a_1_fold_add
+        ADI  0x0F
+        RET
+
+fold_sub:                ; -5  (two's complement add)
+        STA  __a_1_fold_sub
+        ADI  0xFB
+        RET
+
+fold_and:                ; &F0
+        STA  __a_1_fold_and
+        ANI  0xF0
+        RET
+
+fold_or:                 ; |1
+        STA  __a_1_fold_or
+        ORI  0x01
+        RET
+
+fold_xor:                ; ^55
+        STA  __a_1_fold_xor
+        XRI  0x55
+        RET
+
+fold_cmp:                ; == 0x42 ? 1 : 0  (returns in HL)
+        STA  __a_1_fold_cmp
+        CPI  0x42
+        JNZ  l_0
+        LXI  H, 1
+        RET
+l_0:    LXI  H, 0
+        RET
+
+fold_chain:              ; ((a+5)&F0)^10
+        STA  __a_1_fold_chain
+        ADI  5
+        ANI  0xF0
+        XRI  0x10
+        RET
+
+fold_spill:              ; static-stack accumulator across __a_*
+        STA  __a_8_fold_spill
+        LDA  __a_1_fold_spill
+        STA  fold_spill_s
+        LXI  H, fold_spill_s
+        LDA  __a_2_fold_spill
+        XRA  M
+        MOV  M, A
+        LDA  __a_3_fold_spill
+        XRA  M
+        MOV  M, A
+        LDA  __a_4_fold_spill
+        XRA  M
+        MOV  M, A
+        LDA  __a_5_fold_spill
+        XRA  M
+        MOV  M, A
+        LDA  __a_6_fold_spill
+        XRA  M
+        MOV  M, A
+        LDA  __a_7_fold_spill
+        XRA  M
+        MOV  M, A
+        LDA  __a_8_fold_spill
+        XRA  M
+        MOV  M, A
+        RET
+
+
+================================================================
+3. c8080 stats — body bytes / cycles per function (incl. RET)
+================================================================
+
+Timings (docs/V6CInstructionTimings.md):
+  STA/LDA = 3B/16cc, LXI = 3B/10cc, MVI A,imm = 2B/7cc,
+  ADI/SUI/ANI/ORI/XRI/CPI = 2B/7cc, ADD r/SUB r/ANA r/ORA r/XRA r = 1B/4cc,
+  XRA M = 1B/8cc, MOV M,A = 1B/7cc, JNZ = 3B/10cc, RET = 1B/12cc, CALL = 3B/24cc.
+
+  fold_add     ........  6 B /  35 cc
+  fold_sub     ........  6 B /  35 cc
+  fold_and     ........  6 B /  35 cc
+  fold_or      ........  6 B /  35 cc
+  fold_xor     ........  6 B /  35 cc
+  fold_cmp     ........ 14 B /  74 cc   (slowest path, JNZ taken)
+  fold_chain   ........ 10 B /  49 cc
+  fold_spill   ........ 75 B / 408 cc
+
+
+================================================================
+4. v6llvmc OLD ASM (tests/features/61/v6llvmc_old.asm)
+================================================================
+
+fold_add:    ADI  0xF       ; RET
+fold_sub:    ADI  0xFB      ; RET
+fold_and:    ANI  0xF0      ; RET
+fold_or:     ORI  1         ; RET
+fold_xor:    XRI  0x55      ; RET
+
+fold_cmp:                   ; returns int in HL
+        CPI  0x42
+        MVI  A, 0
+        MOV  L, A
+        JNZ  .LBB_2
+        INR  L
+.LBB_2: MOV  H, A
+        RET
+
+fold_chain:
+        ADI  5
+        ANI  0xF0
+        XRI  0x10
+        RET
+
+fold_spill:                 ; OLD: O61 reload is `MVI L,0; XRA L`
+        PUSH PSW
+        MOV  A, H
+        STA  .LLo61_0+1     ; spill H into the patched landing pad
+        POP  PSW
+        MOV  A, B
+        XRA  H
+        XRA  C
+        XRA  D
+        XRA  E
+        XRA  L
+.LLo61_0:
+        MVI  L, 0           ; <-- patched-reload landing pad
+        XRA  L              ; <-- O79 fold target
+        LXI  H, 2
+        DAD  SP
+        XRA  M
+        RET
+
+
+================================================================
+5. v6llvmc NEW ASM (tests/features/61/v6llvmc_new01.asm)
+================================================================
+
+fold_add..fold_chain : unchanged (already ALU-imm by ISel).
+
+fold_spill:                 ; NEW: O79 collapsed `MVI L,0; XRA L` -> `XRI 0`
+        PUSH PSW
+        MOV  A, H
+        STA  .LLo61_0+1
+        POP  PSW
+        MOV  A, B
+        XRA  H
+        XRA  C
+        XRA  D
+        XRA  E
+        XRA  L
+.LLo61_0:
+        XRI  0              ; <-- folded; .LLo61_0+1 still patched
+        LXI  H, 2
+        DAD  SP
+        XRA  M
+        RET
+
+
+================================================================
+6. Comparison table — body bytes / cycles per function (incl. RET)
+================================================================
+
+Timings: ADI/ANI/ORI/XRI/CPI = 2B/7cc; ADD/ANA/ORA/XRA/CMP r = 1B/4cc;
+MVI r,imm = 2B/7cc; MOV r,r = 1B/4cc; STA/LDA = 3B/16cc; LXI = 3B/10cc;
+DAD = 1B/10cc; XRA M = 1B/8cc; PUSH/POP PSW = 1B/12cc; JNZ = 3B/10cc;
+INR r = 1B/4cc; RET = 1B/12cc.
+
+  Function       c8080 (B/cc)   v6llvmc OLD (B/cc)   v6llvmc NEW (B/cc)   Δ vs OLD
+  ------------   ------------   ------------------   ------------------   --------
+  fold_add          6 /  35          3 /  19              3 /  19          0 /  0
+  fold_sub          6 /  35          3 /  19              3 /  19          0 /  0
+  fold_and          6 /  35          3 /  19              3 /  19          0 /  0
+  fold_or           6 /  35          3 /  19              3 /  19          0 /  0
+  fold_xor          6 /  35          3 /  19              3 /  19          0 /  0
+  fold_cmp         14 /  74         10 /  47             10 /  47          0 /  0
+  fold_chain       10 /  49          7 /  33              7 /  33          0 /  0
+  fold_spill       75 / 408         21 / 119             20 / 115         -1 / -4
+
+Net change for this feature:
+  -1 byte and -4 cycles per dynamic execution of `fold_spill`.
+
+The four-cycle / one-byte saving is per O61 patched-reload landing
+pad whose reload feeds an ALU-r consumer; the win scales with the
+number of such non-A i8 spills the program makes in inner loops.

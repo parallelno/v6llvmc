@@ -40,6 +40,11 @@ static cl::opt<bool> DisableShldLhldFold(
     cl::desc("Disable SHLD/LHLD to PUSH/POP folding (O43)"),
     cl::init(false), cl::Hidden);
 
+static cl::opt<bool> DisableMviAluFold(
+    "v6c-disable-mvi-alu-fold",
+    cl::desc("Disable MVI R,NN + ALU R -> ALU-immediate fold (O79)"),
+    cl::init(false), cl::Hidden);
+
 /// True if MI is an O61 patched-immediate site: it carries a
 /// pre-instr `.LLo61_N:` label (referenced by SHLD/STA spills) and/or
 /// its imm operand is flagged MO_PATCH_IMM.  Erasing such an MI loses
@@ -79,6 +84,7 @@ private:
   bool foldMovAluM(MachineBasicBlock &MBB);
   bool foldIncDecMviM(MachineBasicBlock &MBB);
   bool foldMviZeroToXraA(MachineBasicBlock &MBB);
+  bool foldMviAluImm(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -952,6 +958,140 @@ bool V6CPeephole::foldMviZeroToXraA(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// Map register-form ALU opcode -> immediate-form opcode.
+/// Both forms set FLAGS identically (same ALU function bits in the
+/// 8080 encoding).  CPI has no def of A; the others tie dst = lhs = A.
+static unsigned aluRegToImmOpc(unsigned Opc) {
+  switch (Opc) {
+  case V6C::ADDr: return V6C::ADI;
+  case V6C::ADCr: return V6C::ACI;
+  case V6C::SUBr: return V6C::SUI;
+  case V6C::SBBr: return V6C::SBI;
+  case V6C::ANAr: return V6C::ANI;
+  case V6C::XRAr: return V6C::XRI;
+  case V6C::ORAr: return V6C::ORI;
+  case V6C::CMPr: return V6C::CPI;
+  default:        return 0;
+  }
+}
+
+/// Return the GR8-source-operand index of a register-form ALU op.
+/// For writers (ADDr/.../ORAr): operands are (dst=A, lhs=A, src=GR8).
+/// For CMPr: operands are (lhs=A, src=GR8) with no def.
+static unsigned aluRegSrcOpIdx(unsigned Opc) {
+  return (Opc == V6C::CMPr) ? 1u : 2u;
+}
+
+/// O79: fold `MVI R, NN; ... ; ALU R` into `... ; ALU-immediate NN`
+/// when no instruction strictly between the MVI and the ALU op
+/// reads or writes R (or its 16-bit alias), and R is dead after the
+/// ALU op.  Saves 1B / 4cc per fire and frees R for register
+/// allocation across the gap.
+///
+/// The fold preserves O61 patched-immediate metadata: the
+/// pre-instruction MCSymbol (`.LLo61_N` label, used by spill
+/// `STA <Sym+1>`) and the imm operand's MO_PATCH_IMM target flag
+/// are transferred to the new ALU-immediate instruction.  Both
+/// `MVI r,imm8` and `ADI/SUI/.../CPI` are 2-byte instructions
+/// with the imm at offset +1, so `<Sym+1>` keeps targeting the
+/// correct byte.
+bool V6CPeephole::foldMviAluImm(MachineBasicBlock &MBB) {
+  if (DisableMviAluFold)
+    return false;
+
+  bool Changed = false;
+  MachineFunction &MF = *MBB.getParent();
+  const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
+  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
+
+  for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
+    MachineInstr &MVI = *I;
+    auto NextI = std::next(I);
+
+    if (MVI.getOpcode() != V6C::MVIr) { I = NextI; continue; }
+    Register R = MVI.getOperand(0).getReg();
+    if (R == V6C::A) { I = NextI; continue; }
+    // The fold copies the imm operand wholesale; it must be a real
+    // immediate (target-flagged O61 placeholders are still .isImm()).
+    if (!MVI.getOperand(1).isImm()) { I = NextI; continue; }
+
+    // Forward-scan for the ALU consumer.
+    MachineBasicBlock::iterator J = NextI;
+    bool Blocked = false;
+    for (; J != E; ++J) {
+      MachineInstr &Cand = *J;
+      if (Cand.isDebugInstr()) continue;
+      // Hard barriers.
+      if (Cand.isCall() || Cand.isInlineAsm() ||
+          Cand.hasUnmodeledSideEffects()) {
+        Blocked = true;
+        break;
+      }
+
+      // Recognise the ALU-on-R consumer.
+      unsigned ImmOpc = aluRegToImmOpc(Cand.getOpcode());
+      if (ImmOpc) {
+        unsigned SrcIdx = aluRegSrcOpIdx(Cand.getOpcode());
+        const MachineOperand &SrcMO = Cand.getOperand(SrcIdx);
+        if (SrcMO.isReg() && SrcMO.getReg() == R) {
+          // Match — don't run the read/write barrier on this MI;
+          // its read of R is the success case.
+          break;
+        }
+      }
+
+      // Any operand reading or writing R (or an aliasing 16-bit
+      // pair) blocks; regmasks on calls handled above.
+      for (const MachineOperand &MO : Cand.operands()) {
+        if (MO.isRegMask() && MO.clobbersPhysReg(R)) {
+          Blocked = true;
+          break;
+        }
+        if (!MO.isReg() || !MO.getReg())
+          continue;
+        if (TRI->regsOverlap(MO.getReg(), R)) {
+          Blocked = true;
+          break;
+        }
+      }
+      if (Blocked)
+        break;
+    }
+    if (Blocked || J == E) { I = NextI; continue; }
+
+    // R must be dead after the ALU consumer (its only purpose was
+    // to deliver the materialized immediate).
+    if (!isRegDeadAfter(MBB, J, R, TRI)) { I = NextI; continue; }
+
+    MachineInstr &Cons = *J;
+    unsigned ImmOpc = aluRegToImmOpc(Cons.getOpcode());
+
+    // Build the immediate-form ALU op at the consumer's position.
+    DebugLoc DL = Cons.getDebugLoc();
+    MachineInstrBuilder MIB = BuildMI(MBB, Cons, DL, TII.get(ImmOpc));
+    if (ImmOpc != V6C::CPI) {
+      // ADI/ACI/.../ORI: (outs Acc:$dst)(ins Acc:$lhs, imm8:$imm)
+      MIB.addReg(V6C::A, RegState::Define).addReg(V6C::A);
+    } else {
+      // CPI: (outs)(ins Acc:$lhs, imm8:$imm)
+      MIB.addReg(V6C::A);
+    }
+    // Copy the imm operand wholesale to preserve target flags
+    // (notably V6CII::MO_PATCH_IMM for O61 patched landing pads).
+    MIB.add(MVI.getOperand(1));
+
+    // Transfer pre-instruction symbol (e.g. O61 `.LLo61_N` label).
+    if (MCSymbol *PreSym = MVI.getPreInstrSymbol())
+      MIB.getInstr()->setPreInstrSymbol(MF, PreSym);
+
+    // Erase the consumer first (frees J), then erase MVI.
+    Cons.eraseFromParent();
+    I = MBB.erase(MVI);
+    Changed = true;
+  }
+  return Changed;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -968,6 +1108,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
     Changed |= foldXraCmpZeroTest(MBB);
     Changed |= foldXchgDad(MBB);
     Changed |= eliminateTailCall(MBB);
+    Changed |= foldMviAluImm(MBB);
     Changed |= foldMviZeroToXraA(MBB);
   }
   return Changed;
