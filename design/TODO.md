@@ -77,6 +77,18 @@ tests\features\43\v6llvmc_bsort_spillfrwd.asm
 	STA	.LLo61_7+1
 	POP	PSW
 ==========================
+improtant insights that can improve the V6C_LOAD8_FI:
+1. The main goal for V6C compiler is to make static stack funcs the most performant, because they have less overhead.
+2. In static-stack mode V6C_LOAD8_FI is not very popular. It is used only for arg passing via stack.
+
+2. Register spilling is the biggest problem of the C compiler for i8080.
+3. if the V6C_LOAD8_FI is inside a hot code (a loop), it will clobber hl (the most popular and effective regpair), and flags unconditionally increasing the register pressure.
+4. we can read the reg without clobbering hl:
+hl live, de dead:
+new: xchg; lxi h, offset; dad sp; mov reg8, m; xchg; 40cc
+old: clobbers hl, which can lead to spilling or less optimal
+===========================
+
 ///// Control flow / select
 
 V6C_BRCOND
@@ -95,13 +107,15 @@ V6C_CMP16_ZERO
 
 **DONE** V6C_LOAD8_P, V6C_STORE8_P
 **DONE** V6C_STORE8_IMM_P
+
+///// func arg load/store
 V6C_LOAD8_FI, V6C_STORE8_FI
+V6C_LOAD16_FI, V6C_STORE16_FI
 
 ///// 16-bit memory
-
 **DONE** V6C_LOAD16_G, V6C_STORE16_G
 **DONE** V6C_LOAD16_P, V6C_STORE16_P
-V6C_LOAD16_FI, V6C_STORE16_FI
+
 
 ///// Spill/reload
 
@@ -110,7 +124,7 @@ V6C_SPILL16, V6C_RELOAD16
 
 ///// Arithmetic / address
 
-V6C_LEA_FI
+**DONE** V6C_LEA_FI
 V6C_DAD
 V6C_INX16, V6C_DCX16
 V6C_ROTL16_1

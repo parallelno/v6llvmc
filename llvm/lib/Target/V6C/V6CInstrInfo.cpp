@@ -541,10 +541,16 @@ static void expandMemOpM(MachineBasicBlock &MBB, MachineInstr &MI,
     return;
   }
   if (AddrReg == V6C::DE) {
-    // XCHG; OP M; XCHG — always restores HL and DE.
+    // XCHG; OP M; XCHG — restores HL and DE. The trailing XCHG is
+    // omitted when HL is dead after MI: after the first XCHG the
+    // address sits in HL while old-HL sits in DE, so skipping the
+    // restore leaves DE holding old-HL (fine, DE may also be dead)
+    // and HL holding the address (fine if HL is dead).
+    bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
     BuildMI(MBB, Ip, DL, TII.get(V6C::XCHG));
     Emit(MBB, Ip);
-    BuildMI(MBB, Ip, DL, TII.get(V6C::XCHG));
+    if (!HLDead)
+      BuildMI(MBB, Ip, DL, TII.get(V6C::XCHG));
     return;
   }
   // AddrReg == V6C::BC — no swap instruction; copy B→H, C→L, restore HL.
