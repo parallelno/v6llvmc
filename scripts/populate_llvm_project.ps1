@@ -69,6 +69,8 @@ xcopy /Y /I "$root\clang\lib\Driver\ToolChains\V6C.h" "$root\llvm-project\clang\
 xcopy /Y /I "$root\clang\lib\Driver\ToolChains\V6C.cpp" "$root\llvm-project\clang\lib\Driver\ToolChains\" > $null
 xcopy /Y /I "$root\clang\lib\Driver\Driver.cpp" "$root\llvm-project\clang\lib\Driver\" > $null
 xcopy /Y /I "$root\clang\lib\Driver\CMakeLists.txt" "$root\llvm-project\clang\lib\Driver\" > $null
+# O70: V6C driver options (-fno-v6c-auto-include)
+xcopy /Y /I "$root\clang\include\clang\Driver\Options.td" "$root\llvm-project\clang\include\clang\Driver\" > $null
 # Clang.cpp (unsigned char default)
 xcopy /Y /I "$root\clang\lib\Driver\ToolChains\Clang.cpp" "$root\llvm-project\clang\lib\Driver\ToolChains\" > $null
 # CommonArgs.cpp (frame pointer default)

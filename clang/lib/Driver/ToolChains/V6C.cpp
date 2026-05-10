@@ -207,11 +207,9 @@ void V6CToolChain::addClangTargetOptions(
     CC1Args.push_back("-ffunction-sections");
 
   // O70: auto-include v6c_arith.h so libcall symbols (__mulhi3 etc.) are
-  // defined in every TU. Suppressed by -nostdlibinc (user takes
-  // responsibility for supplying every routine the backend may emit) —
-  // the same flag already gates the V6C include-dir injection below, so
-  // a single switch turns off all freestanding helpers consistently.
-  if (!DriverArgs.hasArg(options::OPT_nostdlibinc)) {
+  // defined in every TU. Suppressed by -fno-v6c-auto-include for users
+  // who want to supply their own runtime.
+  if (!DriverArgs.hasArg(options::OPT_fno_v6c_auto_include)) {
     std::string Hdr = findV6CHeader(*this, "v6c_arith.h");
     if (!Hdr.empty()) {
       CC1Args.push_back("-include");
