@@ -127,7 +127,7 @@ old: clobbers hl, which can lead to spilling or less optimal
 **DONE** V6C_INX16, V6C_DCX16
 **DONE** V6C_ROTL16_1
 **DONE** V6C_BUILD_PAIR
-V6C_SEXT
+**DONE** V6C_SEXT
 V6C_SRL16
 V6C_AND16
 V6C_SUB16
