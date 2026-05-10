@@ -1,14 +1,14 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
 
-; O68 Phase 2: rotl i16 x, 1 → DAD H + ACI 0 carry-fold (5B / 36cc).
+; O68 Phase 2: rotl i16 x, 1 → DAD H + MVI A,0 + ADC L carry-fold (5B / 26cc).
 
 ;-------------------------------------------------------------
 ; Case 1: scalar rotl i16, 1 — exact 4-instruction sequence.
 ;-------------------------------------------------------------
 ; CHECK-LABEL: rotl_u16_1:
 ; CHECK:       DAD     H
-; CHECK-NEXT:  MOV     A, L
-; CHECK-NEXT:  ACI     0
+; CHECK-NEXT:  MVI     A, 0
+; CHECK-NEXT:  ADC     L
 ; CHECK-NEXT:  MOV     L, A
 ; CHECK-NEXT:  RET
 ; Negative-assert: no fall-back to default Expand (RAR is part of SRL by 15).
@@ -27,7 +27,7 @@ define i16 @rotl_u16_1(i16 %x) {
 ; we don't regress to a libcall.
 ;-------------------------------------------------------------
 ; CHECK-LABEL: rotl_u16_2:
-; CHECK-NOT:   ACI     0
+; CHECK-NOT:   ADC     L
 ; CHECK-NOT:   __ashlhi3
 ; CHECK-NOT:   __lshrhi3
 ; CHECK:       RET
@@ -45,8 +45,8 @@ define i16 @rotl_u16_2(i16 %x) {
 ;-------------------------------------------------------------
 ; CHECK-LABEL: fshl_u16_1:
 ; CHECK:       DAD     H
-; CHECK-NEXT:  MOV     A, L
-; CHECK-NEXT:  ACI     0
+; CHECK-NEXT:  MVI     A, 0
+; CHECK-NEXT:  ADC     L
 ; CHECK-NEXT:  MOV     L, A
 ; CHECK-NEXT:  RET
 declare i16 @llvm.fshl.i16(i16, i16, i16)
