@@ -10,6 +10,7 @@ main:                                   ; @main
 	STA	__v6c_a.main
 	LDA	__v6c_a.main
 	MOV	C, A
+	;--- V6C_CMP8_ZERO ---
 	ORA	A
 	;--- V6C_BRCOND ---
 	JZ	.LBB15_3
@@ -61,6 +62,7 @@ main:                                   ; @main
 .LBB15_5:                               ;   in Loop: Header=BB15_4 Depth=1
 	;--- V6C_RELOAD8 ---
 	LDA	.LLo61_8+1
+	;--- V6C_CMP8_ZERO ---
 	ORA	A
 	;--- V6C_BRCOND ---
 	JZ	.LBB15_7
@@ -86,6 +88,7 @@ main:                                   ; @main
 	JNZ	.LBB15_9
 .LBB15_7:                               ;   in Loop: Header=BB15_4 Depth=1
 	LDA	perm
+	;--- V6C_CMP8_ZERO ---
 	ORA	A
 	;--- V6C_BRCOND ---
 	JZ	.LBB15_14
@@ -174,6 +177,7 @@ main:                                   ; @main
 	MVI	L, 0
 	INR	L
 	LDA	perm
+	;--- V6C_CMP8_ZERO ---
 	ORA	A
 	;--- V6C_BRCOND ---
 	JNZ	.LBB15_11
@@ -208,6 +212,7 @@ main:                                   ; @main
 	SHLD	.LLo61_0+1
 	;--- V6C_SPILL8 ---
 	STA	.LLo61_6+1
+	;--- V6C_CMP8_ZERO ---
 	ORA	A
 	LDA	perm1
 	;--- V6C_SPILL8 ---
@@ -268,8 +273,7 @@ main:                                   ; @main
 	INR	A
 	;--- V6C_RELOAD8 ---
 .LLo61_8:
-	MVI	L, 0
-	CMP	L
+	CPI	0
 	;--- V6C_BRCOND ---
 	JNZ	.LBB15_20
 .LBB15_18:

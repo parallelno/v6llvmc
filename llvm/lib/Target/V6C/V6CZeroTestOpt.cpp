@@ -61,6 +61,14 @@ bool V6CZeroTestOpt::runOnMachineFunction(MachineFunction &MF) {
       const MachineOperand &ImmOp = MI.getOperand(1);
       if (!ImmOp.isImm() || ImmOp.getImm() != 0)
         continue;
+      // Skip O61-patched immediates: their imm byte is rewritten at
+      // runtime via `STA Sym+1`, which requires the 2-byte CPI form
+      // (opcode + imm). Folding to single-byte ORA A would orphan the
+      // pre-instr-symbol that the spill site references.
+      if (ImmOp.getTargetFlags() != 0)
+        continue;
+      if (MI.getPreInstrSymbol())
+        continue;
 
       // Replace CPI 0 with ORA A (which is: A = A | A, sets Z/S flags).
       DebugLoc DL = MI.getDebugLoc();

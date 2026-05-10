@@ -73,17 +73,15 @@ multi_src_i8:                           ; @multi_src_i8
 	;--- V6C_SPILL8 ---
 	LXI	H, .LLo61_5+1
 	MOV	M, B
-	MOV	L, A
-	MOV	A, C
-	ORA	A
+	;--- V6C_CMP8_ZERO ---
+	INR	C
+	DCR	C
 	;--- V6C_BRCOND ---
 	JZ	.LBB17_2
 ; %bb.1:
-	MOV	A, L
 	CALL	op1
 	JMP	.LBB17_3
 .LBB17_2:
-	MOV	A, L
 	CALL	op2
 .LBB17_3:
 	;--- V6C_SPILL8 ---
