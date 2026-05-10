@@ -76,6 +76,15 @@ public:
   InstructionCost getScalingFactorCost(Type *Ty, GlobalValue *BaseGV,
                                        int64_t BaseOffset, bool HasBaseReg,
                                        int64_t Scale, unsigned AddrSpace);
+
+  // --- Loop unrolling preferences ---
+  // V6C has only 3 register pairs (HL/DE/BC). Default LLVM unrolling
+  // multiplies live ranges by the unroll factor and routinely exhausts
+  // the register file, causing "ran out of registers during register
+  // allocation". Override to keep the unroller conservative.
+  void getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
+                               TTI::UnrollingPreferences &UP,
+                               OptimizationRemarkEmitter *ORE);
 };
 
 } // namespace llvm

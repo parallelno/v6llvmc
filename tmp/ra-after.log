@@ -1,0 +1,379 @@
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __mulqi3: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.2):
+16B	  INLINEASM &"MOV  E, B           \0A\09MVI  D, 0           \0A\09LXI  H, 0           \0A\09MVI  B, 8           \0A1:                  \0A\09DAD  H              \0A\09RLC                 \0A\09JNC  2f             \0A\09DAD  D              \0A2:                  \0A\09DCR  B              \0A\09JNZ  1b             \0A\09MOV  A, L           \0A\09RET                 \0A\09" [sideeffect] [attdialect], !2
+
+# End machine code for function __mulqi3.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __v6c_mulqihi3: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.2):
+16B	  INLINEASM &"MOV  E, B           \0A\09MVI  D, 0           \0A\09LXI  H, 0           \0A\09MVI  B, 8           \0A1:                  \0A\09DAD  H              \0A\09RLC                 \0A\09JNC  2f             \0A\09DAD  D              \0A2:                  \0A\09DCR  B              \0A\09JNZ  1b             \0A\09RET                 \0A\09" [sideeffect] [attdialect], !3
+
+# End machine code for function __v6c_mulqihi3.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __mulhi3: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.2):
+16B	  INLINEASM &"XCHG                \0A\09MOV  A, H           \0A\09MOV  C, L           \0A\09LXI  H, 0           \0A\09MVI  B, 8           \0A1:                  \0A\09DAD  H              \0A\09RLC                 \0A\09JNC  2f             \0A\09DAD  D              \0A2:                  \0A\09DCR  B              \0A\09JNZ  1b             \0A\09MOV  A, C           \0A\09MVI  B, 8           \0A3:                  \0A\09DAD  H              \0A\09RLC                 \0A\09JNC  4f             \0A\09DAD  D              \0A4:                  \0A\09DCR  B              \0A\09JNZ  3b             \0A\09RET                 \0A\09" [sideeffect] [attdialect], !4
+
+# End machine code for function __mulhi3.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __v6c_udivmod16_body: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.0):
+16B	  INLINEASM &"MOV  A, D           \0A\09ORA  E              \0A\09JNZ  1f             \0A\09LXI  H, 0xFFFF      \0A\09LXI  B, 0           \0A\09RET                 \0A1:                  \0A\09LXI  B, 0           \0A\09MVI  A, 16          \0A\09PUSH PSW            \0A2:                  \0A\09DAD  H              \0A\09MOV  A, C           \0A\09RAL                 \0A\09MOV  C, A           \0A\09MOV  A, B           \0A\09RAL                 \0A\09MOV  B, A           \0A\09MOV  A, C           \0A\09SUB  E              \0A\09MOV  A, B           \0A\09SBB  D              \0A\09JC   3f             \0A\09MOV  A, C           \0A\09SUB  E              \0A\09MOV  C, A           \0A\09MOV  A, B           \0A\09SBB  D              \0A\09MOV  B, A           \0A\09INX  H              \0A3:                  \0A\09POP  PSW            \0A\09DCR  A              \0A\09PUSH PSW            \0A\09JNZ  2b             \0A\09POP  PSW            \0A\09RET                 \0A\09" [sideeffect] [attdialect], !5
+
+# End machine code for function __v6c_udivmod16_body.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __udivhi3: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.2):
+16B	  INLINEASM &"CALL __v6c_udivmod16_body \0A\09RET                       \0A\09" [sideeffect] [attdialect], !6
+
+# End machine code for function __udivhi3.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __umodhi3: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.2):
+16B	  INLINEASM &"CALL __v6c_udivmod16_body \0A\09MOV  H, B                 \0A\09MOV  L, C                 \0A\09RET                       \0A\09" [sideeffect] [attdialect], !7
+
+# End machine code for function __umodhi3.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __udivmodhi4: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.3):
+16B	  INLINEASM &"PUSH B                    \0A\09CALL __v6c_udivmod16_body \0A\09XTHL                      \0A\09MOV  M, C                 \0A\09INX  H                    \0A\09MOV  M, B                 \0A\09POP  H                    \0A\09RET                       \0A\09" [sideeffect] [attdialect], !8
+
+# End machine code for function __udivmodhi4.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __divmodhi4: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.3):
+16B	  INLINEASM &"PUSH B                     \0A\09MOV  A, H                  \0A\09PUSH PSW                   \0A\09MOV  A, H                  \0A\09XRA  D                     \0A\09PUSH PSW                   \0A\09MOV  A, H                  \0A\09ORA  A                     \0A\09JP   1f                    \0A\09CALL __v6c_neg_hl_body     \0A1:                         \0A\09MOV  A, D                  \0A\09ORA  A                     \0A\09JP   2f                    \0A\09CALL __v6c_neg_de_body     \0A2:                         \0A\09CALL __v6c_udivmod16_body  \0A\09POP  PSW                   \0A\09ORA  A                     \0A\09JP   3f                    \0A\09CALL __v6c_neg_hl_body     \0A3:                         \0A\09POP  PSW                   \0A\09ORA  A                     \0A\09JP   4f                    \0A\09MOV  A, C                  \0A\09CMA                        \0A\09MOV  C, A                  \0A\09MOV  A, B                  \0A\09CMA                        \0A\09MOV  B, A                  \0A\09INX  B                     \0A4:                         \0A\09XTHL                       \0A\09MOV  M, C                  \0A\09INX  H                     \0A\09MOV  M, B                  \0A\09POP  H                     \0A\09RET                        \0A\09" [sideeffect] [attdialect], !9
+
+# End machine code for function __divmodhi4.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __v6c_neg_hl_body: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.0):
+16B	  INLINEASM &"MOV  A, L           \0A\09CMA                 \0A\09MOV  L, A           \0A\09MOV  A, H           \0A\09CMA                 \0A\09MOV  H, A           \0A\09INX  H              \0A\09RET                 \0A\09" [sideeffect] [attdialect], !10
+
+# End machine code for function __v6c_neg_hl_body.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __v6c_neg_de_body: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.0):
+16B	  INLINEASM &"MOV  A, E           \0A\09CMA                 \0A\09MOV  E, A           \0A\09MOV  A, D           \0A\09CMA                 \0A\09MOV  D, A           \0A\09INX  D              \0A\09RET                 \0A\09" [sideeffect] [attdialect], !11
+
+# End machine code for function __v6c_neg_de_body.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __divhi3: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.2):
+16B	  INLINEASM &"MOV  A, H                  \0A\09XRA  D                     \0A\09PUSH PSW                   \0A\09MOV  A, H                  \0A\09ORA  A                     \0A\09JP   1f                    \0A\09CALL __v6c_neg_hl_body     \0A1:                         \0A\09MOV  A, D                  \0A\09ORA  A                     \0A\09JP   2f                    \0A\09CALL __v6c_neg_de_body     \0A2:                         \0A\09CALL __v6c_udivmod16_body  \0A\09POP  PSW                   \0A\09ORA  A                     \0A\09JP   3f                    \0A\09CALL __v6c_neg_hl_body     \0A3:                         \0A\09RET                        \0A\09" [sideeffect] [attdialect], !12
+
+# End machine code for function __divhi3.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __modhi3: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.2):
+16B	  INLINEASM &"MOV  A, H                  \0A\09PUSH PSW                   \0A\09ORA  A                     \0A\09JP   1f                    \0A\09CALL __v6c_neg_hl_body     \0A1:                         \0A\09MOV  A, D                  \0A\09ORA  A                     \0A\09JP   2f                    \0A\09CALL __v6c_neg_de_body     \0A2:                         \0A\09CALL __v6c_udivmod16_body  \0A\09MOV  H, B                  \0A\09MOV  L, C                  \0A\09POP  PSW                   \0A\09ORA  A                     \0A\09JP   3f                    \0A\09CALL __v6c_neg_hl_body     \0A3:                         \0A\09RET                        \0A\09" [sideeffect] [attdialect], !13
+
+# End machine code for function __modhi3.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __ashlhi3: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.2):
+16B	  INLINEASM &"MOV  A, E           \0A\09ANI  0x0F           \0A\09JZ   2f             \0A\09CPI  16             \0A\09JNC  3f             \0A\09MOV  E, A           \0A1:                  \0A\09DAD  H              \0A\09DCR  E              \0A\09JNZ  1b             \0A2:                  \0A\09RET                 \0A3:                  \0A\09LXI  H, 0           \0A\09RET                 \0A\09" [sideeffect] [attdialect], !14
+
+# End machine code for function __ashlhi3.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __lshrhi3: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.2):
+16B	  INLINEASM &"MOV  A, E           \0A\09ANI  0x0F           \0A\09JZ   2f             \0A\09CPI  16             \0A\09JNC  3f             \0A\09MOV  E, A           \0A1:                  \0A\09ORA  A              \0A\09MOV  A, H           \0A\09RAR                 \0A\09MOV  H, A           \0A\09MOV  A, L           \0A\09RAR                 \0A\09MOV  L, A           \0A\09DCR  E              \0A\09JNZ  1b             \0A2:                  \0A\09RET                 \0A3:                  \0A\09LXI  H, 0           \0A\09RET                 \0A\09" [sideeffect] [attdialect], !15
+
+# End machine code for function __lshrhi3.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function __ashrhi3: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.2):
+16B	  INLINEASM &"MOV  A, E           \0A\09ANI  0x0F           \0A\09JZ   2f             \0A\09CPI  16             \0A\09JNC  3f             \0A\09MOV  E, A           \0A1:                  \0A\09MOV  A, H           \0A\09RAL                 \0A\09MOV  A, H           \0A\09RAR                 \0A\09MOV  H, A           \0A\09MOV  A, L           \0A\09RAR                 \0A\09MOV  L, A           \0A\09DCR  E              \0A\09JNZ  1b             \0A2:                  \0A\09RET                 \0A3:                  \0A\09MOV  A, H           \0A\09RAL                 \0A\09SBB  A              \0A\09MOV  H, A           \0A\09MOV  L, A           \0A\09RET                 \0A\09" [sideeffect] [attdialect], !16
+
+# End machine code for function __ashrhi3.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function reset_int: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.0):
+16B	  INLINEASM &"mvi a, 0xC9 \0A\09sta 0x38    \0A\09" [sideeffect] [attdialect], !17
+32B	  RET implicit-def dead $sp, implicit $sp
+
+# End machine code for function reset_int.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function palette_init: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+Function Live Ins: $hl in %0
+
+0B	bb.0 (%ir-block.1):
+	  liveins: $hl
+16B	  %0:gr16 = COPY $hl
+32B	  $hl = COPY %0:gr16
+48B	  INLINEASM &"hlt              \0Amvi\09a, 0x88   \0Aout\090         \0Amvi\09b, 15     \0Aloop:\09     mov\09a, b      \0Aout\092        \0Amov a, m        \0Aout 0x0C        \0Apush psw        \0Apop psw         \0Apush psw        \0Apop psw         \0Adcx h           \0Adcr b           \0Aout 0x0C        \0Ajp\09loop        \0ARET              \0A\09" [sideeffect] [attdialect], $0:[reguse], $hl, $1:[clobber], implicit-def early-clobber $flags, !18
+64B	  RET implicit-def dead $sp, implicit $sp
+
+# End machine code for function palette_init.
+
+error: ran out of registers during register allocation
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function draw_char: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+Frame Objects:
+  fi#0: size=2, align=1, at location [SP]
+  fi#1: size=2, align=1, at location [SP]
+  fi#2: size=2, align=1, at location [SP]
+  fi#3: size=2, align=1, at location [SP]
+  fi#4: size=2, align=1, at location [SP]
+Function Live Ins: $hl in %0, $de in %1
+
+0B	bb.0 (%ir-block.2):
+	  liveins: $hl, $de
+16B	  %40:gr16ptr = COPY $de
+24B	  V6C_SPILL16 %40:gr16ptr, %stack.0, implicit-def $flags
+32B	  %54:gr16ptr = COPY $hl
+40B	  V6C_SPILL16 %54:gr16ptr, %stack.1, implicit-def $flags
+64B	  %41:gr16ptr = V6C_RELOAD16 %stack.0, implicit-def $flags
+72B	  %2:gr8 = V6C_LOAD8_P %41:gr16ptr :: (load (s8) from %ir.1, !tbaa !19)
+76B	  %55:gr16ptr = V6C_RELOAD16 %stack.1, implicit-def $flags
+80B	  V6C_STORE8_P %2:gr8, %55:gr16ptr :: (store (s8) into %ir.0, !tbaa !19)
+96B	  %3:gr16ptr = V6C_RELOAD16 %stack.0, implicit-def $flags
+104B	  %3:gr16ptr = V6C_INX16 %3:gr16ptr(tied-def 0), 1
+112B	  %4:gr8 = V6C_LOAD8_P %3:gr16ptr :: (load (s8) from %ir.3, !tbaa !19)
+128B	  %5:gr16ptr = V6C_RELOAD16 %stack.1, implicit-def $flags
+144B	  %5:gr16ptr = V6C_INX16 %5:gr16ptr(tied-def 0), 1
+160B	  V6C_STORE8_P %4:gr8, %5:gr16ptr :: (store (s8) into %ir.5, !tbaa !19)
+176B	  %6:gr16ptr = V6C_RELOAD16 %stack.0, implicit-def $flags
+192B	  %6:gr16ptr = V6C_INX16 %6:gr16ptr(tied-def 0), 2
+208B	  %7:gr8 = V6C_LOAD8_P %6:gr16ptr :: (load (s8) from %ir.6, !tbaa !19)
+224B	  %8:gr16ptr = V6C_RELOAD16 %stack.1, implicit-def $flags
+240B	  %8:gr16ptr = V6C_INX16 %8:gr16ptr(tied-def 0), 2
+256B	  V6C_STORE8_P %7:gr8, %8:gr16ptr :: (store (s8) into %ir.8, !tbaa !19)
+272B	  %9:gr16ptr = V6C_RELOAD16 %stack.0, implicit-def $flags
+288B	  %9:gr16ptr = V6C_INX16 %9:gr16ptr(tied-def 0), 3
+304B	  %10:gr8 = V6C_LOAD8_P %9:gr16ptr :: (load (s8) from %ir.9, !tbaa !19)
+320B	  %11:gr16ptr = V6C_RELOAD16 %stack.1, implicit-def $flags
+336B	  %11:gr16ptr = V6C_INX16 %11:gr16ptr(tied-def 0), 3
+352B	  V6C_STORE8_P %10:gr8, %11:gr16ptr :: (store (s8) into %ir.11, !tbaa !19)
+368B	  %12:gr16 = LXI 4
+384B	  %45:gr16ptr = V6C_RELOAD16 %stack.1, implicit-def $flags
+400B	  %45:gr16ptr = V6C_DAD %45:gr16ptr(tied-def 0), %12:gr16, implicit-def dead $flags
+404B	  V6C_SPILL16 %45:gr16ptr, %stack.2, implicit-def $flags
+416B	  %15:gr16ptr = V6C_RELOAD16 %stack.0, implicit-def $flags
+432B	  %15:gr16ptr = V6C_DAD %15:gr16ptr(tied-def 0), %12:gr16, implicit-def dead $flags
+448B	  %17:gr8 = V6C_LOAD8_P %15:gr16ptr :: (load (s8) from %ir.12, !tbaa !19)
+456B	  %50:gr16ptr = V6C_RELOAD16 %stack.2, implicit-def $flags
+464B	  V6C_STORE8_P %17:gr8, %50:gr16ptr :: (store (s8) into %ir.14, !tbaa !19)
+480B	  %18:gr16 = LXI 5
+496B	  %47:gr16ptr = V6C_RELOAD16 %stack.1, implicit-def $flags
+512B	  %47:gr16ptr = V6C_DAD %47:gr16ptr(tied-def 0), %18:gr16, implicit-def dead $flags
+516B	  V6C_SPILL16 %47:gr16ptr, %stack.3, implicit-def $flags
+528B	  %21:gr16ptr = V6C_RELOAD16 %stack.0, implicit-def $flags
+544B	  %21:gr16ptr = V6C_DAD %21:gr16ptr(tied-def 0), %18:gr16, implicit-def dead $flags
+560B	  %23:gr8 = V6C_LOAD8_P %21:gr16ptr :: (load (s8) from %ir.15, !tbaa !19)
+568B	  %51:gr16ptr = V6C_RELOAD16 %stack.3, implicit-def $flags
+576B	  V6C_STORE8_P %23:gr8, %51:gr16ptr :: (store (s8) into %ir.17, !tbaa !19)
+592B	  %24:gr16 = LXI 6
+608B	  %49:gr16ptr = V6C_RELOAD16 %stack.1, implicit-def $flags
+624B	  %49:gr16ptr = V6C_DAD %49:gr16ptr(tied-def 0), %24:gr16, implicit-def dead $flags
+628B	  V6C_SPILL16 %49:gr16ptr, %stack.4, implicit-def $flags
+640B	  %27:gr16ptr = V6C_RELOAD16 %stack.0, implicit-def $flags
+656B	  %27:gr16ptr = V6C_DAD %27:gr16ptr(tied-def 0), %24:gr16, implicit-def dead $flags
+672B	  %29:gr8 = V6C_LOAD8_P %27:gr16ptr :: (load (s8) from %ir.18, !tbaa !19)
+680B	  %52:gr16ptr = V6C_RELOAD16 %stack.4, implicit-def $flags
+688B	  V6C_STORE8_P %29:gr8, %52:gr16ptr :: (store (s8) into %ir.20, !tbaa !19)
+704B	  %30:gr16 = LXI 7
+712B	  %42:gr16ptr = V6C_RELOAD16 %stack.1, implicit-def $flags
+736B	  %42:gr16ptr = V6C_DAD %42:gr16ptr(tied-def 0), %30:gr16, implicit-def dead $flags
+744B	  V6C_SPILL16 %42:gr16ptr, %stack.1, implicit-def $flags
+760B	  %39:gr16ptr = V6C_RELOAD16 %stack.0, implicit-def $flags
+768B	  %39:gr16ptr = V6C_DAD %39:gr16ptr(tied-def 0), %30:gr16, implicit-def dead $flags
+784B	  %35:gr8 = V6C_LOAD8_P %39:gr16ptr :: (load (s8) from %ir.21, !tbaa !19)
+792B	  %43:gr16ptr = V6C_RELOAD16 %stack.1, implicit-def $flags
+800B	  V6C_STORE8_P %35:gr8, %43:gr16ptr :: (store (s8) into %ir.23, !tbaa !19)
+816B	  RET implicit-def dead $sp, implicit $sp
+
+# End machine code for function draw_char.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function draw_text: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+Frame Objects:
+  fi#0: size=2, align=1, at location [SP]
+  fi#1: size=2, align=1, at location [SP]
+  fi#2: size=1, align=1, at location [SP]
+  fi#3: size=2, align=1, at location [SP]
+  fi#4: size=2, align=1, at location [SP]
+  fi#5: size=2, align=1, at location [SP]
+Function Live Ins: $hl in %8, $a in %9, $b in %10, $de in %11
+
+0B	bb.0 (%ir-block.4):
+	  successors: %bb.3(0x30000000), %bb.1(0x50000000); %bb.3(37.50%), %bb.1(62.50%)
+	  liveins: $hl, $a, $b, $de
+16B	  %11:gr16 = COPY $de
+32B	  %38:gr8 = COPY $b
+48B	  %35:gr8 = COPY $a
+64B	  %27:gr16 = COPY $hl
+72B	  V6C_SPILL16 %27:gr16, %stack.0, implicit-def $flags
+80B	  %25:gr8 = V6C_LOAD8_P %27:gr16 :: (load (s8) from %ir.0, !tbaa !19)
+96B	  V6C_CMP8_ZERO %25:gr8, implicit-def $flags
+112B	  V6C_BRCOND %bb.3, 1, implicit $flags
+128B	  JMP %bb.1
+
+144B	bb.1 (%ir-block.8):
+	; predecessors: %bb.0
+	  successors: %bb.2(0x80000000); %bb.2(100.00%)
+
+152B	  V6C_SPILL8 %38:gr8, %stack.2, implicit-def $flags
+160B	  %12:gr16 = LXI -520
+168B	  %36:gr8 = COPY %35:gr8
+176B	  %46:gr16 = V6C_ADD16 %11:gr16, %12:gr16, implicit-def dead $a, implicit-def dead $flags
+184B	  V6C_SPILL16 %46:gr16, %stack.4, implicit-def $flags
+192B	  %31:gr8 = MVIr 0
+200B	  %40:gr8 = V6C_RELOAD8 %stack.2, implicit-def $flags
+208B	  %41:gr16 = V6C_BUILD_PAIR %40:gr8, %31:gr8
+212B	  V6C_SPILL16 %41:gr16, %stack.3, implicit-def $flags
+224B	  %15:gr16 = V6C_BUILD_PAIR %31:gr8, %36:gr8
+232B	  %42:gr16 = V6C_RELOAD16 %stack.3, implicit-def $flags
+240B	  %47:gr16 = V6C_OR16 %15:gr16, %42:gr16, implicit-def dead $a, implicit-def dead $flags
+244B	  V6C_SPILL16 %47:gr16, %stack.5, implicit-def $flags
+248B	  dead %49:gr16 = V6C_RELOAD16 %stack.4, implicit-def $flags
+256B	  %17:gr16 = LXI -32768
+264B	  %48:gr16 = V6C_RELOAD16 %stack.5, implicit-def $flags
+272B	  %33:gr16 = V6C_XOR16 %48:gr16, %17:gr16, implicit-def dead $a, implicit-def dead $flags
+276B	  V6C_SPILL16 %33:gr16, %stack.1, implicit-def $flags
+280B	  %29:gr16 = V6C_RELOAD16 %stack.0, implicit-def $flags
+304B	  %29:gr16 = V6C_INX16 %29:gr16(tied-def 0), 1
+312B	  V6C_SPILL16 %29:gr16, %stack.0, implicit-def $flags
+
+352B	bb.2 (%ir-block.15):
+	; predecessors: %bb.1, %bb.2
+	  successors: %bb.3(0x04000000), %bb.2(0x7c000000); %bb.3(3.12%), %bb.2(96.88%)
+
+360B	  %32:gr8 = MVIr 0
+400B	  %19:gr16 = V6C_BUILD_PAIR %25:gr8, %32:gr8
+416B	  %20:gr16 = V6C_ADD16 %19:gr16, %19:gr16, implicit-def dead $a, implicit-def dead $flags
+432B	  %21:gr16 = V6C_ADD16 %20:gr16, %20:gr16, implicit-def dead $a, implicit-def dead $flags
+448B	  %22:gr16 = V6C_ADD16 %21:gr16, %21:gr16, implicit-def dead $a, implicit-def dead $flags
+456B	  %50:gr16 = V6C_RELOAD16 %stack.4, implicit-def $flags
+464B	  %23:gr16 = V6C_ADD16 %50:gr16, %22:gr16, implicit-def dead $a, implicit-def dead $flags
+480B	  ADJCALLSTACKDOWN 0, 0, implicit-def dead $sp, implicit $sp
+496B	  $hl = V6C_RELOAD16 %stack.1, implicit-def $flags
+512B	  $de = COPY %23:gr16
+528B	  CALL @draw_char, <regmask $noreg $b $bc $c>, implicit-def $sp, implicit $sp, implicit $hl, implicit $de
+544B	  ADJCALLSTACKUP 0, 0, implicit-def dead $sp, implicit $sp
+552B	  %28:gr16 = V6C_RELOAD16 %stack.0, implicit-def $flags
+560B	  %25:gr8 = V6C_LOAD8_P %28:gr16 :: (load (s8) from %ir.16, !tbaa !19)
+592B	  %28:gr16 = V6C_INX16 %28:gr16(tied-def 0), 1
+596B	  V6C_SPILL16 %28:gr16, %stack.0, implicit-def $flags
+608B	  V6C_CMP8_ZERO %25:gr8, implicit-def $flags
+656B	  V6C_BRCOND %bb.2, 0, implicit $flags
+672B	  JMP %bb.3
+
+688B	bb.3 (%ir-block.25):
+	; predecessors: %bb.0, %bb.2
+
+704B	  RET implicit-def dead $sp, implicit $sp
+
+# End machine code for function draw_text.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function fill_rect: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+Frame Objects:
+  fi#0: size=2, align=1, at location [SP]
+
+0B	bb.0 (%ir-block.0):
+	  successors: %bb.1(0x80000000); %bb.1(100.00%)
+
+16B	  %17:gr16 = LXI 8
+32B	  %0:gr16 = LXI -30670
+
+96B	bb.1 (%ir-block.1):
+	; predecessors: %bb.0, %bb.3
+	  successors: %bb.4(0x80000000); %bb.4(100.00%)
+
+100B	  V6C_SPILL16 %17:gr16, %stack.0, implicit-def $flags
+144B	  %15:gr16 = LXI 156
+160B	  %14:gr16 = COPY %0:gr16
+192B	  JMP %bb.4
+
+208B	bb.2 (%ir-block.4):
+	; predecessors: %bb.3
+
+224B	  RET implicit-def dead $sp, implicit $sp
+
+240B	bb.3 (%ir-block.5):
+	; predecessors: %bb.4
+	  successors: %bb.2(0x04000000), %bb.1(0x7c000000); %bb.2(3.12%), %bb.1(96.88%)
+
+248B	  %18:gr16 = LXI 256
+256B	  %0:gr16 = nuw nsw V6C_ADD16 %0:gr16, %18:gr16, implicit-def dead $a, implicit-def dead $flags
+280B	  %17:gr16 = V6C_RELOAD16 %stack.0, implicit-def $flags
+288B	  %17:gr16 = V6C_INX16 %17:gr16(tied-def 0), 1
+336B	  V6C_BR_CC16_IMM %17:gr16, 24, 1, %bb.2, implicit-def dead $a, implicit-def dead $flags
+352B	  JMP %bb.1
+
+368B	bb.4 (%ir-block.9):
+	; predecessors: %bb.1, %bb.4
+	  successors: %bb.3(0x04000000), %bb.4(0x7c000000); %bb.3(3.12%), %bb.4(96.88%)
+
+416B	  V6C_STORE8_IMM_P -1, %14:gr16 :: (store (s8) into %ir.12, !tbaa !19)
+448B	  %14:gr16 = V6C_INX16 %14:gr16(tied-def 0), 1
+480B	  %15:gr16 = V6C_DCX16 %15:gr16(tied-def 0), 1
+528B	  V6C_BR_CC16_IMM %15:gr16, 0, 1, %bb.3, implicit-def dead $a, implicit-def dead $flags
+544B	  JMP %bb.4
+
+# End machine code for function fill_rect.
+
+# *** IR Dump After Greedy Register Allocator (greedy) ***:
+# Machine code for function main: NoPHIs, TracksLiveness, TiedOpsRewritten, TracksDebugUserValues
+
+0B	bb.0 (%ir-block.0):
+16B	  EI
+32B	  ADJCALLSTACKDOWN 0, 0, implicit-def dead $sp, implicit $sp
+48B	  CALL @reset_int, <regmask $noreg $a $b $bc $c $d $de $e $flags $h $hl $l $psw>, implicit-def $sp, implicit $sp
+64B	  ADJCALLSTACKUP 0, 0, implicit-def dead $sp, implicit $sp
+80B	  ADJCALLSTACKDOWN 0, 0, implicit-def dead $sp, implicit $sp
+112B	  $hl = LXI @palette
+128B	  CALL @palette_init, <regmask $noreg $a $b $bc $c $d $de $e $h $hl $l>, implicit-def $sp, implicit $sp, implicit killed $hl
+144B	  ADJCALLSTACKUP 0, 0, implicit-def dead $sp, implicit $sp
+160B	  ADJCALLSTACKDOWN 0, 0, implicit-def dead $sp, implicit $sp
+176B	  CALL @fill_rect, <regmask $noreg>, implicit-def $sp, implicit $sp
+192B	  ADJCALLSTACKUP 0, 0, implicit-def dead $sp, implicit $sp
+208B	  ADJCALLSTACKDOWN 0, 0, implicit-def dead $sp, implicit $sp
+272B	  $hl = LXI @.str
+288B	  $a = MVIr 10
+304B	  $b = MVIr 10
+320B	  $de = LXI @font
+336B	  CALL @draw_text, <regmask $noreg>, implicit-def $sp, implicit $sp, implicit killed $hl, implicit killed $a, implicit killed $b, implicit killed $de
+352B	  ADJCALLSTACKUP 0, 0, implicit-def dead $sp, implicit $sp
+368B	  DI
+384B	  HLT
+400B	  RET implicit-def dead $sp, implicit $sp
+
+# End machine code for function main.
+
+1 error generated.

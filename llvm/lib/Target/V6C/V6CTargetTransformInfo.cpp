@@ -285,3 +285,42 @@ InstructionCost V6CTTIImpl::getScalingFactorCost(Type *Ty, GlobalValue *BaseGV,
     return InstructionCost::getInvalid();
   return 0;
 }
+
+// Loop unrolling on V6C must stay conservative: the target has only 3
+// 16-bit register pairs (HL/DE/BC) and HL is frequently pinned by the
+// live pointer of any load/store. The generic LLVM unroller, fed by
+// BasicTTI's default preferences, happily fully-unrolls small constant-
+// trip-count loops (e.g. an 8-iter byte copy). Each unrolled iteration
+// produces an independent gr16ptr live range; with two live pointers
+// (src/dst) and 8 unrolls there is no allocation that fits in 3 pairs,
+// so register allocation deterministically fails with "ran out of
+// registers". Killing full unroll and clamping the partial threshold
+// keeps the code in loop form, which the rest of the V6C pipeline
+// handles efficiently (INX HL, MOV M,r, etc.).
+void V6CTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
+                                         TTI::UnrollingPreferences &UP,
+                                         OptimizationRemarkEmitter *ORE) {
+  BaseT::getUnrollingPreferences(L, SE, UP, ORE);
+
+  // Disable full and runtime unrolling outright. Both forms multiply
+  // pointer/loop-carried live ranges by the unroll factor and overflow
+  // the 3-pair register file.
+  UP.Force = false;
+  UP.Partial = false;
+  UP.Runtime = false;
+  UP.UpperBound = false;
+  UP.AllowRemainder = false;
+  UP.AllowExpensiveTripCount = false;
+  UP.UnrollAndJam = false;
+  UP.UnrollRemainder = false;
+
+  // Keep at most a 2x peel/partial unroll for very small bodies; anything
+  // larger has historically tripped RA on i8080.
+  UP.Threshold = 0;
+  UP.PartialThreshold = 0;
+  UP.OptSizeThreshold = 0;
+  UP.PartialOptSizeThreshold = 0;
+  UP.MaxCount = 1;
+  UP.FullUnrollMaxCount = 1;
+  UP.Count = 1;
+}

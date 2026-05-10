@@ -15,559 +15,180 @@ main:                                   ; @main
 	;--- V6C_BUILD_PAIR ---
 	MOV	H, E
 	MOV	L, A
+	;--- V6C_SPILL16 ---
+	SHLD	.LLo61_4+1
 	LDA	__v6c_a.main+1
 	;--- V6C_BUILD_PAIR ---
-	MOV	D, E
-	MOV	E, A
-	LXI	B, 0xffff
+	MOV	B, E
+	MOV	C, A
+	LXI	H, 0xffff
+	LXI	D, 0
+.LBB15_1:                               ; =>This Loop Header: Depth=1
+                                        ;     Child Loop BB15_2 Depth 2
+                                        ;     Child Loop BB15_6 Depth 2
+	;--- V6C_SPILL16 ---
+	XCHG
+	SHLD	.LLo61_3+1
+	XCHG
 	;--- V6C_SPILL16 ---
 	PUSH	H
 	MOV	L, C
 	MOV	H, B
 	SHLD	.LLo61_2+1
 	POP	H
-	LXI	B, 0x18
-	JMP	.LBB15_1
-.LBB15_34:                              ;   in Loop: Header=BB15_1 Depth=1
-	;--- V6C_SPILL16 ---
-.LBB15_35:                              ;   in Loop: Header=BB15_1 Depth=1
-	SHLD	.LLo61_2+1
-	MOV	B, D
-	MOV	C, E
-	;--- V6C_DCX16 ---
-	DCX	B
 	;--- V6C_RELOAD16 ---
-.LLo61_3:
-	LXI	H, 0
-	;--- V6C_RELOAD16 ---
-.LLo61_1:
+.LLo61_4:
 	LXI	D, 0
-	;--- V6C_BR_CC16_IMM ---
-	MOV	A, B
-	ORA	C
-	JZ	.LBB15_36
-.LBB15_1:                               ; =>This Inner Loop Header: Depth=1
-	;--- V6C_SPILL16 ---
-	XCHG
-	SHLD	.LLo61_3+1
-	XCHG
 	;--- V6C_ADD16 ---
-	DAD	D
-	XCHG
-	LXI	H, 0xff
+	MOV	A, E
+	ADD	C
+	MOV	C, A
+	MOV	A, D
+	ADC	B
+	MOV	B, A
+	LXI	D, 0xff
 	;--- V6C_SPILL16 ---
-	XCHG
+	PUSH	H
+	MOV	L, C
+	MOV	H, B
 	SHLD	.LLo61_0+1
 	SHLD	.LLo61_1+1
-	XCHG
+	POP	H
 	;--- V6C_AND16 ---
-	MOV	A, E
-	ANA	L
-	MOV	L, A
-	MOV	A, D
-	ANA	H
-	MOV	H, A
-	;--- V6C_RELOAD16 ---
-.LLo61_2:
-	LXI	D, 0
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
+	MOV	A, C
 	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_3
-; %bb.2:                                ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_3:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_5
-; %bb.4:                                ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_5:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_7
-; %bb.6:                                ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_7:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_9
-; %bb.8:                                ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_9:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_11
-; %bb.10:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_11:                              ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_13
-; %bb.12:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_13:                              ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_15
-; %bb.14:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_15:                              ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_17
-; %bb.16:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_17:                              ;   in Loop: Header=BB15_1 Depth=1
-	;--- V6C_RELOAD16 ---
-.LLo61_0:
-	LXI	D, 0
-	;--- V6C_SRL16 ---
-	MOV	E, D
-	MVI	D, 0
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_19
-; %bb.18:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_19:                              ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_21
-; %bb.20:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_21:                              ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_23
-; %bb.22:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_23:                              ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_25
-; %bb.24:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_25:                              ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_27
-; %bb.26:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_27:                              ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_29
-; %bb.28:                               ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	E
-	MOV	L, A
-	MOV	A, H
-	XRA	D
-	MOV	H, A
-.LBB15_29:                              ;   in Loop: Header=BB15_1 Depth=1
-	LXI	D, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	E
-	MOV	E, A
-	MOV	A, H
-	ANA	D
-	MOV	D, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
-	MOV	A, D
-	ORA	E
-	JNZ	.LBB15_30
-; %bb.31:                               ;   in Loop: Header=BB15_1 Depth=1
-	MOV	D, B
-	MOV	E, C
-	JMP	.LBB15_32
-.LBB15_30:                              ;   in Loop: Header=BB15_1 Depth=1
-	MOV	D, B
-	MOV	E, C
-	LXI	B, 0xa001
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	C
-	MOV	L, A
-	MOV	A, H
-	XRA	B
-	MOV	H, A
-.LBB15_32:                              ;   in Loop: Header=BB15_1 Depth=1
-	LXI	B, 1
-	;--- V6C_AND16 ---
-	MOV	A, L
-	ANA	C
 	MOV	C, A
-	MOV	A, H
-	ANA	B
-	MOV	B, A
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	;--- V6C_CMP16_ZERO ---
 	MOV	A, B
-	ORA	C
-	JZ	.LBB15_34
-; %bb.33:                               ;   in Loop: Header=BB15_1 Depth=1
-	MOV	B, H
-	MOV	C, L
-	LXI	H, 0xa001
+	ANA	D
+	MOV	B, A
 	;--- V6C_XOR16 ---
 	MOV	A, C
 	XRA	L
-	MOV	C, A
+	MOV	L, A
 	MOV	A, B
 	XRA	H
-	MOV	B, A
+	MOV	H, A
+	LXI	B, 8
+	JMP	.LBB15_2
+.LBB15_4:                               ;   in Loop: Header=BB15_2 Depth=2
+	;--- V6C_DCX16 ---
+	DCX	B
+	;--- V6C_BR_CC16_IMM ---
+	MOV	A, B
+	ORA	C
+	JZ	.LBB15_5
+.LBB15_2:                               ;   Parent Loop BB15_1 Depth=1
+                                        ; =>  This Inner Loop Header: Depth=2
+	LXI	D, 1
+	;--- V6C_AND16 ---
+	MOV	A, L
+	ANA	E
+	MOV	E, A
+	MOV	A, H
+	ANA	D
+	MOV	D, A
+	;--- V6C_SRL16 ---
+	MOV	A, H
+	RAR
+	MOV	H, A
+	MOV	A, L
+	RAR
+	MOV	L, A
+	;--- V6C_CMP16_ZERO ---
+	MOV	A, D
+	ORA	E
+	JZ	.LBB15_4
+; %bb.3:                                ;   in Loop: Header=BB15_2 Depth=2
+	LXI	D, 0xa001
+	;--- V6C_XOR16 ---
+	MOV	A, L
+	XRA	E
+	MOV	L, A
+	MOV	A, H
+	XRA	D
+	MOV	H, A
+	JMP	.LBB15_4
+.LBB15_5:                               ;   in Loop: Header=BB15_1 Depth=1
+	;--- V6C_RELOAD16 ---
+.LLo61_1:
+	LXI	D, 0
+	;--- V6C_SRL16 ---
+	MOV	E, D
+	MOV	D, B
+	;--- V6C_XOR16 ---
+	MOV	A, L
+	XRA	E
+	MOV	L, A
+	MOV	A, H
+	XRA	D
+	MOV	H, A
+	LXI	B, 8
+	JMP	.LBB15_6
+.LBB15_8:                               ;   in Loop: Header=BB15_6 Depth=2
+	;--- V6C_DCX16 ---
+	DCX	B
+	;--- V6C_BR_CC16_IMM ---
+	MOV	A, B
+	ORA	C
+	JZ	.LBB15_9
+.LBB15_6:                               ;   Parent Loop BB15_1 Depth=1
+                                        ; =>  This Inner Loop Header: Depth=2
+	LXI	D, 1
+	;--- V6C_AND16 ---
+	MOV	A, L
+	ANA	E
+	MOV	E, A
+	MOV	A, H
+	ANA	D
+	MOV	D, A
+	;--- V6C_SRL16 ---
+	MOV	A, H
+	RAR
+	MOV	H, A
+	MOV	A, L
+	RAR
+	MOV	L, A
+	;--- V6C_CMP16_ZERO ---
+	MOV	A, D
+	ORA	E
+	JZ	.LBB15_8
+; %bb.7:                                ;   in Loop: Header=BB15_6 Depth=2
+	LXI	D, 0xa001
+	;--- V6C_XOR16 ---
+	MOV	A, L
+	XRA	E
+	MOV	L, A
+	MOV	A, H
+	XRA	D
+	MOV	H, A
+	JMP	.LBB15_8
+.LBB15_9:                               ;   in Loop: Header=BB15_1 Depth=1
+	;--- V6C_RELOAD16 ---
+.LLo61_3:
+	LXI	D, 0
+	;--- V6C_INX16 ---
+	INX	D
+	;--- V6C_RELOAD16 ---
+.LLo61_2:
+	LXI	B, 0
 	;--- V6C_SPILL16 ---
+	PUSH	H
 	MOV	L, C
 	MOV	H, B
-	JMP	.LBB15_35
-.LBB15_36:
+	SHLD	.LLo61_4+1
+	POP	H
 	;--- V6C_RELOAD16 ---
-	LHLD	.LLo61_2+1
+.LLo61_0:
+	LXI	B, 0
+	;--- V6C_BR_CC16_IMM ---
+	MVI	A, 0x18
+	CMP	E
+	JNZ	.LBB15_1
+; %bb.11:                               ;   in Loop: Header=BB15_1 Depth=1
+	XRA	A
+	CMP	D
+	JNZ	.LBB15_1
+; %bb.10:
 	MOV	A, L
 	OUT	0xed
 	HLT
