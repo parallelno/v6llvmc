@@ -29,16 +29,20 @@ cutting, see [V6CRelease.md](V6CRelease.md).
 
 ## Build LLVM with V6C Target
 
-```bash
-# From the project root (using MSVC on Windows)
-cmake -G Ninja -S llvm-project\llvm -B llvm-build ^
-  -DCMAKE_BUILD_TYPE=Release ^
-  -DLLVM_TARGETS_TO_BUILD=X86 ^
-  -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=V6C ^
-  -DLLVM_ENABLE_PROJECTS=clang;lld
+```powershell
+# From the project root (PowerShell / pwsh on Windows, MSVC dev shell)
+cmake -G Ninja -S llvm-project\llvm -B llvm-build `
+  -DCMAKE_BUILD_TYPE=Release `
+  -DLLVM_TARGETS_TO_BUILD=X86 `
+  -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=V6C `
+  "-DLLVM_ENABLE_PROJECTS=clang;lld"
 
-ninja -C llvm-build llc clang ld.lld lld llvm-objcopy llvm-tblgen
+ninja -C llvm-build clang lld llc opt llvm-objcopy llvm-tblgen
 ```
+
+> Note: in PowerShell the `;` in `clang;lld` is a statement separator, so
+> the value **must be quoted** as shown (`"-DLLVM_ENABLE_PROJECTS=clang;lld"`).
+> In `cmd.exe` use `^` line continuations and no quoting is needed.
 
 The `lld` project provides `ld.lld`, the native ELF linker used by the V6C
 toolchain (replaces the legacy Python `scripts/v6c_link.py`, now stubbed).
