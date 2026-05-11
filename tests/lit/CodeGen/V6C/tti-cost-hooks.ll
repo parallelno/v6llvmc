@@ -37,7 +37,7 @@ define void @costs(i8 %a, i16 %b, i32 %c, ptr %p, ptr %q) {
 
 ; --- Hooks OFF (BasicTTI fallback) ------------------------------------------
 ; OFF-LABEL: function 'costs':
-; OFF:       cost of 1 for instruction:   %a2 = add i8
+; OFF:       cost of 2 for instruction:   %a2 = add i8
 ; OFF:       cost of 1 for instruction:   %b2 = add i16
 ; OFF:       cost of 2 for instruction:   %c2 = add i32
 ; OFF:       cost of 1 for instruction:   %la = load i8
