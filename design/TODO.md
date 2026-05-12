@@ -54,29 +54,7 @@ v6llvmc_new02.asm — `mul_u8`:
             MOV  A, B
             MOV  B, L
             JMP  __mulqi3  ; 8-iteration kernel
-===========================
-python llvm-build\bin\llvm-lit.py -v llvm-project\llvm\test\CodeGen\V6C\tti-cost-hooks.ll 2>&1 | Select-Object -Last 80
-This failure with the icmp eq i16 cost change from 4 to 2 isn't related to my changes — it looks like a pre-existing issue in O22's TTI hooks. Let me verify whether this test was already broken before I made my modifications.
 ===============================
-optimization:
-a compilation key to disable the loop 0 precondition check.
-``` C
-    for (uint8_t i = 0; i < n; ++i) {
-    }
-	// ORA	A
-	// ;--- V6C_BRCOND ---
-	// JZ	.LBB19_1
-```
-===============================
-bad code
-tests\features\43\v6llvmc_bsort_spillfrwd.asm
-	;--- V6C_LOAD8_P ---
-	LDAX	BC
-	PUSH	PSW
-	MOV	A, L
-	STA	.LLo61_7+1
-	POP	PSW
-==========================
 improtant insights that can improve the V6C_LOAD8_FI:
 1. The main goal for V6C compiler is to make static stack funcs the most performant, because they have less overhead.
 2. In static-stack mode V6C_LOAD8_FI is not very popular. It is used only for arg passing via stack.
@@ -87,48 +65,3 @@ improtant insights that can improve the V6C_LOAD8_FI:
 hl live, de dead:
 new: xchg; lxi h, offset; dad sp; mov reg8, m; xchg; 40cc
 old: clobbers hl, which can lead to spilling or less optimal
-===========================
-
-## Control flow / select
-
-**DONE** V6C_BRCOND
-**DONE** V6C_SELECT_CC
-**DONE** V6C_SELECT_CC16
-**DONE** V6C_BR_CC16
-**DONE** V6C_BR_CC16_IMM
-
-## Comparisons
-**DONE** V6C_CMP8_ZERO
-**DONE** V6C_CMP16
-**DONE** V6C_CMP16_IMM
-**DONE** V6C_CMP16_ZERO
-
-## 8-bit memory
-**DONE** V6C_LOAD8_P, V6C_STORE8_P
-**DONE** V6C_STORE8_IMM_P
-
-## func arg load/store
-**DEFFERED** rare usage, doesnt worth improvements. the better solution is not using stack for funcs args for the static-stack alloc funcs.
-**DEFFERED** V6C_LOAD8_FI, V6C_STORE8_FI
-**DEFFERED** V6C_LOAD16_FI, V6C_STORE16_FI
-
-## 16-bit memory
-**DONE** V6C_LOAD16_G, V6C_STORE16_G
-**DONE** V6C_LOAD16_P, V6C_STORE16_P
-
-
-## Spill/reload
-**DONE** V6C_SPILL8, V6C_RELOAD8
-**DONE** V6C_SPILL16, V6C_RELOAD16
-
-## Arithmetic / address
-**DONE** V6C_LEA_FI
-**DONE** V6C_DAD
-**DONE** V6C_INX16, V6C_DCX16
-**DONE** V6C_ROTL16_1
-**DONE** V6C_BUILD_PAIR
-**DONE** V6C_SEXT
-V6C_SRL16
-V6C_AND16
-V6C_SUB16
-V6C_XOR16
