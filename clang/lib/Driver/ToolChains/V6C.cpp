@@ -219,7 +219,7 @@ void V6CToolChain::addClangTargetOptions(
 }
 
 /// Locate the V6C resource-dir include directory that ships
-/// `<string.h>`, `<stdlib.h>`, `<v6c.h>`. Search order mirrors
+/// `<stdlib.h>`, `<v6c.h>`. Search order mirrors
 /// findV6CDriverFile / findV6CRuntimeFile.
 static std::string findV6CIncludeDir(const ToolChain &TC) {
   StringRef Dir = TC.getDriver().Dir;
@@ -239,6 +239,21 @@ static std::string findV6CIncludeDir(const ToolChain &TC) {
                             std::string(MirrorTree)});
 }
 
+/// O80: locate the compiler-rt-side V6C runtime header directory that
+/// ships `<string.h>` and `v6c_arith.h`. Same search shape as
+/// findV6CHeader, but returns the *directory* for `-internal-isystem`.
+static std::string findV6CRuntimeIncludeDir(const ToolChain &TC) {
+  StringRef Dir = TC.getDriver().Dir;
+  llvm::SmallString<256> Installed(TC.getDriver().ResourceDir);
+  llvm::sys::path::append(Installed, "lib", "v6c", "include");
+
+  llvm::SmallString<256> DevTree(Dir);
+  llvm::sys::path::append(DevTree, "..", "..", "compiler-rt", "lib");
+  llvm::sys::path::append(DevTree, "builtins", "v6c", "include");
+
+  return findFirstExisting({std::string(Installed), std::string(DevTree)});
+}
+
 void V6CToolChain::AddClangSystemIncludeArgs(
     const ArgList &DriverArgs, ArgStringList &CC1Args) const {
   if (DriverArgs.hasArg(options::OPT_nostdinc))
@@ -251,6 +266,14 @@ void V6CToolChain::AddClangSystemIncludeArgs(
     if (!IncDir.empty()) {
       CC1Args.push_back("-internal-isystem");
       CC1Args.push_back(DriverArgs.MakeArgString(IncDir));
+    }
+    // O80: compiler-rt-side headers (<string.h>, v6c_arith.h, ...)
+    // live in compiler-rt/lib/builtins/v6c/include — same pattern as
+    // the math runtime header.
+    std::string RtIncDir = findV6CRuntimeIncludeDir(*this);
+    if (!RtIncDir.empty()) {
+      CC1Args.push_back("-internal-isystem");
+      CC1Args.push_back(DriverArgs.MakeArgString(RtIncDir));
     }
   }
 

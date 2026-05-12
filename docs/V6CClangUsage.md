@@ -157,23 +157,29 @@ without any `-I` flag:
 
 | Header | Provides |
 |--------|----------|
-| `<string.h>` | `memcpy`, `memset`, `memmove`, `strlen`, `strcmp`, `strcpy` |
+| `<string.h>` | `memcpy`, `memset`, `memmove`, `strlen`, `strcmp`, `strcpy` (header-only inline asm, opt-in via `#include`) |
 | `<stdlib.h>` | `EXIT_SUCCESS` / `EXIT_FAILURE`, `abort()`, `exit(int)` (both `noreturn`, expand to `HLT` loop) |
 | `<v6c.h>` | `__v6c_in`, `__v6c_out`, `__v6c_di`, `__v6c_ei`, `__v6c_hlt`, `__v6c_nop` thin inline wrappers around the `__builtin_v6c_*` family |
 | `v6c_arith.h` | Math runtime (`__mulqi3`, `__mulhi3`, `__udivhi3`, `__divhi3`, `__ashlhi3`, ...). **Auto-included** via `-include v6c_arith.h` on V6C targets; suppress with `-fno-v6c-auto-include`. See [V6CRuntimeAndInlineAsm.md](V6CRuntimeAndInlineAsm.md). |
 
-The headers are header-only inline-`__asm__` wrappers — there is no
-`libv6c-builtins.a` archive. Tiny constant-N cases inline directly;
-larger calls reference per-routine `.o` files (`memcpy.o` etc.) under
-`<resource-dir>/lib/v6c/` that the V6C driver picks up via
-`--gc-sections`.
+All runtime routines are header-only inline-`__asm__` helpers — there
+is no `libv6c-builtins.a` archive. Each translation unit gets its own
+per-TU static copy of every helper it actually calls; `--gc-sections`
+(on by default for V6C in ld.lld) prunes the unreferenced ones.
 
 The driver also passes `-ffunction-sections` by default so per-function
 ELF sections are emitted. Pass `-Wl,--gc-sections` at the link step to
 prune unreferenced helper functions transitively. Override the
 per-function sections with `-fno-function-sections` if needed.
 
-The V6C include directory is injected only by the V6C toolchain;
+`<string.h>` and `v6c_arith.h` are shipped from
+`compiler-rt/lib/builtins/v6c/include/` (dev tree) or
+`<resource-dir>/lib/v6c/include/` (installed). `<stdlib.h>` and
+`<v6c.h>` are shipped from `clang/lib/Driver/ToolChains/V6C/include/`
+(dev tree) or `<resource-dir>/v6c/include/` (installed). Both
+directories are added as `-internal-isystem`.
+
+The V6C include directories are injected only by the V6C toolchain;
 cross-host compiles for x86 and other targets are unaffected.
 
 ## Inline Assembly Patterns

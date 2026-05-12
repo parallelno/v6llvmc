@@ -25,6 +25,9 @@ extern "C" {
 #define EXIT_SUCCESS 0
 #define EXIT_FAILURE 1
 
+static inline __attribute__((always_inline))
+int abs(int __x) { return __builtin_abs(__x); }
+
 static inline __attribute__((always_inline, noreturn))
 void abort(void) {
     for (;;)

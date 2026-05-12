@@ -1,8 +1,9 @@
 # V6C Runtime and Inline Asm
 
-This document describes the V6C math runtime (`v6c_arith.h`) and the
-calling-convention contract that lets compiler-emitted libcalls and
-hand-written inline asm coexist on the V6C target.
+This document describes the V6C header-only runtime (the math
+library `v6c_arith.h` and the `mem*` / `str*` library `<string.h>`)
+and the calling-convention contract that lets compiler-emitted
+libcalls and hand-written inline asm coexist on the V6C target.
 
 ## Why a header-only runtime?
 
@@ -21,7 +22,7 @@ two things V6C cares about:
    shape ISel wants, a per-TU `static` definition lets the assembler
    (and same-TU peepholes) collapse argument shuffles.
 
-So O70 made the runtime header-only:
+So O70 made the math runtime header-only:
 
 ```c
 #define V6C_RT static __attribute__((noinline, used, naked, \
@@ -31,6 +32,12 @@ V6C_RT unsigned char __mulqi3(unsigned char a, unsigned char b) {
     __asm__ volatile ( /* 8-iteration shift-add ending in MOV A,L; RET */ );
 }
 ```
+
+O80 extended the same pattern to the `mem*` / `str*` family, replacing
+the old hand-assembled `compiler-rt/lib/builtins/v6c/memory.s`. The
+`V6C_RT` macro itself now lives in a shared internal header
+`v6c_rt_macros.h` and is pulled in by every runtime header, so the
+attribute set stays consistent across `v6c_arith.h` and `<string.h>`.
 
 Each translation unit gets its own per-TU copy. `--gc-sections` (now
 on by default for V6C in ld.lld) prunes the ones the program never
@@ -69,6 +76,29 @@ udiv/urem — the default mid-level rewrite of `a%b` to `a-(a/b)*b`
 defeats fusion (and is usually faster anyway when there are 0 or
 1 callers of `q*b`).
 
+## What `<string.h>` provides
+
+O80 ships a small header-only `<string.h>` covering the routines V6C
+programs (and a future libc port) need most. Each routine is `V6C_RT`,
+uses the V6C C calling convention directly, and emits its own `RET`.
+Unlike `v6c_arith.h` it is **not** auto-included — TUs that want it
+must `#include <string.h>` explicitly.
+
+| Symbol  | C signature                                  | Notes                              |
+|---------|----------------------------------------------|------------------------------------|
+| `memcpy`  | `void *(void *, const void *, size_t)`     | non-overlapping copy               |
+| `memset`  | `void *(void *, int, size_t)`              | low byte of `val` used             |
+| `memmove` | `void *(void *, const void *, size_t)`     | direction-aware (copies tail-first if dst>src) |
+| `strlen`  | `size_t(const char *)`                     | returns `HL = end - start`         |
+| `strcmp`  | `int(const char *, const char *)`          | unsigned-byte semantics; returns +1 / -1 / 0 |
+| `strcpy`  | `char *(char *, const char *)`             | NUL-terminated copy                |
+
+`strcmp` deliberately returns ±1 (not the byte-difference). Per C the
+result of `strcmp` is only specified by sign; using ±1 lets the body
+decide via the carry flag after a `CMP M` instead of computing
+`*a - *b` with sign extension (which is wrong for high-bit unsigned
+bytes — e.g. `0x80` vs `0x00`).
+
 ## Auto-include
 
 The clang driver passes `-include v6c_arith.h` automatically when the
@@ -77,7 +107,12 @@ target triple is `i8080-unknown-v6c`. The header is searched at:
 1. `<resource-dir>/lib/v6c/include/v6c_arith.h`
 2. `<bin>/../../compiler-rt/lib/builtins/v6c/include/v6c_arith.h` (dev tree)
 
-To suppress (and supply your own runtime):
+`<string.h>` lives next to `v6c_arith.h` in the same `compiler-rt/lib/
+builtins/v6c/include` directory. The driver adds that directory as an
+`-internal-isystem` path so `#include <string.h>` resolves naturally;
+the header is **not** auto-included.
+
+To suppress auto-inclusion of `v6c_arith.h` (and supply your own runtime):
 
 ```sh
 clang -target i8080-unknown-v6c -fno-v6c-auto-include main.c -o out.rom
@@ -178,7 +213,8 @@ For non-naked functions, use standard GCC inline-asm constraints
 
 ## See also
 
-- `design/plan_O70_math_header.md` — design rationale.
+- `design/plan_O70_math_header.md` — math header design rationale.
+- `design/plan_O80_string_header.md` — `<string.h>` design rationale.
 - `tests/v6c_lib/linkage_smoke.c` — exercises every operator.
 - `tests/v6c_lib/divmod_combined.c` — fused divmod runtime check.
 - `tests/lit/CodeGen/V6C/i8_mul_libcall.ll` — i8 MUL → __mulqi3.

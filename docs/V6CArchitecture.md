@@ -84,7 +84,16 @@ See [V6CCallingConvention.md](V6CCallingConvention.md) for full details.
 
 ## Runtime Library
 
-The V6C runtime library (`compiler-rt/lib/builtins/v6c/`) provides functions for operations the 8080 CPU cannot perform natively. All functions follow the V6C calling convention.
+The V6C runtime library lives at `compiler-rt/lib/builtins/v6c/`.
+With one exception (`crt0.s`), it is delivered as a **header-only**
+inline-asm runtime shipped under `compiler-rt/lib/builtins/v6c/include/`.
+Each routine is a `static naked noinline used` function whose body is
+a single `__asm__ volatile` block ending in `RET`. The clang driver
+adds the include directory as `-internal-isystem`; `v6c_arith.h` is
+auto-included, `<string.h>` is opt-in via `#include`. All routines
+follow the V6C calling convention. See
+[V6CRuntimeAndInlineAsm.md](V6CRuntimeAndInlineAsm.md) for the full
+rationale.
 
 ### Startup
 
@@ -92,32 +101,33 @@ The V6C runtime library (`compiler-rt/lib/builtins/v6c/`) provides functions for
 |------|--------|-------------|
 | `crt0.s` | `_start` | Sets `SP = __stack_top` (default `0x0000` → first PUSH wraps to `0xFFFE`), zeros `[__bss_start, __bss_end)`, calls `main`, then `HLT`. Placed in `.text._start` so the linker script (`v6c.ld`) pins it at `0x0100`. |
 
-### Arithmetic
+### Arithmetic (provided by `v6c_arith.h`, auto-included)
 
-| File | Symbol | Signature | Description |
-|------|--------|-----------|-------------|
-| `mulhi3.s` | `__mulhi3` | `i16(HL) × i16(DE) → i16(HL)` | 16×16→16 unsigned multiply (left-shift-and-add) |
-| `mulsi3.s` | `__mulsi3` | `i16(HL) × i16(DE) → i32(DE:HL)` | 16×16→32 full multiply (right-shift with 32-bit accumulator) |
-| `divhi3.s` | `__divhi3` | `i16(HL) ÷ i16(DE) → i16(HL)` | Signed 16-bit division (wraps `__udivmod16` with sign handling) |
-| `divhi3.s` | `__modhi3` | `i16(HL) % i16(DE) → i16(HL)` | Signed 16-bit modulo |
-| `udivhi3.s` | `__udivhi3` | `i16(HL) ÷ i16(DE) → i16(HL)` | Unsigned 16-bit division (restoring division) |
-| `udivhi3.s` | `__umodhi3` | `i16(HL) % i16(DE) → i16(HL)` | Unsigned 16-bit modulo |
+| Symbol | Signature | Description |
+|--------|-----------|-------------|
+| `__mulqi3`        | `u8(u8,u8)`           | i8 multiply, low byte → A |
+| `__v6c_mulqihi3`  | `u16(u8,u8)`          | widening i8×i8 → HL |
+| `__mulhi3`        | `u16(u16,u16)`        | 16×16→16 unsigned multiply |
+| `__udivhi3`       | `u16(u16,u16)`        | unsigned 16-bit division |
+| `__umodhi3`       | `u16(u16,u16)`        | unsigned 16-bit modulo |
+| `__divhi3`        | `i16(i16,i16)`        | signed 16-bit division |
+| `__modhi3`        | `i16(i16,i16)`        | signed 16-bit modulo |
+| `__udivmodhi4`    | `u16(u16,u16,u16*)`   | fused unsigned divmod |
+| `__divmodhi4`     | `i16(i16,i16,i16*)`   | fused signed divmod |
+| `__ashlhi3`       | `u16(u16,u8)`         | variable left shift |
+| `__lshrhi3`       | `u16(u16,u8)`         | variable logical right shift |
+| `__ashrhi3`       | `i16(i16,u8)`         | variable arithmetic right shift |
 
-### Shifts
+### Memory / strings (provided by `<string.h>`, opt-in)
 
-| File | Symbol | Signature | Description |
-|------|--------|-----------|-------------|
-| `shift.s` | `__ashlhi3` | `i16(HL) << i16(DE) → i16(HL)` | Variable-count left shift (DAD H loop) |
-| `shift.s` | `__lshrhi3` | `i16(HL) >> i16(DE) → i16(HL)` | Variable-count logical right shift |
-| `shift.s` | `__ashrhi3` | `i16(HL) >> i16(DE) → i16(HL)` | Variable-count arithmetic right shift (sign-preserving) |
-
-### Memory
-
-| File | Symbol | Signature | Description |
-|------|--------|-----------|-------------|
-| `memory.s` | `memcpy` | `memcpy(HL=dst, DE=src, BC=n) → HL` | Forward byte-by-byte copy, returns dst |
-| `memory.s` | `memset` | `memset(HL=dst, DE=val, BC=n) → HL` | Byte-by-byte fill (val in E), returns dst |
-| `memory.s` | `memmove` | `memmove(HL=dst, DE=src, BC=n) → HL` | Overlap-safe copy (backward when dst > src) |
+| Symbol  | Signature                                | Notes |
+|---------|------------------------------------------|-------|
+| `memcpy`  | `void *(void *, const void *, size_t)` | forward byte copy |
+| `memset`  | `void *(void *, int, size_t)`          | low byte of `val` used |
+| `memmove` | `void *(void *, const void *, size_t)` | overlap-safe |
+| `strlen`  | `size_t(const char *)`                 | NUL-terminated length |
+| `strcmp`  | `int(const char *, const char *)`      | unsigned-byte semantics, returns ±1 / 0 |
+| `strcpy`  | `char *(char *, const char *)`         | NUL-terminated copy |
 
 ### Backend Integration
 

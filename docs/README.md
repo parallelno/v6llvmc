@@ -25,7 +25,7 @@ Goal: **C source → Clang → LLVM IR → V6C backend → flat binary → Vecto
 | [V6CIPRA.md](V6CIPRA.md) | Interprocedural Register Allocation on V6C, default behavior, safety model, and disable flags |
 | [V6CStaticStackAlloc.md](V6CStaticStackAlloc.md) | Static stack allocation for non-reentrant functions (O10): eligibility, interrupt attribute, BFS analysis |
 | [V6CInlineAsmGuide.md](V6CInlineAsmGuide.md) | Inline-assembly reference: `asm` keyword forms, V6C constraint letters (`r`/`a`/`p`/`I`/`J`), clobber names, `volatile` / `"memory"` semantics, local register variables, worked examples |
-| [V6CRuntimeAndInlineAsm.md](V6CRuntimeAndInlineAsm.md) | Header-only math runtime (`v6c_arith.h`), `V6C_RT` helper pattern, IPRA interaction, `annotate("v6c-rt-helper")` suppression |
+| [V6CRuntimeAndInlineAsm.md](V6CRuntimeAndInlineAsm.md) | Header-only runtime: math (`v6c_arith.h`, auto-included) and `mem*`/`str*` (`<string.h>`, opt-in). `V6C_RT` helper pattern, IPRA interaction, `annotate("v6c-rt-helper")` suppression |
 | [Design Document](../design/design.md) | Authoritative architecture specification (registers, instructions, calling convention) |
 | [Implementation Plan](../design/plan.md) | Milestone-driven development sequence with steps, tests, and status markers |
 

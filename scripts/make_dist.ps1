@@ -137,8 +137,9 @@ New-Item -ItemType Directory -Force -Path $StageRtDir    | Out-Null
 New-Item -ItemType Directory -Force -Path $StageRtIncDir | Out-Null
 
 $RtSrcDir = Join-Path $repoRoot 'compiler-rt\lib\builtins\v6c'
-$RtSources = @('crt0.s', 'mulhi3.s', 'mulsi3.s', 'udivhi3.s',
-               'divhi3.s', 'shift.s', 'memory.s')
+# O80: all integer-math and mem* helpers are now header-only inline-asm
+# routines emitted per-TU. Only crt0 still needs to ship as an object.
+$RtSources = @('crt0.s')
 
 # Use the just-built clang to assemble each .s -> .o so the resulting
 # object files are byte-identical to what the released clang will produce.
@@ -157,9 +158,15 @@ foreach ($s in $RtSources) {
     }
 }
 
-# Placeholder for future v6c headers shipped via the resource dir.
-'# V6C runtime headers (placeholder)' |
-    Set-Content -Path (Join-Path $StageRtIncDir 'README.txt')
+# O80: ship the header-only V6C runtime (v6c_arith.h, v6c_rt_macros.h,
+# string.h, ...). The driver's findV6CRuntimeIncludeDir looks for these
+# under <ResourceDir>/lib/v6c/include.
+$RtIncSrcDir = Join-Path $RtSrcDir 'include'
+if (Test-Path $RtIncSrcDir) {
+    Copy-Item -Recurse -Force (Join-Path $RtIncSrcDir '*') -Destination $StageRtIncDir
+} else {
+    Write-Warning "V6C runtime include dir not found at $RtIncSrcDir"
+}
 
 # ---------------------------------------------------- share/v6c/samples
 $StageSamples = Join-Path $Stage 'share\v6c\samples'
