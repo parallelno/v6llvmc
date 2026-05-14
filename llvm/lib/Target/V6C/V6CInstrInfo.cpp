@@ -716,6 +716,8 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       BaseReg = RhsReg;
       AddReg = LhsReg;
     }
+    bool PreserveHL = DstReg != V6C::HL &&
+                      !isRegDeadAfter(MBB, MI.getIterator(), V6C::HL, &RI);
 
     // Try INX/DCX chains for small constants loaded by a preceding LXI.
     // INX/DCX set no flags, so this is only valid when FLAGS is dead.
@@ -733,12 +735,16 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
           V6CInstrCost InxCost = V6CCost::INX * AbsVal;
           V6CInstrCost DadCost = V6CCost::LXI + V6CCost::DAD;
           if (InxCost.isCheaperOrEqual(DadCost, Mode)) {
+            if (PreserveHL)
+              BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
             if (BaseReg != V6C::HL)
               copyPhysReg(MBB, MI, DL, V6C::HL, BaseReg, /*KillSrc=*/false);
             for (unsigned I = 0; I < AbsVal; ++I)
               BuildMI(MBB, MI, DL, get(InxOpc), V6C::HL).addReg(V6C::HL);
             if (DstReg != V6C::HL)
               copyPhysReg(MBB, MI, DL, DstReg, V6C::HL, /*KillSrc=*/false);
+            if (PreserveHL)
+              BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL);
             Register ConstReg = LXI->getOperand(0).getReg();
             if (LXI->getParent() == &MBB &&
                 isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
@@ -750,11 +756,24 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       }
     }
 
+    if (PreserveHL && BaseReg == V6C::HL && AddReg == V6C::DE &&
+        DstReg == V6C::DE) {
+      BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(V6C::DE);
+      BuildMI(MBB, MI, DL, get(V6C::XCHG));
+      MI.eraseFromParent();
+      return true;
+    }
+
+    if (PreserveHL)
+      BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
     if (BaseReg != V6C::HL)
       copyPhysReg(MBB, MI, DL, V6C::HL, BaseReg, /*KillSrc=*/false);
     BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(AddReg);
     if (DstReg != V6C::HL)
       copyPhysReg(MBB, MI, DL, DstReg, V6C::HL, /*KillSrc=*/false);
+    if (PreserveHL)
+      BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL);
     MI.eraseFromParent();
     return true;
   }
