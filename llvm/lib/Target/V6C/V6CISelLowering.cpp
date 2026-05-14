@@ -501,6 +501,9 @@ SDValue V6CTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
             V6CC = V6CCC::COND_M;
           }
           break;
+        case V6CCC::COND_PO:
+        case V6CCC::COND_PE:
+          break;
         }
       }
     }
@@ -618,6 +621,9 @@ SDValue V6CTargetLowering::LowerSELECT_CC(SDValue Op,
             RHS = DAG.getConstant((Imm + 1) & 0xFF, DL, MVT::i8);
             V6CC = V6CCC::COND_M;
           }
+          break;
+        case V6CCC::COND_PO:
+        case V6CCC::COND_PE:
           break;
         }
       }
