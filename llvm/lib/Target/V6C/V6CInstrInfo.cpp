@@ -703,17 +703,24 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   }
 
   case V6C::V6C_DAD: {
-    // V6C_DAD: HL = HL + rp via physical DAD instruction.
-    // $dst and $lhs are tied and constrained to HL (GR16Ptr).
+    // V6C_DAD: dst = lhs + rhs via physical DAD instruction.
     Register DstReg = MI.getOperand(0).getReg();
-    Register RpReg = MI.getOperand(2).getReg();
-    assert(DstReg == V6C::HL && "V6C_DAD operands must be HL");
-    (void)DstReg;
+    Register LhsReg = MI.getOperand(1).getReg();
+    Register RhsReg = MI.getOperand(2).getReg();
+    assert(V6C::GR16RegClass.contains(DstReg) &&
+           "V6C_DAD result must be an allocatable register pair");
+
+    Register BaseReg = LhsReg;
+    Register AddReg = RhsReg;
+    if (RhsReg == V6C::HL) {
+      BaseReg = RhsReg;
+      AddReg = LhsReg;
+    }
 
     // Try INX/DCX chains for small constants loaded by a preceding LXI.
     // INX/DCX set no flags, so this is only valid when FLAGS is dead.
     if (isFlagsDefDead(MI)) {
-      MachineInstr *LXI = findDefiningLXI(MBB, MI.getIterator(), RpReg, &RI);
+      MachineInstr *LXI = findDefiningLXI(MBB, MI.getIterator(), AddReg, &RI);
       if (LXI) {
         int64_t ImmVal = LXI->getOperand(1).getImm();
         if (ImmVal > 0x7FFF)
@@ -726,8 +733,12 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
           V6CInstrCost InxCost = V6CCost::INX * AbsVal;
           V6CInstrCost DadCost = V6CCost::LXI + V6CCost::DAD;
           if (InxCost.isCheaperOrEqual(DadCost, Mode)) {
+            if (BaseReg != V6C::HL)
+              copyPhysReg(MBB, MI, DL, V6C::HL, BaseReg, /*KillSrc=*/false);
             for (unsigned I = 0; I < AbsVal; ++I)
               BuildMI(MBB, MI, DL, get(InxOpc), V6C::HL).addReg(V6C::HL);
+            if (DstReg != V6C::HL)
+              copyPhysReg(MBB, MI, DL, DstReg, V6C::HL, /*KillSrc=*/false);
             Register ConstReg = LXI->getOperand(0).getReg();
             if (LXI->getParent() == &MBB &&
                 isRegDeadAfter(MBB, MI.getIterator(), ConstReg, &RI))
@@ -739,7 +750,11 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       }
     }
 
-    BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(RpReg);
+    if (BaseReg != V6C::HL)
+      copyPhysReg(MBB, MI, DL, V6C::HL, BaseReg, /*KillSrc=*/false);
+    BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(AddReg);
+    if (DstReg != V6C::HL)
+      copyPhysReg(MBB, MI, DL, DstReg, V6C::HL, /*KillSrc=*/false);
     MI.eraseFromParent();
     return true;
   }

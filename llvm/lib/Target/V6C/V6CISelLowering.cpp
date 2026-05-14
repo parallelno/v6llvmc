@@ -263,6 +263,13 @@ const char *V6CTargetLowering::getTargetNodeName(unsigned Opcode) const {
 // PerformDAGCombine — target-specific DAG optimizations
 //===----------------------------------------------------------------------===//
 
+static bool isCopyFromPhysReg(SDValue V, unsigned PhysReg) {
+  if (V.getOpcode() != ISD::CopyFromReg)
+    return false;
+  auto *Reg = dyn_cast<RegisterSDNode>(V.getOperand(1));
+  return Reg && Reg->getReg() == PhysReg;
+}
+
 SDValue V6CTargetLowering::PerformDAGCombine(SDNode *N,
                                               DAGCombinerInfo &DCI) const {
   SelectionDAG &DAG = DCI.DAG;
@@ -307,8 +314,14 @@ SDValue V6CTargetLowering::PerformDAGCombine(SDNode *N,
       }
       if (UsedAsPointer) {
         SDLoc DL(N);
-        return DAG.getNode(V6CISD::DAD, DL, MVT::i16, N->getOperand(0),
-                           N->getOperand(1));
+        SDValue LHS = N->getOperand(0);
+        SDValue RHS = N->getOperand(1);
+
+        if (!isCopyFromPhysReg(LHS, V6C::HL) &&
+            isCopyFromPhysReg(RHS, V6C::HL))
+          std::swap(LHS, RHS);
+
+        return DAG.getNode(V6CISD::DAD, DL, MVT::i16, LHS, RHS);
       }
     }
     break;

@@ -311,10 +311,12 @@ def XTHL : V6CInstImplied<0xE3,
 // O75 Phase B: patterns produce both value and flags via V6CISD::*F.
 let Defs = [FLAGS] in {
   let Constraints = "$dst = $lhs" in {
+    let isCommutable = 1 in
     def ADDr : V6CInstRegSrc<0b000,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "ADD\t$rs", [(set i8:$dst, FLAGS, (V6Caddf i8:$lhs, i8:$rs))]>;
     let Uses = [FLAGS] in  // ADC reads CY
+    let isCommutable = 1 in
     def ADCr : V6CInstRegSrc<0b001,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "ADC\t$rs", []>;
@@ -325,12 +327,15 @@ let Defs = [FLAGS] in {
     def SBBr : V6CInstRegSrc<0b011,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "SBB\t$rs", []>;
+    let isCommutable = 1 in
     def ANAr : V6CInstRegSrc<0b100,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "ANA\t$rs", [(set i8:$dst, FLAGS, (V6Candf i8:$lhs, i8:$rs))]>;
+    let isCommutable = 1 in
     def XRAr : V6CInstRegSrc<0b101,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "XRA\t$rs", [(set i8:$dst, FLAGS, (V6Cxorf i8:$lhs, i8:$rs))]>;
+    let isCommutable = 1 in
     def ORAr : V6CInstRegSrc<0b110,
         (outs Acc:$dst), (ins Acc:$lhs, GR8:$rs),
         "ORA\t$rs", [(set i8:$dst, FLAGS, (V6Corf i8:$lhs, i8:$rs))]>;
@@ -814,17 +819,20 @@ def : Pat<(i16 imm:$val), (LXI imm:$val)>;
 // 16-bit arithmetic pseudos. These expand post-RA into 8-bit sequences via A.
 // All clobber A (used as temp) and FLAGS.
 
-// V6C_DAD: HL-constrained 16-bit add → physical DAD rp instruction.
-// Result and lhs are tied and constrained to GR16Ptr (HL only).
+// V6C_DAD: 16-bit add lowered through physical DAD rp.
+// Keep both inputs unconstrained before RA; the post-RA expander chooses an
+// operand already in HL when possible, otherwise copies one operand to HL.
+// The virtual result may live in any pair; the expander copies out of HL when
+// RA picked DE/BC, which avoids multiple HL-only pointer live ranges.
 // Does NOT clobber A — only FLAGS — giving better register pressure than
 // the general V6C_ADD16 which uses an 8-bit chain through A.
 // Selected via V6CISD::DAD from PerformDAGCombine when the add result
 // is used as a memory address (load/store pointer).
 let Defs = [FLAGS] in
-def V6C_DAD : V6CPseudo<(outs GR16Ptr:$dst), (ins GR16Ptr:$lhs, GR16All:$rp),
+def V6C_DAD : V6CPseudo<(outs GR16:$dst), (ins GR16:$lhs, GR16All:$rp),
     "# DAD $dst, $lhs, $rp",
     [(set i16:$dst, (V6Cdad i16:$lhs, i16:$rp))]> {
-  let Constraints = "$dst = $lhs";
+  let isCommutable = 1;
 }
 
 // V6C_INX16: rp += count (1..3) via N copies of INX rp.
