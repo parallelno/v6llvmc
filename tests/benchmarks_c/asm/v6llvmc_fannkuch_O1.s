@@ -9,35 +9,35 @@ main:                                   ; @main
 	MVI	A, 7
 	STA	__v6c_a.main
 	LDA	__v6c_a.main
-	MOV	C, A
+	MOV	E, A
 	;--- V6C_CMP8_ZERO ---
 	ORA	A
 	;--- V6C_BRCOND ---
 	JZ	.LBB15_3
 ; %bb.1:
-	MVI	E, 0
+	MVI	D, 0
 	LXI	H, perm1
 .LBB15_2:                               ; =>This Inner Loop Header: Depth=1
 	;--- V6C_STORE8_P ---
-	MOV	M, E
-	INR	E
-	MOV	A, C
-	CMP	E
+	MOV	M, D
+	INR	D
+	MOV	A, E
+	CMP	D
 	;--- V6C_INX16 ---
 	INX	H
 	;--- V6C_BRCOND ---
 	JNZ	.LBB15_2
 .LBB15_3:
-	LXI	D, count-1
 	XRA	A
 	;--- V6C_SPILL8 ---
 	STA	.LLo61_3+1
+	MOV	H, E
 	;--- V6C_SPILL8 ---
-	LXI	H, .LLo61_5+1
-	MOV	M, C
+	MOV	A, H
+	STA	.LLo61_5+1
 	;--- V6C_SPILL8 ---
-	LXI	H, .LLo61_6+1
-	MOV	M, C
+	MOV	A, H
+	STA	.LLo61_6+1
 .LBB15_4:                               ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB15_8 Depth 2
                                         ;     Child Loop BB15_11 Depth 2
@@ -51,18 +51,23 @@ main:                                   ; @main
 	;--- V6C_BRCOND ---
 	JZ	.LBB15_6
 ; %bb.7:                                ;   in Loop: Header=BB15_4 Depth=1
+	LXI	B, count-1
 	;--- V6C_RELOAD8 ---
 	LDA	.LLo61_5+1
 .LBB15_8:                               ;   Parent Loop BB15_4 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	MVI	L, 0
 	;--- V6C_BUILD_PAIR ---
-	MOV	H, L
-	MOV	L, A
+	MOV	D, L
+	MOV	E, A
 	;--- V6C_DAD ---
-	DAD	D
+	PUSH	H
+	XCHG
+	DAD	B
+	XCHG
+	POP	H
 	;--- V6C_STORE8_P ---
-	MOV	M, A
+	STAX	D
 	DCR	A
 	CPI	1
 	;--- V6C_BRCOND ---
@@ -74,26 +79,29 @@ main:                                   ; @main
 .LBB15_6:                               ;   in Loop: Header=BB15_4 Depth=1
 	;--- V6C_CMP8_ZERO ---
 	XRA	A
-	CMP	C
+	CMP	H
 	;--- V6C_BRCOND ---
 	JZ	.LBB15_9
 ; %bb.10:                               ;   in Loop: Header=BB15_4 Depth=1
-	LXI	H, perm1
+	LXI	B, perm1
 	LXI	D, perm
 	;--- V6C_RELOAD8 ---
 	LDA	.LLo61_6+1
 .LBB15_11:                              ;   Parent Loop BB15_4 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	;--- V6C_LOAD8_P ---
-	MOV	C, M
+	MOV	L, A
+	LDAX	B
+	MOV	H, A
+	MOV	A, L
 	;--- V6C_STORE8_P ---
 	XCHG
-	MOV	M, C
+	MOV	M, D
 	XCHG
 	;--- V6C_INX16 ---
 	INX	D
 	;--- V6C_INX16 ---
-	INX	H
+	INX	B
 	DCR	A
 	;--- V6C_BRCOND ---
 	JNZ	.LBB15_11
@@ -104,89 +112,104 @@ main:                                   ; @main
 	;--- V6C_BRCOND ---
 	JZ	.LBB15_16
 ; %bb.12:                               ;   in Loop: Header=BB15_4 Depth=1
-	MVI	L, 0
-	MOV	H, L
+	MVI	H, 0
+	MOV	E, H
 .LBB15_13:                              ;   Parent Loop BB15_4 Depth=1
                                         ; =>  This Loop Header: Depth=2
                                         ;       Child Loop BB15_14 Depth 3
 	;--- V6C_SPILL8 ---
 	MOV	B, A
-	MOV	A, L
+	MOV	A, H
 	STA	.LLo61_8+1
 	MOV	A, B
-	LXI	D, perm
+	LXI	B, perm
 	MVI	L, 1
 	;--- V6C_SPILL8 ---
+	MOV	D, A
 	MOV	A, L
 	STA	.LLo61_2+1
-	MOV	A, B
+	MOV	A, D
+	MOV	H, A
 	MOV	A, L
 .LBB15_14:                              ;   Parent Loop BB15_4 Depth=1
                                         ;     Parent Loop BB15_13 Depth=2
                                         ; =>    This Inner Loop Header: Depth=3
 	;--- V6C_SPILL16 ---
-	XCHG
+	PUSH	H
+	MOV	L, C
+	MOV	H, B
 	SHLD	.LLo61_1+1
-	XCHG
+	POP	H
 	;--- V6C_BUILD_PAIR ---
-	MOV	L, B
-	LXI	D, perm
+	MOV	D, E
+	MOV	E, H
+	LXI	B, perm
 	;--- V6C_DAD ---
-	DAD	D
+	PUSH	H
+	XCHG
+	DAD	B
+	XCHG
+	POP	H
 	;--- V6C_RELOAD16 ---
 .LLo61_1:
-	LXI	D, 0
-	;--- V6C_LOAD8_P ---
-	MOV	C, M
-	;--- V6C_SPILL8 ---
-	PUSH	H
-	LXI	H, .LLo61_4+1
-	MOV	M, C
-	POP	H
+	LXI	B, 0
 	;--- V6C_LOAD8_P ---
 	XCHG
-	MOV	C, M
+	MOV	E, M
 	XCHG
 	;--- V6C_SPILL8 ---
-	PUSH	H
-	LXI	H, .LLo61_7+1
-	MOV	M, C
-	POP	H
+	PUSH	PSW
+	MOV	A, L
+	STA	.LLo61_4+1
+	POP	PSW
+	;--- V6C_LOAD8_P ---
+	PUSH	PSW
+	LDAX	B
+	MOV	L, A
+	POP	PSW
+	;--- V6C_SPILL8 ---
+	PUSH	PSW
+	MOV	A, L
+	STA	.LLo61_7+1
+	POP	PSW
 	;--- V6C_RELOAD8 ---
 .LLo61_4:
-	MVI	C, 0
+	MVI	L, 0
 	;--- V6C_STORE8_P ---
-	XCHG
-	MOV	M, C
-	XCHG
+	PUSH	PSW
+	MOV	A, L
+	STAX	B
+	POP	PSW
 	;--- V6C_RELOAD8 ---
 .LLo61_7:
-	MVI	C, 0
+	MVI	L, 0
 	;--- V6C_STORE8_P ---
-	MOV	M, C
-	MVI	H, 0
-	DCR	B
-	MOV	L, A
-	INR	L
+	XCHG
+	MOV	M, E
+	XCHG
+	MVI	E, 0
+	DCR	H
+	MOV	D, A
+	INR	D
 	;--- V6C_RELOAD8 ---
 .LLo61_2:
 	MVI	A, 0
-	CMP	B
+	CMP	H
 	;--- V6C_INX16 ---
-	INX	D
-	MOV	A, L
+	INX	B
+	MOV	A, D
 	;--- V6C_SPILL8 ---
-	MOV	C, A
-	MOV	A, L
-	STA	.LLo61_2+1
-	MOV	A, C
+	PUSH	H
+	LXI	H, .LLo61_2+1
+	MOV	M, D
+	POP	H
 	;--- V6C_BRCOND ---
 	JC	.LBB15_14
 ; %bb.15:                               ;   in Loop: Header=BB15_13 Depth=2
 	;--- V6C_RELOAD8 ---
 .LLo61_8:
-	MVI	L, 0
-	INR	L
+	MVI	H, 0
+	INR	H
 	LDA	perm
 	;--- V6C_CMP8_ZERO ---
 	ORA	A
@@ -194,17 +217,17 @@ main:                                   ; @main
 	JNZ	.LBB15_13
 	JMP	.LBB15_17
 .LBB15_16:                              ;   in Loop: Header=BB15_4 Depth=1
-	MVI	L, 0
-	MOV	H, L
+	MVI	H, 0
+	MOV	E, H
 .LBB15_17:                              ;   in Loop: Header=BB15_4 Depth=1
 	;--- V6C_RELOAD8 ---
 .LLo61_3:
 	MVI	A, 0
-	CMP	L
+	CMP	H
 	JNC	.LBB15_19
 ; %bb.18:                               ;   in Loop: Header=BB15_4 Depth=1
 	;--- V6C_SPILL8 ---
-	MOV	A, L
+	MOV	A, H
 	STA	.LLo61_3+1
 .LBB15_19:                              ;   in Loop: Header=BB15_4 Depth=1
 	;--- V6C_RELOAD8 ---
@@ -218,6 +241,7 @@ main:                                   ; @main
                                         ; =>  This Loop Header: Depth=2
                                         ;       Child Loop BB15_23 Depth 3
 	;--- V6C_BUILD_PAIR ---
+	MOV	H, E
 	MOV	L, A
 	;--- V6C_SPILL16 ---
 	SHLD	.LLo61_0+1
@@ -229,44 +253,42 @@ main:                                   ; @main
 	;--- V6C_BRCOND ---
 	JZ	.LBB15_24
 ; %bb.22:                               ;   in Loop: Header=BB15_21 Depth=2
-	LXI	H, perm1
+	LXI	B, perm1
 	;--- V6C_RELOAD8 ---
 .LLo61_5:
-	MVI	E, 0
-	LXI	B, perm1
+	MVI	H, 0
+	LXI	D, perm1
 .LBB15_23:                              ;   Parent Loop BB15_4 Depth=1
                                         ;     Parent Loop BB15_21 Depth=2
                                         ; =>    This Inner Loop Header: Depth=3
 	;--- V6C_INX16 ---
-	INX	B
+	INX	D
 	;--- V6C_LOAD8_P ---
-	PUSH	PSW
-	LDAX	B
-	MOV	D, A
-	POP	PSW
+	XCHG
+	MOV	E, M
+	XCHG
 	;--- V6C_STORE8_P ---
-	MOV	M, D
-	DCR	E
-	MOV	H, B
-	MOV	L, C
+	PUSH	PSW
+	MOV	A, L
+	STAX	B
+	POP	PSW
+	DCR	H
+	MOV	B, D
+	MOV	C, E
 	;--- V6C_BRCOND ---
 	JNZ	.LBB15_23
 .LBB15_24:                              ;   in Loop: Header=BB15_21 Depth=2
+	LXI	H, perm1
 	;--- V6C_RELOAD16 ---
 .LLo61_0:
-	LXI	H, 0
-	LXI	D, perm1
+	LXI	D, 0
 	;--- V6C_DAD ---
 	DAD	D
 	;--- V6C_STORE8_P ---
 	MOV	M, A
-	LXI	D, count
-	;--- V6C_RELOAD16 ---
-	LHLD	.LLo61_0+1
+	LXI	H, count
 	;--- V6C_DAD ---
 	DAD	D
-	;--- V6C_SPILL16 ---
-	SHLD	.LLo61_0+1
 	;--- V6C_LOAD8_P ---
 	MOV	A, M
 	DCR	A
@@ -274,16 +296,15 @@ main:                                   ; @main
 	MOV	M, A
 	;--- V6C_RELOAD8 ---
 .LLo61_6:
-	MVI	C, 0
 	MVI	H, 0
-	LXI	D, count-1
+	MVI	E, 0
 	;--- V6C_BRCOND ---
 	JNZ	.LBB15_4
 ; %bb.25:                               ;   in Loop: Header=BB15_21 Depth=2
 	;--- V6C_RELOAD8 ---
 	LDA	.LLo61_5+1
 	INR	A
-	CMP	C
+	CMP	H
 	;--- V6C_BRCOND ---
 	JNZ	.LBB15_21
 .LBB15_20:

@@ -397,10 +397,14 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       } else if (Dst == V6C::DE) {
         if (HLLive) {
           // XCHG; LHLD ... ; XCHG  (28cc, 5B)
-          BuildMI(*MBB, R, DL, TII.get(V6C::XCHG));
+          MachineInstr *FirstXchg =
+              BuildMI(*MBB, R, DL, TII.get(V6C::XCHG)).getInstr();
           BuildMI(*MBB, R, DL, TII.get(V6C::LHLD), V6C::HL)
               .addSym(Syms[0], V6CII::MO_PATCH_IMM);
           BuildMI(*MBB, R, DL, TII.get(V6C::XCHG));
+          if (MachineOperand *MO = FirstXchg->findRegisterUseOperand(
+                  V6C::DE, /*isKill=*/false))
+            MO->setIsUndef(true);
         } else {
           // LHLD ... ; XCHG        (24cc, 4B)
           BuildMI(*MBB, R, DL, TII.get(V6C::LHLD), V6C::HL)

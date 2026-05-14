@@ -499,7 +499,14 @@ static bool isRegDeadAfter(MachineBasicBlock &MBB,
       return true; // Redefined before use — the LXI's value is dead.
   }
   // Reached end of block. Check if Reg is live-out.
-  return !MBB.isLiveIn(Reg) || MBB.succ_empty();
+  for (MachineBasicBlock *Succ : MBB.successors()) {
+    for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
+         ++AI) {
+      if (Succ->isLiveIn(*AI))
+        return false;
+    }
+  }
+  return true;
 }
 
 /// Check if a physical register is dead after a given instruction.
@@ -716,8 +723,9 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       BaseReg = RhsReg;
       AddReg = LhsReg;
     }
-    bool PreserveHL = DstReg != V6C::HL &&
-                      !isRegDeadAfter(MBB, MI.getIterator(), V6C::HL, &RI);
+    bool HLDead = isRegDeadAfter(MBB, MI.getIterator(), V6C::H, &RI) &&
+            isRegDeadAfter(MBB, MI.getIterator(), V6C::L, &RI);
+    bool PreserveHL = DstReg != V6C::HL && !HLDead;
 
     // Try INX/DCX chains for small constants loaded by a preceding LXI.
     // INX/DCX set no flags, so this is only valid when FLAGS is dead.

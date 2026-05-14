@@ -248,9 +248,11 @@ def main() -> int:
             cells.append(fmt_row(r, base_cc, md=True))
         lines.append("| " + " | ".join(cells) + " |")
     lines.append("")
+    checksum_text = ", ".join(
+        f"`{prog}`=0x{EXPECTED[prog]:02X}" for prog in PROGRAMS)
     lines.append("All compilers produced the same checksum byte per program "
-                 "(`bsort`=0xC4, `sieve`=0xEC, `fib_crc`=0x2B), confirming the "
-                 "ROMs are functionally equivalent.")
+                 f"({checksum_text}), confirming the ROMs are functionally "
+                 "equivalent.")
     lines.append("")
     lines.append("## Compiler invocations")
     lines.append("")
