@@ -459,16 +459,21 @@ static bool isRegLiveBefore(MachineBasicBlock &MBB,
                             const TargetRegisterInfo *TRI) {
   while (I != MBB.begin()) {
     --I;
-    bool FoundDef = false, FoundClobber = false;
+    bool FoundDef = false, FoundClobber = false, FoundKilledUse = false;
     for (const MachineOperand &MO : I->operands()) {
       if (MO.isReg() && MO.isDef() && MO.getReg().isPhysical() &&
           TRI->regsOverlap(MO.getReg(), Reg))
         FoundDef = true;
+      else if (MO.isReg() && MO.isUse() && MO.isKill() &&
+               MO.getReg().isPhysical() && TRI->regsOverlap(MO.getReg(), Reg))
+        FoundKilledUse = true;
       else if (MO.isRegMask() && MO.clobbersPhysReg(Reg))
         FoundClobber = true;
     }
     if (FoundDef)
       return true;
+    if (FoundKilledUse)
+      return false;
     if (FoundClobber)
       return false;
   }
@@ -486,6 +491,13 @@ static void markXchgUseUndef(MachineInstr *XchgMI, Register Reg) {
     MO->setIsUndef(true);
 }
 
+static void markRegUsesUndef(MachineInstr *MI, Register Reg) {
+  for (MachineOperand &MO : MI->operands()) {
+    if (MO.isReg() && MO.isUse() && MO.getReg() == Reg)
+      MO.setIsUndef(true);
+  }
+}
+
 /// Return true if \p Reg is not used by any instruction between \p After
 /// (exclusive) and the next redefinition or end of \p MBB.
 static bool isRegDeadAfter(MachineBasicBlock &MBB,
@@ -493,9 +505,19 @@ static bool isRegDeadAfter(MachineBasicBlock &MBB,
                            Register Reg,
                            const TargetRegisterInfo *TRI) {
   for (auto I = std::next(After), E = MBB.end(); I != E; ++I) {
-    if (I->readsRegister(Reg, TRI))
+    bool UsesReg = false;
+    bool DefsReg = false;
+    for (const MachineOperand &MO : I->operands()) {
+      if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
+        continue;
+      if (MO.isUse() && !MO.isUndef())
+        UsesReg = true;
+      if (MO.isDef())
+        DefsReg = true;
+    }
+    if (UsesReg)
       return false;
-    if (I->modifiesRegister(Reg, TRI))
+    if (DefsReg)
       return true; // Redefined before use — the LXI's value is dead.
   }
   // Reached end of block. Check if Reg is live-out.
@@ -520,7 +542,7 @@ static bool isRegDeadAtMI(unsigned Reg, const MachineInstr &MI,
     for (const MachineOperand &MO : I->operands()) {
       if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
         continue;
-      if (MO.isUse())
+      if (MO.isUse() && !MO.isUndef())
         usesReg = true;
       if (MO.isDef())
         defsReg = true;
@@ -904,7 +926,13 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
           MI.eraseFromParent();
           return true;
         }
-        // dest=DE, HL live, OtherReg!=DE → fall to byte chain.
+        // A3-DE: DE = HL + BC, HL live. Preserve HL explicitly around DAD.
+        BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
+        BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(OtherReg);
+        BuildMI(MBB, MI, DL, get(V6C::XCHG));
+        BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL);
+        MI.eraseFromParent();
+        return true;
       }
 
       if (HLDead) {
@@ -917,7 +945,16 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
         MI.eraseFromParent();
         return true;
       }
-      // HL live, not A2-DE → fall through to byte chain.
+      // A-general live-HL (dest=BC): preserve HL explicitly around DAD.
+      BuildMI(MBB, MI, DL, get(V6C::PUSH)).addReg(V6C::HL);
+      BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(OtherReg);
+      MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
+      MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::H);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::L);
+      BuildMI(MBB, MI, DL, get(V6C::POP), V6C::HL);
+      MI.eraseFromParent();
+      return true;
     }
 
     // --- Path B: DstReg == HL, neither operand is HL ---
@@ -1098,8 +1135,10 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
           .addReg(V6C::A).addReg(V6C::A);
     } else if (isRegDeadAtMI(V6C::A, MI, MBB, &RI)) {
       // Shape 2: A dead → XRA A; CMP src (preserves O38 emission).
-      BuildMI(MBB, MI, DL, get(V6C::XRAr), V6C::A)
-          .addReg(V6C::A).addReg(V6C::A);
+      MachineInstr *XraMI = BuildMI(MBB, MI, DL, get(V6C::XRAr), V6C::A)
+        .addReg(V6C::A).addReg(V6C::A).getInstr();
+      if (!isRegLiveBefore(MBB, XraMI->getIterator(), V6C::A, &RI))
+      markRegUsesUndef(XraMI, V6C::A);
       BuildMI(MBB, MI, DL, get(V6C::CMPr))
           .addReg(V6C::A)
           .addReg(Src, getKillRegState(SrcKilled));
@@ -1453,6 +1492,7 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     MachineBasicBlock *CompareHiMBB =
         MF->CreateMachineBasicBlock(MBB.getBasicBlock());
     MF->insert(std::next(MBB.getIterator()), CompareHiMBB);
+    CompareHiMBB->addLiveIn(LhsHi);
 
     if (CC == V6CCC::COND_NZ) {
       // NE: MVI A, lo8; CMP LhsLo; JNZ Target | MVI A, hi8; CMP LhsHi; JNZ Target
@@ -1470,6 +1510,8 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       if (!SameLoHi) {
         auto MIB = BuildMI(CompareHiMBB, DL, get(V6C::MVIr), V6C::A);
         addImmHi(MIB);
+      } else {
+        CompareHiMBB->addLiveIn(V6C::A);
       }
       BuildMI(CompareHiMBB, DL, get(V6C::CMPr))
           .addReg(V6C::A).addReg(LhsHi);
@@ -1494,6 +1536,8 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       if (!SameLoHi) {
         auto MIB = BuildMI(CompareHiMBB, DL, get(V6C::MVIr), V6C::A);
         addImmHi(MIB);
+      } else {
+        CompareHiMBB->addLiveIn(V6C::A);
       }
       BuildMI(CompareHiMBB, DL, get(V6C::CMPr))
           .addReg(V6C::A).addReg(LhsHi);

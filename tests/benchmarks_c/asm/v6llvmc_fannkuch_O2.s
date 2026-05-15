@@ -118,7 +118,7 @@ main:                                   ; @main
 	STA	.LLo61_1+1
 	MOV	A, D
 	MOV	H, A
-	MOV	A, L
+	MVI	A, 1
 .LBB15_12:                              ;   Parent Loop BB15_4 Depth=1
                                         ;     Parent Loop BB15_11 Depth=2
                                         ; =>    This Inner Loop Header: Depth=3

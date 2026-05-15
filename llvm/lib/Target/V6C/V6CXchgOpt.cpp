@@ -70,17 +70,22 @@ static bool isRegLiveBefore(MachineBasicBlock &MBB,
                             const TargetRegisterInfo *TRI) {
   while (I != MBB.begin()) {
     --I;
-    bool FoundDef = false, FoundClobber = false;
+    bool FoundDef = false, FoundClobber = false, FoundKilledUse = false;
     for (const MachineOperand &MO : I->operands()) {
       if (MO.isReg() && MO.isDef() && MO.getReg().isPhysical() &&
           TRI->regsOverlap(MO.getReg(), Reg))
         FoundDef = true;
+      else if (MO.isReg() && MO.isUse() && MO.isKill() &&
+               MO.getReg().isPhysical() && TRI->regsOverlap(MO.getReg(), Reg))
+        FoundKilledUse = true;
       else if (MO.isRegMask() && MO.clobbersPhysReg(Reg))
         FoundClobber = true;
     }
     // Explicit def wins over regmask clobber within the same instruction.
     if (FoundDef)
       return true;
+    if (FoundKilledUse)
+      return false;
     if (FoundClobber)
       return false;
   }
@@ -119,7 +124,7 @@ static bool isRegDeadAfter(MachineBasicBlock &MBB,
     for (const MachineOperand &MO : MI->operands()) {
       if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
         continue;
-      if (MO.isUse())
+      if (MO.isUse() && !MO.isUndef())
         usesReg = true;
       if (MO.isDef())
         defsReg = true;

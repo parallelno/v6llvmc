@@ -23,7 +23,7 @@ bool llvm::isRegDeadAfterMI(unsigned Reg, const MachineInstr &MI,
     for (const MachineOperand &MO : I->operands()) {
       if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
         continue;
-      if (MO.isUse())
+      if (MO.isUse() && !MO.isUndef())
         usesReg = true;
       if (MO.isDef())
         defsReg = true;

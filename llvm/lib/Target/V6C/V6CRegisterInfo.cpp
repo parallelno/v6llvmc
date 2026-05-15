@@ -23,6 +23,12 @@ using namespace llvm;
 
 V6CRegisterInfo::V6CRegisterInfo() : V6CGenRegisterInfo(/*RA=*/0) {}
 
+static void markXchgUseUndef(MachineInstr *XchgMI, Register Reg) {
+  if (MachineOperand *MO = XchgMI->findRegisterUseOperand(Reg,
+                                                          /*isKill=*/false))
+    MO->setIsUndef(true);
+}
+
 const MCPhysReg *
 V6CRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   // Per design §6.1: no callee-saved registers — all are caller-saved.
@@ -217,10 +223,14 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
         if (HLDead) {
           BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
               .addGlobalAddress(GV, StaticOffset);
-          BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+          MachineInstr *XchgMI =
+              BuildMI(MBB, II, DL, TII.get(V6C::XCHG)).getInstr();
+          markXchgUseUndef(XchgMI, V6C::DE);
         } else {
           // XCHG; LHLD addr; XCHG (24cc, 5B)
-          BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
+          MachineInstr *FirstXchg =
+              BuildMI(MBB, II, DL, TII.get(V6C::XCHG)).getInstr();
+          markXchgUseUndef(FirstXchg, V6C::DE);
           BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
               .addGlobalAddress(GV, StaticOffset);
           BuildMI(MBB, II, DL, TII.get(V6C::XCHG));
@@ -285,10 +295,7 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
       // the pseudo's Defs so it may be clobbered.
       MachineInstr *MIB =
           BuildMI(MBB, II, DL, TII.get(V6C::XCHG)).getInstr();
-      for (MachineOperand &MO : MIB->implicit_operands()) {
-        if (MO.isReg() && MO.getReg() == V6C::DE && MO.isUse())
-          MO.setIsUndef(true);
-      }
+      markXchgUseUndef(MIB, V6C::DE);
     } else if (DstReg == V6C::BC) {
       // Copy HL → BC (HL is dead after this pseudo by virtue of being in Defs).
       BuildMI(MBB, II, DL, TII.get(V6C::MOVrr))

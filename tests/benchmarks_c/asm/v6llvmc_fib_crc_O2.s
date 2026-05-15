@@ -8,8 +8,8 @@ main:                                   ; @main
 ; %bb.0:
 	XRA	A
 	STA	__v6c_a.main
-	MOV	E, A
-	INR	A
+	MVI	E, 0
+	MVI	A, 1
 	STA	__v6c_a.main+1
 	LDA	__v6c_a.main
 	;--- V6C_BUILD_PAIR ---
@@ -114,7 +114,7 @@ main:                                   ; @main
 	LXI	D, 0
 	;--- V6C_SRL16 ---
 	MOV	E, D
-	MOV	D, B
+	MVI	D, 0
 	;--- V6C_XOR16 ---
 	MOV	A, L
 	XRA	E

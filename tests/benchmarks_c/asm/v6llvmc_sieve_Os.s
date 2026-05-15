@@ -76,7 +76,7 @@ main:                                   ; @main
 	MOV	A, L
 	JNZ	.LBB15_7
 ; %bb.6:                                ;   in Loop: Header=BB15_5 Depth=2
-	INR	A
+	MVI	A, 1
 .LBB15_7:                               ;   in Loop: Header=BB15_5 Depth=2
 	;--- V6C_BUILD_PAIR ---
 	MOV	H, L
@@ -141,12 +141,11 @@ main:                                   ; @main
 .LLo61_3:
 	LXI	B, 0
 	;--- V6C_ADD16 ---
-	MOV	A, C
-	ADD	L
-	MOV	C, A
-	MOV	A, B
-	ADC	H
-	MOV	B, A
+	PUSH	H
+	DAD	B
+	MOV	B, H
+	MOV	C, L
+	POP	H
 	;--- V6C_SPILL16 ---
 	PUSH	H
 	MOV	L, C
@@ -186,7 +185,7 @@ main:                                   ; @main
 	XCHG
 	;--- V6C_SRL16 ---
 	MOV	L, D
-	MOV	H, A
+	MVI	H, 0
 	;--- V6C_XOR16 ---
 	MOV	A, L
 	XRA	E

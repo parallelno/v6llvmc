@@ -219,7 +219,7 @@ static bool isRegDeadAfter(MachineBasicBlock &MBB,
     for (const MachineOperand &MO : MI->operands()) {
       if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
         continue;
-      if (MO.isUse())
+      if (MO.isUse() && !MO.isUndef())
         usesReg = true;
       if (MO.isDef())
         defsReg = true;
@@ -253,6 +253,46 @@ static bool isRedundantZeroTest(const MachineInstr &MI) {
       MI.getOperand(1).isImm() && MI.getOperand(1).getImm() == 0)
     return true;
   return false;
+}
+
+static bool isRegLiveBefore(MachineBasicBlock &MBB,
+                            MachineBasicBlock::iterator I, Register Reg,
+                            const TargetRegisterInfo *TRI) {
+  while (I != MBB.begin()) {
+    --I;
+    bool FoundDef = false;
+    bool FoundClobber = false;
+    bool FoundKilledUse = false;
+    for (const MachineOperand &MO : I->operands()) {
+      if (MO.isReg() && MO.isDef() && MO.getReg().isPhysical() &&
+          TRI->regsOverlap(MO.getReg(), Reg))
+        FoundDef = true;
+      else if (MO.isReg() && MO.isUse() && MO.isKill() &&
+               MO.getReg().isPhysical() && TRI->regsOverlap(MO.getReg(), Reg))
+        FoundKilledUse = true;
+      else if (MO.isRegMask() && MO.clobbersPhysReg(Reg))
+        FoundClobber = true;
+    }
+    if (FoundDef)
+      return true;
+    if (FoundKilledUse)
+      return false;
+    if (FoundClobber)
+      return false;
+  }
+  for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
+       ++AI) {
+    if (MBB.isLiveIn(*AI))
+      return true;
+  }
+  return false;
+}
+
+static void markRegUsesUndef(MachineInstr *MI, Register Reg) {
+  for (MachineOperand &MO : MI->operands()) {
+    if (MO.isReg() && MO.isUse() && MO.getReg() == Reg)
+      MO.setIsUndef(true);
+  }
 }
 
 /// Return true if MI is a DCR r or INR r instruction.
@@ -426,9 +466,13 @@ bool V6CPeephole::foldXraCmpZeroTest(MachineBasicBlock &MBB) {
       continue;
 
     // Replace MOV A, r with XRA A.
-    BuildMI(MBB, MovMI, MovMI.getDebugLoc(), TII.get(V6C::XRAr), V6C::A)
-        .addReg(V6C::A)
-        .addReg(V6C::A);
+    MachineInstr *XraMI =
+        BuildMI(MBB, MovMI, MovMI.getDebugLoc(), TII.get(V6C::XRAr), V6C::A)
+            .addReg(V6C::A)
+            .addReg(V6C::A)
+            .getInstr();
+    if (!isRegLiveBefore(MBB, XraMI->getIterator(), V6C::A, TRI))
+      markRegUsesUndef(XraMI, V6C::A);
     // Replace ORA A with CMP r.
     BuildMI(MBB, *OraIt, OraIt->getDebugLoc(), TII.get(V6C::CMPr))
         .addReg(V6C::A)
@@ -949,9 +993,13 @@ bool V6CPeephole::foldMviZeroToXraA(MachineBasicBlock &MBB) {
     if (!isRegDeadAfter(MBB, MI.getIterator(), V6C::FLAGS, TRI))
       continue;
 
-    BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(V6C::XRAr), V6C::A)
-        .addReg(V6C::A)
-        .addReg(V6C::A);
+    MachineInstr *XraMI = BuildMI(MBB, MI, MI.getDebugLoc(), TII.get(V6C::XRAr),
+                                  V6C::A)
+                              .addReg(V6C::A)
+                              .addReg(V6C::A)
+                              .getInstr();
+    if (!isRegLiveBefore(MBB, XraMI->getIterator(), V6C::A, TRI))
+      markRegUsesUndef(XraMI, V6C::A);
     MI.eraseFromParent();
     Changed = true;
   }

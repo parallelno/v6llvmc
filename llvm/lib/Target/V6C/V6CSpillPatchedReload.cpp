@@ -96,6 +96,45 @@ static bool isHLRelated(unsigned Reg) {
   return Reg == V6C::HL || Reg == V6C::H || Reg == V6C::L;
 }
 
+static bool isRegLiveBefore(MachineBasicBlock &MBB,
+                            MachineBasicBlock::iterator I, unsigned Reg,
+                            const TargetRegisterInfo *TRI) {
+  while (I != MBB.begin()) {
+    --I;
+    bool FoundDef = false;
+    bool FoundKilledUse = false;
+    bool FoundClobber = false;
+    for (const MachineOperand &MO : I->operands()) {
+      if (MO.isReg() && MO.isDef() && MO.getReg().isPhysical() &&
+          TRI->regsOverlap(MO.getReg(), Reg))
+        FoundDef = true;
+      else if (MO.isReg() && MO.isUse() && MO.isKill() &&
+               MO.getReg().isPhysical() && TRI->regsOverlap(MO.getReg(), Reg))
+        FoundKilledUse = true;
+      else if (MO.isRegMask() && MO.clobbersPhysReg(Reg))
+        FoundClobber = true;
+    }
+    if (FoundDef)
+      return true;
+    if (FoundKilledUse)
+      return false;
+    if (FoundClobber)
+      return false;
+  }
+  for (MCRegAliasIterator AI(Reg, TRI, /*IncludeSelf=*/true); AI.isValid();
+       ++AI) {
+    if (MBB.isLiveIn(*AI))
+      return true;
+  }
+  return false;
+}
+
+static void markXchgUseUndef(MachineInstr *XchgMI, Register Reg) {
+  if (MachineOperand *MO = XchgMI->findRegisterUseOperand(Reg,
+                                                          /*isKill=*/false))
+    MO->setIsUndef(true);
+}
+
 /// Return true if physical register Reg is dead after MI. Scans forward
 /// to end of MBB, then checks successor live-ins.
 ///
@@ -307,9 +346,8 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
         // SHLD <Sym[i], MO_PATCH_IMM> per winner. Kill HL only on the
         // last SHLD (HL must remain live across earlier SHLDs).
         for (size_t si = 0; si < Syms.size(); ++si) {
-          bool Kill = IsKill && (si + 1 == Syms.size());
           BuildMI(*MBB, Spill, DL, TII.get(V6C::SHLD))
-              .addReg(V6C::HL, getKillRegState(Kill))
+              .addReg(V6C::HL)
               .addSym(Syms[si], V6CII::MO_PATCH_IMM);
         }
       } else if (SrcReg == V6C::DE) {
@@ -318,15 +356,23 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
         // rule used by the classical DE spill in
         // V6CRegisterInfo::eliminateFrameIndex.
         bool SkipTrailing = IsKill && HLDead;
-        BuildMI(*MBB, Spill, DL, TII.get(V6C::XCHG));
+        bool HLLiveBefore = isRegLiveBefore(*MBB, Spill->getIterator(),
+                                            V6C::HL, TRI);
+        MachineInstr *FirstXchg =
+            BuildMI(*MBB, Spill, DL, TII.get(V6C::XCHG)).getInstr();
+        if (!HLLiveBefore)
+          markXchgUseUndef(FirstXchg, V6C::HL);
         for (size_t si = 0; si < Syms.size(); ++si) {
-          bool Kill = SkipTrailing && (si + 1 == Syms.size());
           BuildMI(*MBB, Spill, DL, TII.get(V6C::SHLD))
-              .addReg(V6C::HL, getKillRegState(Kill))
+              .addReg(V6C::HL)
               .addSym(Syms[si], V6CII::MO_PATCH_IMM);
         }
-        if (!SkipTrailing)
-          BuildMI(*MBB, Spill, DL, TII.get(V6C::XCHG));
+        if (!SkipTrailing) {
+          MachineInstr *SecondXchg =
+              BuildMI(*MBB, Spill, DL, TII.get(V6C::XCHG)).getInstr();
+          if (!HLLiveBefore)
+            markXchgUseUndef(SecondXchg, V6C::DE);
+        }
       } else {
         assert(SrcReg == V6C::BC && "Stage 5 src must be HL/DE/BC");
         // [PUSH H;] MOV L,C; MOV H,B; SHLD ... ; [POP H]. PUSH/POP HL
@@ -344,9 +390,8 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
           // HL is restored by the trailing POP H (when emitted) or
           // dead after the last SHLD (when HLDead skipped PUSH/POP).
           // Kill on the last SHLD only when no POP follows.
-          bool Kill = HLDead && (si + 1 == Syms.size());
           BuildMI(*MBB, Spill, DL, TII.get(V6C::SHLD))
-              .addReg(V6C::HL, getKillRegState(Kill))
+            .addReg(V6C::HL)
               .addSym(Syms[si], V6CII::MO_PATCH_IMM);
         }
         if (!HLDead)
@@ -409,7 +454,11 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
           // LHLD ... ; XCHG        (24cc, 4B)
           BuildMI(*MBB, R, DL, TII.get(V6C::LHLD), V6C::HL)
               .addSym(Syms[0], V6CII::MO_PATCH_IMM);
-          BuildMI(*MBB, R, DL, TII.get(V6C::XCHG));
+          MachineInstr *XchgMI =
+            BuildMI(*MBB, R, DL, TII.get(V6C::XCHG)).getInstr();
+          if (MachineOperand *MO = XchgMI->findRegisterUseOperand(
+              V6C::DE, /*isKill=*/false))
+          MO->setIsUndef(true);
         }
       } else {
         assert(Dst == V6C::BC && "Stage 3 reload dst must be HL/DE/BC");
