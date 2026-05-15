@@ -111,6 +111,6 @@
 1.600673e-01 store8imm-shape-redesign.ll
 1.330717e-01 peephole-mvi-alu-imm-fold.ll
 8.360028e-02 cmp8-zero-inr-dcr.ll
-1.350019e-01 acc-add-commute-ra.ll
-1.370044e-01 dad-pointer-add-livein.ll
-1.400034e-01 dad-preserve-live-hl.ll
+1.270721e-01 acc-add-commute-ra.ll
+1.270730e-01 dad-pointer-add-livein.ll
+1.416228e-01 dad-preserve-live-hl.ll

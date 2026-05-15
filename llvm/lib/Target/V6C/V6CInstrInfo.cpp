@@ -451,9 +451,14 @@ static bool isFlagsDefDead(const MachineInstr &MI) {
   return true;
 }
 
-/// Return true if Reg has a visible value before iterator I in MBB.
-/// Backward scan: the most recent event wins — an explicit def keeps Reg
-/// live, while a regmask clobber (e.g. from a CALL) renders it undef.
+/// Return true if Reg has a verifier-visible defined value before iterator I.
+/// Backward scan: the most recent event wins. An explicit def makes Reg
+/// available; a killed use, regmask clobber, or lack of live-in means a later
+/// instruction must not read Reg unless the read is marked undef.
+///
+/// This is used only for verifier annotations such as XCHG/XRA undef uses.
+/// It does not prove the old value is semantically needed, only whether MIR may
+/// legally model a read of that physical register at this point.
 static bool isRegLiveBefore(MachineBasicBlock &MBB,
                             MachineBasicBlock::iterator I, Register Reg,
                             const TargetRegisterInfo *TRI) {
@@ -491,6 +496,10 @@ static void markXchgUseUndef(MachineInstr *XchgMI, Register Reg) {
     MO->setIsUndef(true);
 }
 
+/// Mark all explicit uses of Reg as undef. This is for zero/idempotent idioms
+/// where the instruction encoding names Reg as an input, but the old value is
+/// irrelevant to the result. Example: XRA A always produces zero, so an
+/// undefined incoming A is legal once the MIR operands are annotated.
 static void markRegUsesUndef(MachineInstr *MI, Register Reg) {
   for (MachineOperand &MO : MI->operands()) {
     if (MO.isReg() && MO.isUse() && MO.getReg() == Reg)
@@ -499,7 +508,14 @@ static void markRegUsesUndef(MachineInstr *MI, Register Reg) {
 }
 
 /// Return true if \p Reg is not used by any instruction between \p After
-/// (exclusive) and the next redefinition or end of \p MBB.
+/// (exclusive) and the next overlapping redefinition or end of \p MBB.
+///
+/// Important pair-register caveat: when Reg is HL/DE/BC this helper answers
+/// "is the old overlapping value killed before the next overlapping read?" A
+/// def of L therefore makes the old HL pair value dead even if H is later read
+/// as an independent i8 value. Do not use this directly to decide whether it is
+/// safe to clobber an entire pair while preserving unrelated live halves; check
+/// the halves explicitly, as V6C_DAD does for H and L below.
 static bool isRegDeadAfter(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator After,
                            Register Reg,
@@ -533,7 +549,12 @@ static bool isRegDeadAfter(MachineBasicBlock &MBB,
 
 /// Check if a physical register is dead after a given instruction.
 /// Scans forward from MI (exclusive) to the end of MBB.
-/// Returns true if no read before redef, and Reg not in any successor livein.
+/// Returns true if no read before an overlapping redef, and Reg is not in any
+/// successor live-in set.
+///
+/// Same caveat as isRegDeadAfter(): for a pair register this is old-pair-value
+/// liveness, not proof that both physical halves may be clobbered. Use separate
+/// H/L, D/E, or B/C checks when the expansion can destroy both halves.
 static bool isRegDeadAtMI(unsigned Reg, const MachineInstr &MI,
                           MachineBasicBlock &MBB,
                           const TargetRegisterInfo *TRI) {
@@ -745,6 +766,11 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       BaseReg = RhsReg;
       AddReg = LhsReg;
     }
+    // V6C_DAD physically writes the whole HL pair. The helper's pair query
+    // would answer whether the old 16-bit HL value is dead; that is too weak
+    // here because a later def of L can kill the old pair value while H is
+    // still live as an independent i8. Since skipping preservation clobbers
+    // both halves, require both H and L to be dead separately.
     bool HLDead = isRegDeadAfter(MBB, MI.getIterator(), V6C::H, &RI) &&
             isRegDeadAfter(MBB, MI.getIterator(), V6C::L, &RI);
     bool PreserveHL = DstReg != V6C::HL && !HLDead;

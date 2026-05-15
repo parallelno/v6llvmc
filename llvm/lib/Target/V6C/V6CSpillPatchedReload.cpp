@@ -96,6 +96,10 @@ static bool isHLRelated(unsigned Reg) {
   return Reg == V6C::HL || Reg == V6C::H || Reg == V6C::L;
 }
 
+/// Return true when Reg can be read at I without an undef annotation. O61 uses
+/// XCHG as a routing instruction; sometimes the swapped-in old HL/DE value is
+/// intentionally discarded. In those cases, this helper decides whether the
+/// implicit XCHG use needs an undef marker for the MIR verifier.
 static bool isRegLiveBefore(MachineBasicBlock &MBB,
                             MachineBasicBlock::iterator I, unsigned Reg,
                             const TargetRegisterInfo *TRI) {

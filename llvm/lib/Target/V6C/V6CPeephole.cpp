@@ -209,7 +209,12 @@ bool V6CPeephole::eliminateTailCall(MachineBasicBlock &MBB) {
 
 /// Check if a physical register is dead (not read) after iterator I.
 /// Returns true if no instruction between I (exclusive) and the end of the
-/// block reads Reg before redefining it, and no successor has Reg as a livein.
+/// block reads Reg before an overlapping redef, and no successor has Reg as a
+/// live-in.
+///
+/// Pair-register caveat: a def of one half kills the old pair value, but does
+/// not prove the other half is safe to clobber. Whole-pair preservation checks
+/// need explicit half-wise reasoning.
 static bool isRegDeadAfter(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator I,
                            unsigned Reg,
@@ -255,6 +260,10 @@ static bool isRedundantZeroTest(const MachineInstr &MI) {
   return false;
 }
 
+/// Return true when Reg can be read at I without an undef annotation. This is
+/// used before replacing MVI A,0 or MOV A,r with XRA A; XRA A's old A input is
+/// irrelevant, but the MIR verifier still needs the uses marked undef if A is
+/// not live here.
 static bool isRegLiveBefore(MachineBasicBlock &MBB,
                             MachineBasicBlock::iterator I, Register Reg,
                             const TargetRegisterInfo *TRI) {

@@ -15,6 +15,14 @@
 
 using namespace llvm;
 
+/// Return true if Reg has no non-undef overlapping use before an overlapping
+/// def, and is not live into a successor.
+///
+/// Pair-register caveat: when called with HL/DE/BC this tracks liveness of the
+/// old pair value, not independent liveness of both 8-bit halves. A later def
+/// of L kills the old HL value even if H is still live as a separate byte. Any
+/// expansion that wants to clobber a whole pair without restoring it must check
+/// the halves explicitly instead of relying on a pair query here.
 bool llvm::isRegDeadAfterMI(unsigned Reg, const MachineInstr &MI,
                             MachineBasicBlock &MBB,
                             const TargetRegisterInfo *TRI) {

@@ -59,11 +59,14 @@ static bool isMovReg(const MachineInstr &MI, unsigned Dst, unsigned Src) {
          MI.getOperand(1).getReg() == Src;
 }
 
-/// Check if a physical register (or any alias) holds a defined value at
-/// iterator I in the given MBB. Backward scan from I toward block start:
-/// the most recent event wins — an explicit def keeps Reg live, while a
-/// regmask clobber (e.g. from a CALL) renders Reg undef from that point
-/// onward. If no event is seen, fall back to livein status.
+/// Check if a physical register (or any alias) has a verifier-visible defined
+/// value at iterator I in the given MBB. Backward scan from I toward block
+/// start: the most recent event wins. An explicit def makes Reg readable; a
+/// killed use or regmask clobber makes a later read invalid unless annotated
+/// undef. If no event is seen, fall back to live-in status.
+///
+/// This is about MIR legality of XCHG's implicit reads, not about whether the
+/// old value is semantically observable after the optimized sequence.
 static bool isRegLiveBefore(MachineBasicBlock &MBB,
                             MachineBasicBlock::iterator I,
                             unsigned Reg,
@@ -114,7 +117,11 @@ static void markUndefIfNotLive(MachineInstr *XchgMI, MachineBasicBlock &MBB,
 
 /// Check if a physical register is dead (not read) after iterator I.
 /// Returns true if no instruction between I (exclusive) and the end of the
-/// block reads Reg before redefining it, and no successor has Reg as a livein.
+/// block reads Reg before an overlapping redef, and no successor has Reg as a
+/// live-in.
+///
+/// For pair registers this answers whether the old pair value is dead. It is
+/// not a general proof that both halves can be clobbered independently.
 static bool isRegDeadAfter(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator I,
                            unsigned Reg,
