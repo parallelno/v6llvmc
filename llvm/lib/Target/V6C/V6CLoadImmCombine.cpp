@@ -452,8 +452,8 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
       MBB.getParent()->getSubtarget().getRegisterInfo();
 
   initFromPredecessor(MBB);
-  seedPredecessorValues(MBB);
   dropEntryValuesNotLiveIn(MBB, TRI);
+  seedPredecessorValues(MBB);
 
   for (MachineInstr &MI : llvm::make_early_inc_range(MBB)) {
     invalidateUndefUses(MI);
@@ -467,7 +467,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
       // must be treated as opaque constant definers.
       if (!isPlainImm(MI.getOperand(1))) {
         invalidate(DstReg);
-        invalidateKilledUses(MI);
         continue;
       }
       int64_t Imm = MI.getOperand(1).getImm() & 0xFF;
@@ -518,7 +517,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
       // No optimization — keep MVI and record value.
       if (DstIdx >= 0)
         KnownVal[DstIdx] = Imm;
-      invalidateKilledUses(MI);
       continue;
     }
 
@@ -534,7 +532,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
         else
           KnownVal[DstIdx] = std::nullopt;
       }
-      invalidateKilledUses(MI);
       continue;
     }
 
@@ -542,7 +539,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
     if (Opc == V6C::MOVrM) {
       MCRegister DstReg = MI.getOperand(0).getReg();
       invalidate(DstReg);
-      invalidateKilledUses(MI);
       continue;
     }
 
@@ -577,7 +573,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
         // Non-immediate LXI (global address) — invalidate pair.
         invalidateWithSubSuper(PairReg);
       }
-      invalidateKilledUses(MI);
       continue;
     }
 
@@ -589,7 +584,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
         KnownVal[Idx] = ((*KnownVal[Idx]) + 1) & 0xFF;
       else if (Idx >= 0)
         KnownVal[Idx] = std::nullopt;
-      invalidateKilledUses(MI);
       continue;
     }
     if (Opc == V6C::DCRr) {
@@ -599,7 +593,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
         KnownVal[Idx] = ((*KnownVal[Idx]) - 1) & 0xFF;
       else if (Idx >= 0)
         KnownVal[Idx] = std::nullopt;
-      invalidateKilledUses(MI);
       continue;
     }
 
@@ -607,7 +600,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
     if (Opc == V6C::XRAr && MI.getOperand(2).getReg() == V6C::A) {
       int AIdx = regIndex(V6C::A);
       KnownVal[AIdx] = 0;
-      invalidateKilledUses(MI);
       continue;
     }
 
@@ -622,7 +614,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
     case V6C::RLC: case V6C::RRC: case V6C::RAL: case V6C::RAR:
     case V6C::CMA: case V6C::DAA:
       invalidate(V6C::A);
-      invalidateKilledUses(MI);
       continue;
     default:
       break;
@@ -631,7 +622,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
     // --- LDA / LDAX: write A ---
     if (Opc == V6C::LDA || Opc == V6C::LDAX) {
       invalidate(V6C::A);
-      invalidateKilledUses(MI);
       continue;
     }
 
@@ -642,7 +632,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
       // PSW writes A too.
       if (Reg == V6C::PSW)
         invalidate(V6C::A);
-      invalidateKilledUses(MI);
       continue;
     }
 
@@ -650,7 +639,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
     if (Opc == V6C::INX || Opc == V6C::DCX) {
       MCRegister Reg = MI.getOperand(0).getReg();
       invalidateWithSubSuper(Reg);
-      invalidateKilledUses(MI);
       continue;
     }
 
@@ -660,14 +648,12 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
       int HIdx = regIndex(V6C::H), LIdx = regIndex(V6C::L);
       std::swap(KnownVal[DIdx], KnownVal[HIdx]);
       std::swap(KnownVal[EIdx], KnownVal[LIdx]);
-      invalidateKilledUses(MI);
       continue;
     }
 
     // --- CALL: invalidate all (callee may clobber everything) ---
     if (MI.isCall()) {
       invalidateAll();
-      invalidateKilledUses(MI);
       continue;
     }
 
@@ -680,7 +666,6 @@ bool V6CLoadImmCombine::processBlock(MachineBasicBlock &MBB) {
     if (const MCInstrDesc &Desc = MI.getDesc();
         Desc.hasImplicitDefOfPhysReg(V6C::A))
       invalidate(V6C::A);
-    invalidateKilledUses(MI);
   }
 
   return Changed;

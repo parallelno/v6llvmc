@@ -166,9 +166,9 @@ public:
   void addPostRegAlloc() override {
     if (getV6CStaticStackEnabled())
       addPass(createV6CStaticStackAllocPass());
-    addPass(createV6CSpillForwardingPass());
     if (getV6CSpillPatchedReloadEnabled())
       addPass(createV6CSpillPatchedReloadPass());
+    addPass(createV6CSpillForwardingPass());
   }
 
   void addPreEmitPass() override {

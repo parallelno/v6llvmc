@@ -9,8 +9,8 @@
 ;
 ; The natural ISel paths already select ALU-immediate forms when an
 ; operand is a compile-time constant. The fold targets the residual
-; post-RA O61 patched-reload landing pads, where the spill emits
-;   STA  .LLo61_0+1
+; post-RA O61 patched-reload landing pads, where the spill writes to
+;   .LLo61_0+1  (STA if A is dead/Shape-B; LXI H+MOV M if A alive/Shape-C)
 ; and the reload site emits
 ;   .LLo61_0:
 ;     MVI  R, 0
@@ -35,13 +35,13 @@ target triple = "i8080-unknown-v6c"
 ; fold target.
 ;
 ; CHECK-LABEL: fold_spill:
-; CHECK:       STA{{.*}}.LLo61_0+1
+; CHECK:       {{.*}}.LLo61_0+1
 ; CHECK:       .LLo61_0:
 ; CHECK-NEXT:  XRI     0
 ; CHECK-NOT:   MVI     {{[BCDEHL]}}, 0
 ;
 ; DIS-LABEL:   fold_spill:
-; DIS:         STA{{.*}}.LLo61_0+1
+; DIS:         {{.*}}.LLo61_0+1
 ; DIS:         .LLo61_0:
 ; DIS-NEXT:    MVI     {{[BCDEHL]}}, 0
 ; DIS-NEXT:    XRA     {{[BCDEHL]}}

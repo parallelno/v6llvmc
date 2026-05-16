@@ -21,8 +21,7 @@ git pull --ff-only origin main
 
 # 2. Sanity-check the build and tests locally.
 cmd /c '"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=amd64 >nul 2>&1 && ninja -C llvm-build clang llc'
-python tests\run_golden_tests.py
-python tests\benchmarks_c\run_benchmarks.py
+python tests\run_all.py
 
 # 3. Pick the version (UTC date).
 $version = "v$(Get-Date -Format 'yyyy.MM.dd' -AsUTC)"
