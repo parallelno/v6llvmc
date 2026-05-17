@@ -93,6 +93,17 @@ public:
   EVT getSetCCResultType(const DataLayout &DL, LLVMContext &C,
                          EVT VT) const override;
 
+  /// i8080 has no barrel shifter; multi-bit shifts cost ~4cc per bit (post-RA
+  /// expansion of V6CISD::SRA16/SHL16 into RLC/RAR loops). Suppress
+  /// DAGCombiner folds that rewrite `(x & pow2) ? C : 0` style selects into
+  /// shift+and idioms, because the resulting wide shift is dramatically more
+  /// expensive than the branch produced by LowerSELECT_CC.
+  bool shouldAvoidTransformToShift(EVT VT, unsigned Amount) const override {
+    if (VT == MVT::i8 || VT == MVT::i16)
+      return Amount >= 2;
+    return false;
+  }
+
 private:
   SDValue LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv,
                                bool isVarArg,
