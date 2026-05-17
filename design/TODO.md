@@ -22,6 +22,8 @@ why didn't you use wrapper + body approach for non inline funcs?
 ============================
 why you used volatile after __asm__ ?
 ============================
+I'm realizing the V6CLoopPointerInduction pass does the opposite of what I'm seeing in the assembly — it converts base+counter to a running pointer, but the code has both a separate counter being decremented and running pointers being incremented. The IR after LSR shows pointer comparison instead of a counter, so something's off with how this pass is transforming the loop structure.
+============================
 From the chat. below your quotes followed by my questions or asks:
 
 >__mulqi3 returns u16, not u8 — libgcc divergence accepted (V6C is freestanding). Documented as a risk in §5.

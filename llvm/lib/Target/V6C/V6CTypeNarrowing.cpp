@@ -60,6 +60,11 @@ private:
 
   /// Check if all users of V can work with i8 instead of i16.
   bool allUsersNarrowable(Value *V, Type *NarrowTy);
+
+  /// Try to narrow an i16 loop induction PHI to i8 when its range provably
+  /// fits in 8 bits (constant start in [0,255], step ±1, exit on equality
+  /// with a constant that fits in i8, including via inttoptr+icmp-null).
+  bool tryNarrowLoopIV(PHINode *PN);
 };
 
 } // end anonymous namespace
@@ -190,7 +195,168 @@ bool V6CTypeNarrowing::runOnFunction(Function &F) {
   for (ZExtInst *ZExt : ZExts)
     Changed |= tryNarrowZext(ZExt);
 
+  // Collect i16 PHI nodes that look like loop induction variables and try
+  // to narrow them to i8. LSR commonly emits a `phi i16 [..., C]` down-counter
+  // even when C fits in a byte, which costs ~14cc per iter on the 8080
+  // (DCX BC + MOV A,B + ORA C + JNZ) vs ~4cc for an i8 counter (DCR r + JNZ).
+  SmallVector<PHINode *, 8> I16Phis;
+  for (BasicBlock &BB : F) {
+    for (PHINode &PN : BB.phis()) {
+      if (PN.getType()->isIntegerTy(16))
+        I16Phis.push_back(&PN);
+    }
+  }
+  for (PHINode *PN : I16Phis)
+    Changed |= tryNarrowLoopIV(PN);
+
   return Changed;
+}
+
+bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
+  if (PN->getNumIncomingValues() != 2)
+    return false;
+
+  // Find constant init and recurrence step.
+  ConstantInt *InitC = nullptr;
+  Instruction *StepI = nullptr;
+  BasicBlock *PreBB = nullptr;
+  BasicBlock *LatchBB = nullptr;
+  for (unsigned i = 0; i < 2; ++i) {
+    Value *V = PN->getIncomingValue(i);
+    BasicBlock *BB = PN->getIncomingBlock(i);
+    if (auto *CI = dyn_cast<ConstantInt>(V)) {
+      if (InitC)
+        return false; // two constant operands -> not a typical IV
+      InitC = CI;
+      PreBB = BB;
+    } else if (auto *I = dyn_cast<Instruction>(V)) {
+      if (StepI)
+        return false;
+      StepI = I;
+      LatchBB = BB;
+    } else {
+      return false;
+    }
+  }
+  if (!InitC || !StepI || !PreBB || !LatchBB)
+    return false;
+  if (InitC->getValue().getActiveBits() > 8)
+    return false;
+
+  // Recurrence must be `add i16 %PN, K` with K = -1 (down-counter to zero).
+  // Restricting to step -1 avoids worrying about overflow in the i8 domain:
+  // start ≤ 255, decrementing by 1 stays in [0, 255] until the exit test.
+  auto *AddOp = dyn_cast<BinaryOperator>(StepI);
+  if (!AddOp || AddOp->getOpcode() != Instruction::Add)
+    return false;
+  if (AddOp->getParent() != LatchBB)
+    return false;
+  Value *AddLHS = AddOp->getOperand(0);
+  Value *AddRHS = AddOp->getOperand(1);
+  ConstantInt *StepC = nullptr;
+  if (AddLHS == PN)
+    StepC = dyn_cast<ConstantInt>(AddRHS);
+  else if (AddRHS == PN)
+    StepC = dyn_cast<ConstantInt>(AddLHS);
+  else
+    return false;
+  if (!StepC || StepC->getSExtValue() != -1)
+    return false;
+
+  // PN's only user (besides the backedge from AddOp) must be... well, AddOp.
+  for (User *U : PN->users()) {
+    if (U != AddOp)
+      return false;
+  }
+
+  // AddOp's users (apart from feeding back into PN) must be one of:
+  //   * icmp eq/ne i16 %add, <constant fitting in i8>
+  //   * inttoptr i16 %add to ptr, followed only by icmp eq/ne ptr %., null
+  SmallVector<ICmpInst *, 2> CmpsDirect;
+  SmallVector<ICmpInst *, 2> CmpsViaPtr;
+  SmallVector<IntToPtrInst *, 2> IntToPtrs;
+  for (User *U : AddOp->users()) {
+    if (U == PN)
+      continue;
+    if (auto *Cmp = dyn_cast<ICmpInst>(U)) {
+      if (!Cmp->isEquality())
+        return false;
+      Value *Other = Cmp->getOperand(0) == AddOp ? Cmp->getOperand(1)
+                                                  : Cmp->getOperand(0);
+      auto *OtherC = dyn_cast<ConstantInt>(Other);
+      if (!OtherC || OtherC->getValue().getActiveBits() > 8)
+        return false;
+      CmpsDirect.push_back(Cmp);
+      continue;
+    }
+    if (auto *I2P = dyn_cast<IntToPtrInst>(U)) {
+      for (User *UU : I2P->users()) {
+        auto *Cmp = dyn_cast<ICmpInst>(UU);
+        if (!Cmp || !Cmp->isEquality())
+          return false;
+        Value *Other = Cmp->getOperand(0) == I2P ? Cmp->getOperand(1)
+                                                  : Cmp->getOperand(0);
+        if (!isa<ConstantPointerNull>(Other))
+          return false;
+        CmpsViaPtr.push_back(Cmp);
+      }
+      IntToPtrs.push_back(I2P);
+      continue;
+    }
+    return false;
+  }
+
+  // All clear — rewrite.
+  Type *I8Ty = Type::getInt8Ty(PN->getContext());
+
+  // New i8 PHI in the same header, inserted before the old PN.
+  IRBuilder<> PHBuilder(PN);
+  PHINode *NewPN = PHBuilder.CreatePHI(I8Ty, 2, PN->getName() + ".narrow");
+  NewPN->addIncoming(
+      ConstantInt::get(I8Ty, InitC->getZExtValue() & 0xff), PreBB);
+
+  // New i8 decrement at the same point as the old AddOp.
+  IRBuilder<> AddBuilder(AddOp);
+  Value *NewAdd = AddBuilder.CreateAdd(
+      NewPN, ConstantInt::getSigned(I8Ty, -1),
+      AddOp->getName() + ".narrow");
+  NewPN->addIncoming(NewAdd, LatchBB);
+
+  // Rewrite direct icmp users.
+  for (ICmpInst *Cmp : CmpsDirect) {
+    IRBuilder<> B(Cmp);
+    Value *Other = Cmp->getOperand(0) == AddOp ? Cmp->getOperand(1)
+                                                : Cmp->getOperand(0);
+    auto *OtherC = cast<ConstantInt>(Other);
+    Value *NewOther =
+        ConstantInt::get(I8Ty, OtherC->getZExtValue() & 0xff);
+    Value *NewCmp = (Cmp->getOperand(0) == AddOp)
+                        ? B.CreateICmp(Cmp->getPredicate(), NewAdd, NewOther)
+                        : B.CreateICmp(Cmp->getPredicate(), NewOther, NewAdd);
+    Cmp->replaceAllUsesWith(NewCmp);
+    Cmp->eraseFromParent();
+  }
+
+  // Rewrite inttoptr+icmp-null chains to i8 compare against 0.
+  for (ICmpInst *Cmp : CmpsViaPtr) {
+    IRBuilder<> B(Cmp);
+    Value *Zero = ConstantInt::get(I8Ty, 0);
+    Value *NewCmp = B.CreateICmp(Cmp->getPredicate(), NewAdd, Zero);
+    Cmp->replaceAllUsesWith(NewCmp);
+    Cmp->eraseFromParent();
+  }
+  for (IntToPtrInst *I2P : IntToPtrs) {
+    if (I2P->use_empty())
+      I2P->eraseFromParent();
+  }
+
+  // Old AddOp/PN must be dead now — erase.
+  if (!AddOp->use_empty())
+    return true; // shouldn't happen with the checks above, but stay safe.
+  AddOp->eraseFromParent();
+  if (PN->use_empty())
+    PN->eraseFromParent();
+  return true;
 }
 
 FunctionPass *llvm::createV6CTypeNarrowingPass() {
