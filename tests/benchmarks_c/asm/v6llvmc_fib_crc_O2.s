@@ -8,8 +8,8 @@ main:                                   ; @main
 ; %bb.0:
 	XRA	A
 	STA	__v6c_a.main
-	MVI	E, 0
-	MVI	A, 1
+	MOV	E, A
+	INR	A
 	STA	__v6c_a.main+1
 	LDA	__v6c_a.main
 	;--- V6C_BUILD_PAIR ---
@@ -69,14 +69,6 @@ main:                                   ; @main
 	XRA	H
 	MOV	H, A
 	LXI	B, 8
-	JMP	.LBB15_2
-.LBB15_4:                               ;   in Loop: Header=BB15_2 Depth=2
-	;--- V6C_DCX16 ---
-	DCX	B
-	;--- V6C_BR_CC16_IMM ---
-	MOV	A, B
-	ORA	C
-	JZ	.LBB15_5
 .LBB15_2:                               ;   Parent Loop BB15_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	LXI	D, 1
@@ -107,14 +99,20 @@ main:                                   ; @main
 	MOV	A, H
 	XRA	D
 	MOV	H, A
-	JMP	.LBB15_4
-.LBB15_5:                               ;   in Loop: Header=BB15_1 Depth=1
+.LBB15_4:                               ;   in Loop: Header=BB15_2 Depth=2
+	;--- V6C_DCX16 ---
+	DCX	B
+	;--- V6C_BR_CC16_IMM ---
+	MOV	A, B
+	ORA	C
+	JNZ	.LBB15_2
+; %bb.5:                                ;   in Loop: Header=BB15_1 Depth=1
 	;--- V6C_RELOAD16 ---
 .LLo61_1:
 	LXI	D, 0
 	;--- V6C_SRL16 ---
 	MOV	E, D
-	MVI	D, 0
+	MOV	D, B
 	;--- V6C_XOR16 ---
 	MOV	A, L
 	XRA	E
@@ -123,14 +121,6 @@ main:                                   ; @main
 	XRA	D
 	MOV	H, A
 	LXI	B, 8
-	JMP	.LBB15_6
-.LBB15_8:                               ;   in Loop: Header=BB15_6 Depth=2
-	;--- V6C_DCX16 ---
-	DCX	B
-	;--- V6C_BR_CC16_IMM ---
-	MOV	A, B
-	ORA	C
-	JZ	.LBB15_9
 .LBB15_6:                               ;   Parent Loop BB15_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	LXI	D, 1
@@ -161,8 +151,14 @@ main:                                   ; @main
 	MOV	A, H
 	XRA	D
 	MOV	H, A
-	JMP	.LBB15_8
-.LBB15_9:                               ;   in Loop: Header=BB15_1 Depth=1
+.LBB15_8:                               ;   in Loop: Header=BB15_6 Depth=2
+	;--- V6C_DCX16 ---
+	DCX	B
+	;--- V6C_BR_CC16_IMM ---
+	MOV	A, B
+	ORA	C
+	JNZ	.LBB15_6
+; %bb.9:                                ;   in Loop: Header=BB15_1 Depth=1
 	;--- V6C_RELOAD16 ---
 .LLo61_3:
 	LXI	D, 0

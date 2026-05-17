@@ -42,6 +42,13 @@ public:
   }
   const V6CRegisterInfo *getRegisterInfo() const override { return &RegInfo; }
 
+  /// Disable MachineBlockPlacement loop rotation for i8080.
+  /// Loop rotation trades an entry JMP and rearranged intra-loop branches
+  /// for an exit fall-through. On a CPU with no instruction cache, branch
+  /// predictor, or speculation, that trade is always a net loss in both
+  /// bytes and cycles, so we keep loops in their natural top-tested form.
+  bool enableLoopRotationInBlockPlacement() const override { return false; }
+
   void ParseSubtargetFeatures(StringRef CPU, StringRef TuneCPU, StringRef FS);
 };
 

@@ -84,7 +84,6 @@ main:                                   ; @main
 ; %bb.5:
 	;--- V6C_SRL16 ---
 	MOV	E, H
-	MVI	D, 0
 	;--- V6C_XOR16 ---
 	MOV	A, E
 	XRA	L

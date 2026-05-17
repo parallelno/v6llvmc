@@ -44,6 +44,8 @@ main:                                   ; @main
 	XCHG
 	SHLD	.LLo61_1+1
 	SHLD	.LLo61_2+1
+	;--- V6C_RELOAD16 ---
+	LHLD	.LLo61_1+1
 	LXI	D, flags
 	;--- V6C_DAD ---
 	DAD	D
@@ -185,7 +187,7 @@ main:                                   ; @main
 	XCHG
 	;--- V6C_SRL16 ---
 	MOV	L, D
-	MVI	H, 0
+	MOV	H, A
 	;--- V6C_XOR16 ---
 	MOV	A, L
 	XRA	E

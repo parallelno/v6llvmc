@@ -20,14 +20,6 @@ main:                                   ; @main
 	JNZ	.LBB15_1
 ; %bb.2:
 	MVI	L, 0xfe
-	JMP	.LBB15_3
-.LBB15_7:                               ;   in Loop: Header=BB15_3 Depth=1
-	;--- V6C_RELOAD8 ---
-.LLo61_0:
-	MVI	L, 0
-	DCR	L
-	;--- V6C_BRCOND ---
-	JZ	.LBB15_8
 .LBB15_3:                               ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB15_4 Depth 2
 	LXI	B, __v6c_a.main
@@ -35,13 +27,6 @@ main:                                   ; @main
 	MOV	A, L
 	STA	.LLo61_0+1
 	LXI	D, __v6c_a.main
-	JMP	.LBB15_4
-.LBB15_6:                               ;   in Loop: Header=BB15_4 Depth=2
-	DCR	L
-	MOV	B, D
-	MOV	C, E
-	;--- V6C_BRCOND ---
-	JZ	.LBB15_7
 .LBB15_4:                               ;   Parent Loop BB15_3 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	;--- V6C_LOAD8_P ---
@@ -62,8 +47,20 @@ main:                                   ; @main
 	;--- V6C_STORE8_P ---
 	MOV	A, H
 	STAX	B
-	JMP	.LBB15_6
-.LBB15_8:
+.LBB15_6:                               ;   in Loop: Header=BB15_4 Depth=2
+	DCR	L
+	MOV	B, D
+	MOV	C, E
+	;--- V6C_BRCOND ---
+	JNZ	.LBB15_4
+; %bb.7:                                ;   in Loop: Header=BB15_3 Depth=1
+	;--- V6C_RELOAD8 ---
+.LLo61_0:
+	MVI	L, 0
+	DCR	L
+	;--- V6C_BRCOND ---
+	JNZ	.LBB15_3
+; %bb.8:
 	XRA	A
 	LXI	H, __v6c_a.main
 	MVI	E, 0xff

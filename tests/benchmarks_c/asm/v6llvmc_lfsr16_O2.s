@@ -16,24 +16,6 @@ main:                                   ; @main
 	MOV	C, A
 	LDA	__v6c_a.main+1
 	MOV	B, A
-	JMP	.LBB15_1
-.LBB15_3:                               ;   in Loop: Header=BB15_1 Depth=1
-	;--- V6C_RELOAD16 ---
-	LHLD	.LLo61_0+1
-.LBB15_4:                               ;   in Loop: Header=BB15_1 Depth=1
-	;--- V6C_XOR16 ---
-	MOV	A, C
-	XRA	L
-	MOV	L, A
-	MOV	A, B
-	XRA	H
-	MOV	H, A
-	;--- V6C_DCX16 ---
-	DCX	D
-	;--- V6C_BR_CC16_IMM ---
-	MOV	A, D
-	ORA	E
-	JZ	.LBB15_5
 .LBB15_1:                               ; =>This Inner Loop Header: Depth=1
 	;--- V6C_SPILL16 ---
 	SHLD	.LLo61_0+1
@@ -68,8 +50,12 @@ main:                                   ; @main
 	;--- V6C_CMP16_ZERO ---
 	MOV	A, H
 	ORA	L
-	JZ	.LBB15_3
-; %bb.2:                                ;   in Loop: Header=BB15_1 Depth=1
+	JNZ	.LBB15_2
+; %bb.3:                                ;   in Loop: Header=BB15_1 Depth=1
+	;--- V6C_RELOAD16 ---
+	LHLD	.LLo61_0+1
+	JMP	.LBB15_4
+.LBB15_2:                               ;   in Loop: Header=BB15_1 Depth=1
 	LXI	H, 0xb400
 	;--- V6C_XOR16 ---
 	MOV	A, C
@@ -81,11 +67,23 @@ main:                                   ; @main
 	;--- V6C_RELOAD16 ---
 .LLo61_0:
 	LXI	H, 0
-	JMP	.LBB15_4
-.LBB15_5:
+.LBB15_4:                               ;   in Loop: Header=BB15_1 Depth=1
+	;--- V6C_XOR16 ---
+	MOV	A, C
+	XRA	L
+	MOV	L, A
+	MOV	A, B
+	XRA	H
+	MOV	H, A
+	;--- V6C_DCX16 ---
+	DCX	D
+	;--- V6C_BR_CC16_IMM ---
+	MOV	A, D
+	ORA	E
+	JNZ	.LBB15_1
+; %bb.5:
 	;--- V6C_SRL16 ---
 	MOV	E, H
-	MVI	D, 0
 	;--- V6C_XOR16 ---
 	MOV	A, E
 	XRA	L
