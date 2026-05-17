@@ -68,7 +68,7 @@ main:                                   ; @main
 	MOV	A, B
 	XRA	H
 	MOV	H, A
-	LXI	B, 8
+	MVI	C, 8
 .LBB15_2:                               ;   Parent Loop BB15_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	LXI	D, 1
@@ -100,11 +100,8 @@ main:                                   ; @main
 	XRA	D
 	MOV	H, A
 .LBB15_4:                               ;   in Loop: Header=BB15_2 Depth=2
-	;--- V6C_DCX16 ---
-	DCX	B
-	;--- V6C_BR_CC16_IMM ---
-	MOV	A, B
-	ORA	C
+	DCR	C
+	;--- V6C_BRCOND ---
 	JNZ	.LBB15_2
 ; %bb.5:                                ;   in Loop: Header=BB15_1 Depth=1
 	;--- V6C_RELOAD16 ---
@@ -112,7 +109,7 @@ main:                                   ; @main
 	LXI	D, 0
 	;--- V6C_SRL16 ---
 	MOV	E, D
-	MOV	D, B
+	MVI	D, 0
 	;--- V6C_XOR16 ---
 	MOV	A, L
 	XRA	E
@@ -120,7 +117,7 @@ main:                                   ; @main
 	MOV	A, H
 	XRA	D
 	MOV	H, A
-	LXI	B, 8
+	MVI	C, 8
 .LBB15_6:                               ;   Parent Loop BB15_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	LXI	D, 1
@@ -152,11 +149,8 @@ main:                                   ; @main
 	XRA	D
 	MOV	H, A
 .LBB15_8:                               ;   in Loop: Header=BB15_6 Depth=2
-	;--- V6C_DCX16 ---
-	DCX	B
-	;--- V6C_BR_CC16_IMM ---
-	MOV	A, B
-	ORA	C
+	DCR	C
+	;--- V6C_BRCOND ---
 	JNZ	.LBB15_6
 ; %bb.9:                                ;   in Loop: Header=BB15_1 Depth=1
 	;--- V6C_RELOAD16 ---
