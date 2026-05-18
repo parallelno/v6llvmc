@@ -436,7 +436,13 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       MachineBasicBlock *MBB = R->getParent();
       DebugLoc DL = R->getDebugLoc();
       Register Dst = R->getOperand(0).getReg();
-      bool HLLive = !isRegDeadAfterMI(V6C::HL, *R, *MBB, TRI);
+      // Check H and L independently: isRegDeadAfterMI(HL,...) stops at the
+      // first def of *either* half, which is too conservative when only one
+      // half is live as an individual byte after the reload.  If LHLD is used
+      // without PUSH/POP, it clobbers both H and L, so we must preserve HL
+      // whenever either sub-register is still live.
+      bool HLLive = !isRegDeadAfterMI(V6C::H, *R, *MBB, TRI) ||
+                    !isRegDeadAfterMI(V6C::L, *R, *MBB, TRI);
       annotate(*MBB, R, DL, V6C::V6C_RELOAD16);
 
       if (Dst == V6C::HL) {

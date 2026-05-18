@@ -219,7 +219,10 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
       } else if (DstReg == V6C::DE) {
         // O42: when HL is dead, use LHLD addr; XCHG (4B, 20cc)
         // instead of XCHG; LHLD addr; XCHG (5B, 24cc)
-        bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
+        // Check H and L independently: pair query stops at first def of
+        // either half, so is too conservative when only one half is live.
+        bool HLDead = isRegDeadAfterMI(V6C::H, MI, MBB, this) &&
+                      isRegDeadAfterMI(V6C::L, MI, MBB, this);
         if (HLDead) {
           BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
               .addGlobalAddress(GV, StaticOffset);
@@ -240,7 +243,10 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
         MCRegister DstLo = getSubReg(DstReg, V6C::sub_lo);
         MCRegister DstHi = getSubReg(DstReg, V6C::sub_hi);
         // O42: when HL is dead, use LHLD addr; MOV C,L; MOV B,H (5B, 30cc)
-        bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, this);
+        // Check H and L independently: pair query stops at first def of
+        // either half, so is too conservative when only one half is live.
+        bool HLDead = isRegDeadAfterMI(V6C::H, MI, MBB, this) &&
+                      isRegDeadAfterMI(V6C::L, MI, MBB, this);
         if (HLDead) {
           BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
               .addGlobalAddress(GV, StaticOffset);
