@@ -21,4 +21,12 @@
 #define labs(x) ((x) < 0 ? -(x) : (x))
 #endif
 
+#ifndef min
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
+
+#ifndef max
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#endif
+
 #endif /* V6C_STDLIB_H_INCLUDED */

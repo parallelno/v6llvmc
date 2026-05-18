@@ -42,7 +42,7 @@ llvm-build/bin/clang -target i8080-unknown-v6c -O2 -S input.c -o output.s \
 
 | Option | Effect |
 |--------|--------|
-| `-mllvm -mv6c-annotate-pseudos` | Emits function header comments (C declaration + param→register map) and `;--- PSEUDO ---` comments before each pseudo expansion. Add `-fno-discard-value-names` to preserve original C parameter names. |
+| `-mllvm -mv6c-annotate-pseudos` | Emits function header comments (C declaration + param→register map) and `;--- PSEUDO ---` comments before each pseudo expansion. Add `-fno-discard-value-names` to preserve original C parameter names in the surviving args. Add `-g` to also show constant-propagated parameters as a `[folded: x0=127, y0=127, ...]` comment — requires no extra runtime cost since `-g` only emits debug metadata used during compilation. |
 | `-mllvm -mv6c-print-rt-helpers` | Emits the auto-included `v6c_arith.h` runtime helpers (`__mulqi3`, `__mulhi3`, `__udivhi3`, `__divhi3`, `__ashlhi3`, ...) into `.s` text output. Off by default — without it, helper bodies are suppressed so user code stands out. **Object-file emission (`-c` / `-filetype=obj`) always includes the helpers** so linking is unaffected. The filter relies on each helper being tagged `__attribute__((annotate("v6c-rt-helper")))` (already applied by the `V6C_RT` macro in `v6c_arith.h`); see [V6CClangUsage.md § Function Attributes](V6CClangUsage.md#function-attributes) and [V6CRuntimeAndInlineAsm.md](V6CRuntimeAndInlineAsm.md). |
 
 ### How `-mv6c-print-rt-helpers` works

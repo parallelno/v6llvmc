@@ -18,10 +18,14 @@
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInst.h"
@@ -103,6 +107,71 @@ void V6CAsmPrinter::emitFunctionBodyStart() {
   const Function &F = MF->getFunction();
   const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
 
+  // Format a constant Value as a short human-readable string (e.g. "127",
+  // "0x8000", "null").  Used for the [folded: ...] annotation.
+  auto ConstStr = [](const Value *V) -> std::string {
+    if (!V || isa<UndefValue>(V))
+      return "undef";
+    if (isa<ConstantPointerNull>(V))
+      return "null";
+    if (auto *CI = dyn_cast<ConstantInt>(V)) {
+      int64_t Val = CI->getSExtValue();
+      if (Val < -255 || Val > 255)
+        return "0x" + utohexstr((uint64_t)(uint16_t)Val);
+      return std::to_string(Val);
+    }
+    // inttoptr constant expression — extract the numeric address.
+    if (auto *CE = dyn_cast<ConstantExpr>(V))
+      if (CE->getOpcode() == Instruction::IntToPtr)
+        if (auto *CI = dyn_cast<ConstantInt>(CE->getOperand(0)))
+          return "0x" + utohexstr(CI->getZExtValue());
+    // Fallback: print without type.
+    std::string S;
+    raw_string_ostream OS(S);
+    V->printAsOperand(OS, /*PrintType=*/false);
+    return S;
+  };
+
+  // Collect parameter debug info from llvm.dbg.value intrinsics (requires -g).
+  // Maps 1-based original parameter index -> {original_name, optional_folded_val}.
+  struct DbgParam {
+    std::string Name;
+    const Argument *SurvivingArg = nullptr; // non-null iff the arg survived CP
+    bool Folded = false;
+    std::string FoldedVal;
+  };
+  std::map<unsigned, DbgParam> DbgParams;
+  // Maps each surviving Argument to its original source name.
+  DenseMap<const Argument *, std::string> ArgOrigName;
+
+  for (const BasicBlock &BB : F) {
+    for (const Instruction &I : BB) {
+      auto *DVI = dyn_cast<DbgValueInst>(&I);
+      if (!DVI)
+        continue;
+      DILocalVariable *DLV = DVI->getVariable();
+      if (!DLV || DLV->getArg() == 0)
+        continue;
+      StringRef ParamName = DLV->getName();
+      if (ParamName.empty())
+        continue;
+      unsigned Idx = DLV->getArg(); // 1-based DWARF arg index
+      DbgParam &P = DbgParams[Idx];
+      P.Name = ParamName.str();
+      Value *Val = DVI->getValue(0);
+      if (auto *A = dyn_cast_or_null<Argument>(Val)) {
+        P.SurvivingArg = A;
+        P.Folded = false;
+        ArgOrigName[A] = P.Name;
+      } else if (Val && isa<Constant>(Val) && !isa<UndefValue>(Val) &&
+                 !P.Folded) {
+        // Only record the first constant binding; that's the folded value.
+        P.Folded = true;
+        P.FoldedVal = ConstStr(Val);
+      }
+    }
+  }
+
   // Map LLVM IR type to C-like type string.
   auto TypeStr = [](Type *Ty) -> std::string {
     if (Ty->isVoidTy()) return "void";
@@ -174,9 +243,16 @@ void V6CAsmPrinter::emitFunctionBodyStart() {
     const Argument *Arg = F.getArg(i);
     Type *Ty = Arg->getType();
     std::string TStr = TypeStr(Ty);
-    std::string Name = Arg->getName().empty()
-                           ? ("arg" + std::to_string(i))
-                           : Arg->getName().str();
+    // Prefer original source name from debug info, then IR name (preserved by
+    // -fno-discard-value-names), then fallback "argN".
+    std::string Name;
+    auto DIt = ArgOrigName.find(Arg);
+    if (DIt != ArgOrigName.end())
+      Name = DIt->second;
+    else if (!Arg->getName().empty())
+      Name = Arg->getName().str();
+    else
+      Name = "arg" + std::to_string(i);
 
     if (i > 0)
       Decl += ", ";
@@ -195,6 +271,23 @@ void V6CAsmPrinter::emitFunctionBodyStart() {
   OutStreamer->emitRawComment("=== " + Decl + " ===");
   for (const auto &P : Params) {
     OutStreamer->emitRawComment("  " + P.Name + " = " + P.Reg);
+  }
+
+  // Emit folded-parameter summary when debug info is available.
+  SmallVector<std::string, 4> FoldedParts;
+  StringSet<> EmittedNames;
+  for (auto &KV : DbgParams)
+    if (KV.second.Folded && EmittedNames.insert(KV.second.Name).second)
+      FoldedParts.push_back(KV.second.Name + "=" + KV.second.FoldedVal);
+  if (!FoldedParts.empty()) {
+    std::string S = "  [folded:";
+    for (size_t Idx = 0; Idx < FoldedParts.size(); ++Idx) {
+      S += " " + FoldedParts[Idx];
+      if (Idx + 1 < FoldedParts.size())
+        S += ",";
+    }
+    S += "]";
+    OutStreamer->emitRawComment(S);
   }
 }
 
