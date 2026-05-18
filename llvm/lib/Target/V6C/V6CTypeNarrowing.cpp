@@ -61,6 +61,11 @@ private:
   /// Check if all users of V can work with i8 instead of i16.
   bool allUsersNarrowable(Value *V, Type *NarrowTy);
 
+  /// Narrow `(and i16 x, C)` where C < 256 to `zext(and i8 (trunc x), C)`.
+  /// Since C's high byte is zero the result is identical, and ANI is far
+  /// cheaper than V6C_AND16 (2 insns vs 6).
+  bool tryNarrowAndConst(BinaryOperator *And);
+
   /// Try to narrow an i16 loop induction PHI to i8 when its range provably
   /// fits in 8 bits (constant start in [0,255], step ±1, exit on equality
   /// with a constant that fits in i8, including via inttoptr+icmp-null).
@@ -166,6 +171,39 @@ bool V6CTypeNarrowing::tryNarrowZext(ZExtInst *ZExt) {
   return !ToErase.empty();
 }
 
+bool V6CTypeNarrowing::tryNarrowAndConst(BinaryOperator *And) {
+  if (!And->getType()->isIntegerTy(16))
+    return false;
+  assert(And->getOpcode() == Instruction::And);
+
+  // Pick out the constant operand.
+  ConstantInt *C = dyn_cast<ConstantInt>(And->getOperand(1));
+  Value *X = And->getOperand(0);
+  if (!C) {
+    C = dyn_cast<ConstantInt>(And->getOperand(0));
+    X = And->getOperand(1);
+  }
+  if (!C)
+    return false;
+
+  // C must fit in 8 bits (high byte == 0). getActiveBits()==0 means C==0,
+  // which is also fine (result is always zero).
+  if (C->getValue().getActiveBits() > 8)
+    return false;
+
+  // Rewrite: (and i16 x, C) -> zext(and i8 (trunc x), (i8)C)
+  // Correctness: high_byte(C)==0 => high_byte(result)==0 always.
+  IRBuilder<> B(And);
+  Type *I8Ty = Type::getInt8Ty(And->getContext());
+  Value *Lo = B.CreateTrunc(X, I8Ty, X->getName() + ".lo");
+  Value *AndI8 = B.CreateAnd(Lo, ConstantInt::get(I8Ty, C->getZExtValue()),
+                             And->getName() + ".narrow");
+  Value *ZExt = B.CreateZExt(AndI8, And->getType(), And->getName() + ".zext");
+  And->replaceAllUsesWith(ZExt);
+  And->eraseFromParent();
+  return true;
+}
+
 bool V6CTypeNarrowing::runOnFunction(Function &F) {
   if (DisableTypeNarrowing)
     return false;
@@ -179,33 +217,41 @@ bool V6CTypeNarrowing::runOnFunction(Function &F) {
 
   bool Changed = false;
 
-  // Collect zext i8 -> i16 instructions.
-  SmallVector<ZExtInst *, 16> ZExts;
-  for (BasicBlock &BB : F) {
-    for (Instruction &I : BB) {
-      if (auto *ZExt = dyn_cast<ZExtInst>(&I)) {
-        if (ZExt->getSrcTy()->isIntegerTy(8) &&
-            ZExt->getDestTy()->isIntegerTy(16)) {
-          ZExts.push_back(ZExt);
-        }
-      }
-    }
-  }
+  // Phase 1: narrow `(and i16 x, C)` where C < 256 to
+  // `zext(and i8 (trunc x), C)`.  Must run before the zext pass so that
+  // the zexts it creates are picked up and their downstream icmps folded.
+  SmallVector<BinaryOperator *, 16> AndOps;
+  for (BasicBlock &BB : F)
+    for (Instruction &I : BB)
+      if (auto *BO = dyn_cast<BinaryOperator>(&I))
+        if (BO->getOpcode() == Instruction::And &&
+            BO->getType()->isIntegerTy(16))
+          AndOps.push_back(BO);
+  for (BinaryOperator *And : AndOps)
+    Changed |= tryNarrowAndConst(And);
 
+  // Phase 2: narrow zext i8 -> i16 feeding only narrow-safe users
+  // (trunc, icmp-with-i8-const).  Re-collect after Phase 1 to catch
+  // the new zext instructions it introduced.
+  SmallVector<ZExtInst *, 16> ZExts;
+  for (BasicBlock &BB : F)
+    for (Instruction &I : BB)
+      if (auto *ZExt = dyn_cast<ZExtInst>(&I))
+        if (ZExt->getSrcTy()->isIntegerTy(8) &&
+            ZExt->getDestTy()->isIntegerTy(16))
+          ZExts.push_back(ZExt);
   for (ZExtInst *ZExt : ZExts)
     Changed |= tryNarrowZext(ZExt);
 
-  // Collect i16 PHI nodes that look like loop induction variables and try
-  // to narrow them to i8. LSR commonly emits a `phi i16 [..., C]` down-counter
-  // even when C fits in a byte, which costs ~14cc per iter on the 8080
-  // (DCX BC + MOV A,B + ORA C + JNZ) vs ~4cc for an i8 counter (DCR r + JNZ).
+  // Phase 3: narrow i16 loop induction variables to i8 when their range
+  // provably fits in 8 bits.  LSR commonly emits a `phi i16 [..., C]`
+  // down-counter even when C fits in a byte, which costs ~14cc/iter on
+  // the 8080 (DCX BC + MOV A,B + ORA C + JNZ) vs ~4cc (DCR r + JNZ).
   SmallVector<PHINode *, 8> I16Phis;
-  for (BasicBlock &BB : F) {
-    for (PHINode &PN : BB.phis()) {
+  for (BasicBlock &BB : F)
+    for (PHINode &PN : BB.phis())
       if (PN.getType()->isIntegerTy(16))
         I16Phis.push_back(&PN);
-    }
-  }
   for (PHINode *PN : I16Phis)
     Changed |= tryNarrowLoopIV(PN);
 
