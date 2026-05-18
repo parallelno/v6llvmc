@@ -19,14 +19,14 @@ def find_project_root():
     return Path.cwd()
 
 
-def run_suite(name, cmd, cwd):
+def run_suite(name, cmd, cwd, timeout=300):
     """Run a test suite and return (passed, output)."""
     print(f"\n{'='*60}")
     print(f"  {name}")
     print(f"{'='*60}\n")
     try:
         result = subprocess.run(
-            cmd, cwd=str(cwd), timeout=300,
+            cmd, cwd=str(cwd), timeout=timeout,
             capture_output=False  # let output flow through
         )
         return result.returncode == 0
@@ -34,13 +34,15 @@ def run_suite(name, cmd, cwd):
         print(f"  SKIPPED: command not found ({cmd[0]})")
         return None
     except subprocess.TimeoutExpired:
-        print(f"  TIMEOUT: suite exceeded 5 minute limit")
+        print(f"  TIMEOUT: suite exceeded {timeout//60} minute limit")
         return False
 
 
 def main():
     parser = argparse.ArgumentParser(description="Run all V6C test suites")
     parser.add_argument("--golden-only", action="store_true", help="Run only golden tests")
+    parser.add_argument("--no-benchmarks", action="store_true",
+                        help="Skip benchmark suite (fast mode; benchmarks can take 20+ min)")
     args = parser.parse_args()
 
     root = find_project_root()
@@ -77,6 +79,18 @@ def main():
                 root
             )
             results["emulator"] = ok
+
+        # Benchmark correctness suite — checks checksums only (cycles are informational).
+        # Skipped with --no-benchmarks because each run can take 2+ minutes.
+        bench_script = root / "tests" / "benchmarks_c" / "run_benchmarks.py"
+        if bench_script.exists() and not args.no_benchmarks:
+            ok = run_suite(
+                "Benchmark Correctness (v6llvmc + others)",
+                [sys.executable, str(bench_script)],
+                root,
+                timeout=1800,  # 30 min — worst case: all programs hit MAX_CYCLES
+            )
+            results["benchmarks"] = ok
 
     # Summary
     print(f"\n{'='*60}")

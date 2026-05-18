@@ -27,6 +27,8 @@ ASM = REPO / "tests" / "benchmarks_c" / "asm"
 DOCS = REPO / "docs" / "benchmarks.md"
 
 V6C_CLANG = REPO / "llvm-build" / "bin" / "clang.exe"
+CRT0_S = REPO / "compiler-rt" / "lib" / "builtins" / "v6c" / "crt0.s"
+CRT0_O = REPO / "compiler-rt" / "lib" / "builtins" / "v6c" / "crt0.o"
 C8080 = REPO / "tools" / "c8080" / "c8080.exe"
 ZCC = REPO / "tools" / "z88dk" / "z88dk" / "bin" / "zcc.exe"
 ZCC_BIN = ZCC.parent
@@ -64,6 +66,26 @@ class Result:
 
 # ---------------------------------------------------------------------------
 
+def ensure_v6c_crt0() -> bool:
+    """Assemble crt0.s -> crt0.o so ld.lld can find _start and --gc-sections
+    keeps all code sections.  Without crt0.o the ROM is silently empty.
+    Skips assembly if crt0.o already exists and is newer than crt0.s."""
+    if not V6C_CLANG.exists():
+        return False
+    if not CRT0_S.exists():
+        return False
+    if (CRT0_O.exists() and
+            CRT0_O.stat().st_mtime >= CRT0_S.stat().st_mtime):
+        return True
+    cmd = [str(V6C_CLANG), "-target", "i8080-unknown-v6c",
+           "-c", str(CRT0_S), "-o", str(CRT0_O)]
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode != 0 or not CRT0_O.exists():
+        print(f"  WARNING: could not build crt0.o: {p.stderr.strip()[:200]}")
+        return False
+    return True
+
+
 def run_emul(rom: Path, load_addr: int) -> tuple[int | None, int | None]:
     """Return (cycles, checksum) parsed from v6emul output."""
     cmd = [
@@ -94,6 +116,9 @@ def build_v6llvmc(prog: str, opt: str) -> Result:
     if p.returncode != 0 or not rom.exists():
         return Result("v6llvmc", prog, 0, None, None, opt,
                       error=p.stderr.strip()[:200] or "build failed")
+    if rom.stat().st_size == 0:
+        return Result("v6llvmc", prog, 0, None, None, opt,
+                      error="empty ROM (crt0.o missing? run ensure_v6c_crt0)")
     # Also emit .asm next to the source for analysis.
     asm = ASM / f"v6llvmc_{prog}_{opt}.s"
     subprocess.run(
@@ -190,6 +215,14 @@ def main() -> int:
     BUILD.mkdir(exist_ok=True)
     ASM.mkdir(exist_ok=True)
     print("Building and running benchmark matrix...\n")
+
+    # Ensure crt0.o is assembled so ld.lld can find _start and --gc-sections
+    # preserves all code sections.  Without this the ROM is silently empty.
+    if ensure_v6c_crt0():
+        print(f"  crt0.o ready: {CRT0_O}")
+    else:
+        print(f"  WARNING: crt0.o not available — v6llvmc builds may produce empty ROMs")
+    print()
 
     results: dict[tuple[str, str], Result] = {}
 
