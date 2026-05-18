@@ -243,9 +243,10 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
   if (InitC->getValue().getActiveBits() > 8)
     return false;
 
-  // Recurrence must be `add i16 %PN, K` with K = -1 (down-counter to zero).
-  // Restricting to step -1 avoids worrying about overflow in the i8 domain:
-  // start ≤ 255, decrementing by 1 stays in [0, 255] until the exit test.
+  // Recurrence must be `add i16 %PN, K` with K = -1 (down-counter) or
+  // K = +1 (up-counter). Both keep the IV inside [0, 255] when the init
+  // and exit bound both fit in i8 and the sequence walks from one to the
+  // other without crossing 256 (verified per-comparison below).
   auto *AddOp = dyn_cast<BinaryOperator>(StepI);
   if (!AddOp || AddOp->getOpcode() != Instruction::Add)
     return false;
@@ -260,7 +261,10 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
     StepC = dyn_cast<ConstantInt>(AddLHS);
   else
     return false;
-  if (!StepC || StepC->getSExtValue() != -1)
+  if (!StepC)
+    return false;
+  int64_t Step = StepC->getSExtValue();
+  if (Step != -1 && Step != 1)
     return false;
 
   // PN's only user (besides the backedge from AddOp) must be... well, AddOp.
@@ -272,6 +276,15 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
   // AddOp's users (apart from feeding back into PN) must be one of:
   //   * icmp eq/ne i16 %add, <constant fitting in i8>
   //   * inttoptr i16 %add to ptr, followed only by icmp eq/ne ptr %., null
+  //
+  // For step +1 the comparison constant must additionally be >= init (in
+  // i16) so that the visited values [init, bound] all fit in i8. For step
+  // -1 they fit by construction (init ≤ 255, decrement keeps us in
+  // [bound, init] ⊆ [0, 255] as long as bound ≤ init; the canonical
+  // shape produced by LSR uses bound = 0). For step +1 we reject the
+  // inttoptr+icmp-null shape entirely since bound = 0 would force a
+  // zero-iteration loop.
+  uint64_t Init = InitC->getZExtValue();
   SmallVector<ICmpInst *, 2> CmpsDirect;
   SmallVector<ICmpInst *, 2> CmpsViaPtr;
   SmallVector<IntToPtrInst *, 2> IntToPtrs;
@@ -286,10 +299,17 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
       auto *OtherC = dyn_cast<ConstantInt>(Other);
       if (!OtherC || OtherC->getValue().getActiveBits() > 8)
         return false;
+      uint64_t Bound = OtherC->getZExtValue();
+      if (Step == 1 && Bound < Init)
+        return false; // wrapping up-counter — not safe to narrow.
+      if (Step == -1 && Bound > Init)
+        return false; // wrapping down-counter — not safe to narrow.
       CmpsDirect.push_back(Cmp);
       continue;
     }
     if (auto *I2P = dyn_cast<IntToPtrInst>(U)) {
+      if (Step != -1)
+        return false; // ptr-null exit only meaningful for down-to-zero.
       for (User *UU : I2P->users()) {
         auto *Cmp = dyn_cast<ICmpInst>(UU);
         if (!Cmp || !Cmp->isEquality())
@@ -315,10 +335,10 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
   NewPN->addIncoming(
       ConstantInt::get(I8Ty, InitC->getZExtValue() & 0xff), PreBB);
 
-  // New i8 decrement at the same point as the old AddOp.
+  // New i8 increment/decrement at the same point as the old AddOp.
   IRBuilder<> AddBuilder(AddOp);
   Value *NewAdd = AddBuilder.CreateAdd(
-      NewPN, ConstantInt::getSigned(I8Ty, -1),
+      NewPN, ConstantInt::getSigned(I8Ty, Step),
       AddOp->getName() + ".narrow");
   NewPN->addIncoming(NewAdd, LatchBB);
 
