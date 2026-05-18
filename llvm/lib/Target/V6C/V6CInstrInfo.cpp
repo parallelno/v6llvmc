@@ -625,15 +625,18 @@ static void expandMemOpM(MachineBasicBlock &MBB, MachineInstr &MI,
     return;
   }
   if (AddrReg == V6C::DE) {
-    // XCHG; OP M; XCHG — restores HL and DE. The trailing XCHG is
-    // omitted when HL is dead after MI: after the first XCHG the
-    // address sits in HL while old-HL sits in DE, so skipping the
-    // restore leaves DE holding old-HL (fine, DE may also be dead)
-    // and HL holding the address (fine if HL is dead).
+    // XCHG; OP M; XCHG — restores HL and DE. The trailing XCHG can
+    // be omitted only when BOTH HL and DE are dead after MI: the first
+    // XCHG puts the address in HL and old-HL in DE, so if DE is still
+    // live after the pseudo (e.g. a subsequent STORE8_P uses DE as the
+    // address register), omitting the restore leaves DE = old-HL
+    // instead of the original address, causing the store to write to
+    // the wrong location.
     bool HLDead = isRegDeadAtMI(V6C::HL, MI, MBB, &RI);
+    bool DEDead = isRegDeadAtMI(V6C::DE, MI, MBB, &RI);
     BuildMI(MBB, Ip, DL, TII.get(V6C::XCHG));
     Emit(MBB, Ip);
-    if (!HLDead)
+    if (!HLDead || !DEDead)
       BuildMI(MBB, Ip, DL, TII.get(V6C::XCHG));
     return;
   }

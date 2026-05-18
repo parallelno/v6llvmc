@@ -3,15 +3,6 @@ LLVM's SimplifyCFG and SwitchLowering can produce jump tables, bit tests, or bal
 
 Status: works correctly via LLVM defaults, but no v6c-specific jump-table tuning has been documented.
 =====================================
-test this on the real example:
-*   - static: per-TU local symbol; no multi-definition link errors.
-
-=============================
-explain the paragraph below and also explain naked attribute:
-noinline + used: guaranteed out-of-line copy in the .o so an
- *     ISel-emitted `CALL __mulqi3` (etc.) resolves to it via the
- *     assembler's same-TU symbol matching.
-==============================
 funcs in v6c_arith.h doesn't define clobber regs, return regs. how RA nows what is not clobbered?
 =============================
 why unused static arith funcs are in the asm?

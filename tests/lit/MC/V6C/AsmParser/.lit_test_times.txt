@@ -1,2 +1,2 @@
-3.136084e-01 accept-canonical.s
-1.352565e-01 reject-long-forms.s
+1.732616e-01 accept-canonical.s
+1.630599e-01 reject-long-forms.s
