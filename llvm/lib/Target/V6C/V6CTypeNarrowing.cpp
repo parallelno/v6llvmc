@@ -191,6 +191,37 @@ bool V6CTypeNarrowing::tryNarrowAndConst(BinaryOperator *And) {
   if (C->getValue().getActiveBits() > 8)
     return false;
 
+  // Skip if every user is a trunc — DAGCombiner already folds
+  // (trunc (and i16 x, C_small)) -> (ANI C) for free. Inserting an explicit
+  // trunc here would create an extra live range that increases register
+  // pressure and disrupts the spill/reload schedule (see: lfsr16 regression).
+  bool allTrunc = true;
+  for (User *U : And->users()) {
+    if (!isa<TruncInst>(U)) {
+      allTrunc = false;
+      break;
+    }
+  }
+  if (allTrunc)
+    return false;
+
+  // Skip if X is a PHI that shares its loop header with other i16 PHI nodes.
+  // Multiple concurrent i16 loop variables imply high register pressure; the
+  // `trunc i16 X to i8` we would add creates a competing live range that the
+  // RA resolves with extra spill/reload pairs, hurting performance.
+  // NOTE: tryNarrowLoopIV must run BEFORE this pass so that small-range
+  // loop counters (e.g. k < 8) are already narrowed to i8 and do not
+  // artificially inflate the sibling count (see: fib_crc vs lfsr16).
+  if (auto *PN = dyn_cast<PHINode>(X)) {
+    BasicBlock *Header = PN->getParent();
+    for (PHINode &Sibling : Header->phis()) {
+      if (&Sibling == PN)
+        continue;
+      if (Sibling.getType()->isIntegerTy(16))
+        return false;
+    }
+  }
+
   // Rewrite: (and i16 x, C) -> zext(and i8 (trunc x), (i8)C)
   // Correctness: high_byte(C)==0 => high_byte(result)==0 always.
   IRBuilder<> B(And);
@@ -217,9 +248,24 @@ bool V6CTypeNarrowing::runOnFunction(Function &F) {
 
   bool Changed = false;
 
-  // Phase 1: narrow `(and i16 x, C)` where C < 256 to
-  // `zext(and i8 (trunc x), C)`.  Must run before the zext pass so that
-  // the zexts it creates are picked up and their downstream icmps folded.
+  // Phase 1: narrow i16 loop induction variables to i8 when their range
+  // provably fits in 8 bits.  LSR commonly emits a `phi i16 [..., C]`
+  // down-counter even when C fits in a byte, which costs ~14cc/iter on
+  // the 8080 (DCX BC + MOV A,B + ORA C + JNZ) vs ~4cc (DCR r + JNZ).
+  // MUST run first so that small-range loop counters (k<8 in crc_byte) are
+  // already narrowed to i8 before Phase 2 counts i16 PHI siblings.
+  SmallVector<PHINode *, 8> I16Phis;
+  for (BasicBlock &BB : F)
+    for (PHINode &PN : BB.phis())
+      if (PN.getType()->isIntegerTy(16))
+        I16Phis.push_back(&PN);
+  for (PHINode *PN : I16Phis)
+    Changed |= tryNarrowLoopIV(PN);
+
+  // Phase 2: narrow `(and i16 x, C)` where C < 256 to
+  // `zext(and i8 (trunc x), C)`.  Runs after Phase 1 so the i16 PHI sibling
+  // check reflects the post-narrowing loop structure (e.g. crc_byte's `k`
+  // is now i8, so `crc` has no i16 siblings and the optimisation fires).
   SmallVector<BinaryOperator *, 16> AndOps;
   for (BasicBlock &BB : F)
     for (Instruction &I : BB)
@@ -230,9 +276,9 @@ bool V6CTypeNarrowing::runOnFunction(Function &F) {
   for (BinaryOperator *And : AndOps)
     Changed |= tryNarrowAndConst(And);
 
-  // Phase 2: narrow zext i8 -> i16 feeding only narrow-safe users
-  // (trunc, icmp-with-i8-const).  Re-collect after Phase 1 to catch
-  // the new zext instructions it introduced.
+  // Phase 3: narrow zext i8 -> i16 feeding only narrow-safe users
+  // (trunc, icmp-with-i8-const).  Re-collect after Phases 1-2 to catch
+  // all new zext instructions they introduced.
   SmallVector<ZExtInst *, 16> ZExts;
   for (BasicBlock &BB : F)
     for (Instruction &I : BB)
@@ -242,18 +288,6 @@ bool V6CTypeNarrowing::runOnFunction(Function &F) {
           ZExts.push_back(ZExt);
   for (ZExtInst *ZExt : ZExts)
     Changed |= tryNarrowZext(ZExt);
-
-  // Phase 3: narrow i16 loop induction variables to i8 when their range
-  // provably fits in 8 bits.  LSR commonly emits a `phi i16 [..., C]`
-  // down-counter even when C fits in a byte, which costs ~14cc/iter on
-  // the 8080 (DCX BC + MOV A,B + ORA C + JNZ) vs ~4cc (DCR r + JNZ).
-  SmallVector<PHINode *, 8> I16Phis;
-  for (BasicBlock &BB : F)
-    for (PHINode &PN : BB.phis())
-      if (PN.getType()->isIntegerTy(16))
-        I16Phis.push_back(&PN);
-  for (PHINode *PN : I16Phis)
-    Changed |= tryNarrowLoopIV(PN);
 
   return Changed;
 }
@@ -416,12 +450,14 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
       I2P->eraseFromParent();
   }
 
-  // Old AddOp/PN must be dead now — erase.
-  if (!AddOp->use_empty())
-    return true; // shouldn't happen with the checks above, but stay safe.
-  AddOp->eraseFromParent();
-  if (PN->use_empty())
-    PN->eraseFromParent();
+  // Break the dead i16 cycle: PN holds AddOp as its latch incoming value,
+  // so AddOp->use_empty() is false even after the icmp has been replaced.
+  // Clear the latch slot first (AddOp no longer used by PN), then erase both.
+  PN->setIncomingValueForBlock(LatchBB, UndefValue::get(PN->getType()));
+  // AddOp's only remaining user was the PN backedge; now it is truly dead.
+  AddOp->eraseFromParent(); // also clears AddOp's use of PN
+  // PN's sole user was AddOp (just erased); PN is now dead too.
+  PN->eraseFromParent();
   return true;
 }
 
