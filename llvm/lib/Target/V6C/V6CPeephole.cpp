@@ -80,6 +80,7 @@ private:
   bool foldXraCmpZeroTest(MachineBasicBlock &MBB);
   bool cancelAdjacentXchg(MachineBasicBlock &MBB);
   bool foldXchgDad(MachineBasicBlock &MBB);
+  bool foldXchgSwapRedundancy(MachineBasicBlock &MBB);
   bool foldShldLhldToPushPop(MachineBasicBlock &MBB);
   bool foldMovAluM(MachineBasicBlock &MBB);
   bool foldIncDecMviM(MachineBasicBlock &MBB);
@@ -583,6 +584,97 @@ bool V6CPeephole::foldXchgDad(MachineBasicBlock &MBB) {
     I = MBB.erase(I);
     // I now points at DAD — continue loop from there.
     Changed = true;
+  }
+  return Changed;
+}
+
+/// Fold away redundant register saves around XCHG emitted when the register
+/// allocator breaks a HL↔DE circular dependency:
+///
+///   (1) MOV r1, H        ; save H to scratch register r1
+///   (2) MOV r2, L        ; save L to scratch register r2
+///   (3) XCHG             ; HL ↔ DE  (now D=old_H, E=old_L)
+///   (4) MOV D,  r1       ; D = r1 = old_H  ← redundant: XCHG already did this
+///   (5) MOV E,  r2       ; E = r2 = old_L  ← redundant: XCHG already did this
+///
+/// → simplify to: XCHG
+///
+/// r1 and r2 must not be H, L, D, or E (they must survive XCHG unchanged).
+/// The transformation is safe only when r1 and r2 are dead after instruction (5).
+bool V6CPeephole::foldXchgSwapRedundancy(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+
+  for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
+    // (1) MOV r1, H
+    if (I->getOpcode() != V6C::MOVrr ||
+        I->getOperand(1).getReg() != V6C::H) {
+      ++I;
+      continue;
+    }
+    Register R1 = I->getOperand(0).getReg();
+    // r1 must not be one of the registers touched by XCHG.
+    if (R1 == V6C::H || R1 == V6C::L || R1 == V6C::D || R1 == V6C::E) {
+      ++I;
+      continue;
+    }
+
+    // (2) MOV r2, L
+    auto I2 = std::next(I);
+    if (I2 == E || I2->getOpcode() != V6C::MOVrr ||
+        I2->getOperand(1).getReg() != V6C::L) {
+      ++I;
+      continue;
+    }
+    Register R2 = I2->getOperand(0).getReg();
+    if (R2 == V6C::H || R2 == V6C::L || R2 == V6C::D || R2 == V6C::E ||
+        R2 == R1) {
+      ++I;
+      continue;
+    }
+
+    // (3) XCHG
+    auto I3 = std::next(I2);
+    if (I3 == E || I3->getOpcode() != V6C::XCHG) {
+      ++I;
+      continue;
+    }
+
+    // (4) MOV D, r1
+    auto I4 = std::next(I3);
+    if (I4 == E || I4->getOpcode() != V6C::MOVrr ||
+        I4->getOperand(0).getReg() != V6C::D ||
+        I4->getOperand(1).getReg() != R1) {
+      ++I;
+      continue;
+    }
+
+    // (5) MOV E, r2
+    auto I5 = std::next(I4);
+    if (I5 == E || I5->getOpcode() != V6C::MOVrr ||
+        I5->getOperand(0).getReg() != V6C::E ||
+        I5->getOperand(1).getReg() != R2) {
+      ++I;
+      continue;
+    }
+
+    // r1 and r2 must be dead after instruction (5): if they're read later the
+    // definitions in (1)/(2) would be needed by that later code.
+    if (!isRegDeadAfter(MBB, I5, R1, TRI) ||
+        !isRegDeadAfter(MBB, I5, R2, TRI)) {
+      ++I;
+      continue;
+    }
+
+    // Pattern matched. Erase (1), (2), (4), (5); keep (3) XCHG.
+    I5->eraseFromParent();
+    I4->eraseFromParent();
+    I2->eraseFromParent();
+    I = MBB.erase(I); // erase (1) MOV r1,H; I now points at (3) XCHG
+    Changed = true;
+    // Do NOT advance I here: leave it at XCHG so cancelAdjacentXchg can
+    // fold it if another XCHG immediately follows.
   }
   return Changed;
 }
@@ -1155,6 +1247,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
 
   bool Changed = false;
   for (MachineBasicBlock &MBB : MF) {
+    Changed |= foldXchgSwapRedundancy(MBB); // reduce before cancelAdjacentXchg
     Changed |= cancelAdjacentXchg(MBB);
     Changed |= foldShldLhldToPushPop(MBB);
     Changed |= foldMovAluM(MBB);

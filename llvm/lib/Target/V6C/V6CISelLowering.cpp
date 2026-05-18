@@ -208,6 +208,10 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
 
   // Enable DAG combine for i16 ADD → DAD optimization.
   setTargetDAGCombine(ISD::ADD);
+
+  // Re-canonicalize i16 MUL so the HL-sourced operand is always LHS,
+  // preventing a HL↔DE register swap before the __mulhi3 libcall.
+  setTargetDAGCombine(ISD::MUL);
 }
 
 //===----------------------------------------------------------------------===//
@@ -270,6 +274,23 @@ static bool isCopyFromPhysReg(SDValue V, unsigned PhysReg) {
   return Reg && Reg->getReg() == PhysReg;
 }
 
+/// Like isCopyFromPhysReg but also recognises virtual register live-ins.
+/// LowerFormalArguments copies incoming physical registers into virtual regs
+/// (addLiveIn), so at DAG-combine time the arg SDValue is CopyFromReg of a
+/// virtual register, not the physical one.  This helper handles both.
+static bool isCopyFromArgReg(SDValue V, unsigned PhysReg,
+                              const SelectionDAG &DAG) {
+  if (V.getOpcode() != ISD::CopyFromReg)
+    return false;
+  auto *RN = dyn_cast<RegisterSDNode>(V.getOperand(1));
+  if (!RN)
+    return false;
+  Register Reg = RN->getReg();
+  if (!Reg.isVirtual())
+    return Reg == PhysReg;
+  return DAG.getMachineFunction().getRegInfo().getLiveInPhysReg(Reg) == PhysReg;
+}
+
 SDValue V6CTargetLowering::PerformDAGCombine(SDNode *N,
                                               DAGCombinerInfo &DCI) const {
   SelectionDAG &DAG = DCI.DAG;
@@ -322,6 +343,24 @@ SDValue V6CTargetLowering::PerformDAGCombine(SDNode *N,
           std::swap(LHS, RHS);
 
         return DAG.getNode(V6CISD::DAD, DL, MVT::i16, LHS, RHS);
+      }
+    }
+    break;
+
+  case ISD::MUL:
+    // Re-canonicalize i16 MUL so the operand sourced from the first-arg
+    // register (HL) is always LHS.  The generic DAG combiner may swap
+    // operands for canonical form; on V6C that forces a HL↔DE register-swap
+    // sequence (5 instructions) before the __mulhi3 libcall.  When the
+    // HL-sourced value is LHS the calling convention places it directly into
+    // the physical HL register with no copies.
+    if (N->getValueType(0) == MVT::i16) {
+      SDValue LHS = N->getOperand(0);
+      SDValue RHS = N->getOperand(1);
+      if (!isCopyFromArgReg(LHS, V6C::HL, DAG) &&
+          isCopyFromArgReg(RHS, V6C::HL, DAG)) {
+        SDLoc DL(N);
+        return DAG.getNode(ISD::MUL, DL, MVT::i16, RHS, LHS);
       }
     }
     break;
