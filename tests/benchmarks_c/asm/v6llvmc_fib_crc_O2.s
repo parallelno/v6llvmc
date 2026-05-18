@@ -8,43 +8,36 @@ main:                                   ; @main
 ; %bb.0:
 	XRA	A
 	STA	__v6c_a.main
-	MOV	E, A
+	MOV	D, A
 	INR	A
 	STA	__v6c_a.main+1
+	LXI	H, 0xffff
 	LDA	__v6c_a.main
 	;--- V6C_BUILD_PAIR ---
-	MOV	H, E
-	MOV	L, A
-	;--- V6C_SPILL16 ---
-	SHLD	.LLo61_4+1
-	LDA	__v6c_a.main+1
-	;--- V6C_BUILD_PAIR ---
-	MOV	B, E
+	MOV	B, D
 	MOV	C, A
-	LXI	H, 0xffff
-	LXI	D, 0
+	LDA	__v6c_a.main+1
+	MOV	E, B
+	;--- V6C_SPILL8 ---
+	PUSH	H
+	LXI	H, .LLo61_3+1
+	MOV	M, E
+	POP	H
+	;--- V6C_BUILD_PAIR ---
+	MOV	E, A
 .LBB15_1:                               ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB15_2 Depth 2
                                         ;     Child Loop BB15_6 Depth 2
 	;--- V6C_SPILL16 ---
 	XCHG
-	SHLD	.LLo61_3+1
-	XCHG
-	;--- V6C_SPILL16 ---
-	PUSH	H
-	MOV	L, C
-	MOV	H, B
 	SHLD	.LLo61_2+1
-	POP	H
-	;--- V6C_RELOAD16 ---
-.LLo61_4:
-	LXI	D, 0
+	XCHG
 	;--- V6C_ADD16 ---
-	MOV	A, E
-	ADD	C
+	MOV	A, C
+	ADD	E
 	MOV	C, A
-	MOV	A, D
-	ADC	B
+	MOV	A, B
+	ADC	D
 	MOV	B, A
 	LXI	D, 0xff
 	;--- V6C_SPILL16 ---
@@ -105,7 +98,7 @@ main:                                   ; @main
 	JNZ	.LBB15_2
 ; %bb.5:                                ;   in Loop: Header=BB15_1 Depth=1
 	;--- V6C_RELOAD16 ---
-.LLo61_1:
+.LLo61_0:
 	LXI	D, 0
 	;--- V6C_SRL16 ---
 	MOV	E, D
@@ -153,30 +146,20 @@ main:                                   ; @main
 	;--- V6C_BRCOND ---
 	JNZ	.LBB15_6
 ; %bb.9:                                ;   in Loop: Header=BB15_1 Depth=1
-	;--- V6C_RELOAD16 ---
+	;--- V6C_RELOAD8 ---
 .LLo61_3:
-	LXI	D, 0
-	;--- V6C_INX16 ---
-	INX	D
+	MVI	A, 0
+	INR	A
+	;--- V6C_SPILL8 ---
+	STA	.LLo61_3+1
+	CPI	0x18
 	;--- V6C_RELOAD16 ---
 .LLo61_2:
 	LXI	B, 0
-	;--- V6C_SPILL16 ---
-	PUSH	H
-	MOV	L, C
-	MOV	H, B
-	SHLD	.LLo61_4+1
-	POP	H
 	;--- V6C_RELOAD16 ---
-.LLo61_0:
-	LXI	B, 0
-	;--- V6C_BR_CC16_IMM ---
-	MVI	A, 0x18
-	CMP	E
-	JNZ	.LBB15_1
-; %bb.11:                               ;   in Loop: Header=BB15_1 Depth=1
-	XRA	A
-	CMP	D
+.LLo61_1:
+	LXI	D, 0
+	;--- V6C_BRCOND ---
 	JNZ	.LBB15_1
 ; %bb.10:
 	MOV	A, L
