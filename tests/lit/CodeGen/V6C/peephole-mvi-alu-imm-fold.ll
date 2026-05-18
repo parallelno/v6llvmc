@@ -35,13 +35,15 @@ target triple = "i8080-unknown-v6c"
 ; fold target.
 ;
 ; CHECK-LABEL: fold_spill:
-; CHECK:       STA{{.*}}.LLo61_0+1
+; CHECK:       LXI H, .LLo61_0+1
+; CHECK-NEXT:  MOV M, B
 ; CHECK:       .LLo61_0:
 ; CHECK-NEXT:  XRI     0
 ; CHECK-NOT:   MVI     {{[BCDEHL]}}, 0
 ;
 ; DIS-LABEL:   fold_spill:
-; DIS:         STA{{.*}}.LLo61_0+1
+; DIS:         LXI H, .LLo61_0+1
+; DIS-NEXT:    MOV M, B
 ; DIS:         .LLo61_0:
 ; DIS-NEXT:    MVI     {{[BCDEHL]}}, 0
 ; DIS-NEXT:    XRA     {{[BCDEHL]}}
