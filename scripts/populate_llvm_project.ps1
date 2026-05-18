@@ -92,6 +92,12 @@ xcopy /Y /I "$root\llvm\include\llvm\IR\CMakeLists.txt" "$root\llvm-project\llvm
 xcopy /Y /I "$root\llvm\lib\IR\Function.cpp" "$root\llvm-project\llvm\lib\IR\" > $null
 Write-Host "  [OK] Intrinsics (IntrinsicsV6C.td, BuiltinsV6C.def, Function.cpp)"
 
+# Loop-rotation opt-out hook in MachineBlockPlacement (gated by
+# TargetSubtargetInfo::enableLoopRotationInBlockPlacement, overridden in V6C).
+xcopy /Y /I "$root\llvm\include\llvm\CodeGen\TargetSubtargetInfo.h" "$root\llvm-project\llvm\include\llvm\CodeGen\" > $null
+xcopy /Y /I "$root\llvm\lib\CodeGen\MachineBlockPlacement.cpp" "$root\llvm-project\llvm\lib\CodeGen\" > $null
+Write-Host "  [OK] TargetSubtargetInfo.h, MachineBlockPlacement.cpp (enableLoopRotationInBlockPlacement)"
+
 # O-LLD: V6C default linker script (data resource for the driver)
 if (-not (Test-Path "$root\llvm-project\clang\lib\Driver\ToolChains\V6C")) { New-Item -ItemType Directory -Path "$root\llvm-project\clang\lib\Driver\ToolChains\V6C" -Force > $null }
 xcopy /Y /I "$root\clang\lib\Driver\ToolChains\V6C\v6c.ld" "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\" > $null
