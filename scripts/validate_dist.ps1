@@ -79,6 +79,70 @@ int main(void) {
         throw "crt0.o not at expected install path: $expectedCrt0"
     }
 
+    # O81: verify consolidated runtime headers are present in the staged tree.
+    $expectedStringH = Join-Path $resDir 'lib\v6c\include\string.h'
+    $expectedStdlibH = Join-Path $resDir 'lib\v6c\include\stdlib.h'
+    $expectedV6cH    = Join-Path $resDir 'lib\v6c\include\v6c.h'
+    foreach ($h in @($expectedStringH, $expectedStdlibH, $expectedV6cH)) {
+        if (-not (Test-Path $h)) { throw "Runtime header not in staged tree: $h" }
+    }
+    Write-Host "Runtime headers verified in staged tree."
+
+    # O81 Test A: <string.h> from installed layout — no -isystem flag.
+    # Verifies memset is defined (not just declared) and links correctly.
+    Write-Host "Compiling string_smoke.c (tests <string.h> from installed layout) ..."
+    $StringSrc = Join-Path $Tmp 'string_smoke.c'
+    @'
+#include <stdint.h>
+#include <string.h>
+int main(void) {
+    uint8_t buf[4];
+    memset(buf, 0xAB, 4);
+    __builtin_v6c_out(0xED, buf[0]);
+    __builtin_v6c_hlt();
+    return 0;
+}
+'@ | Set-Content -Path $StringSrc -NoNewline
+
+    $StringRom = Join-Path $Tmp 'string_smoke.rom'
+    & $Clang --target=i8080-unknown-v6c -O2 $StringSrc -o $StringRom
+    if ($LASTEXITCODE -ne 0) { throw '<string.h> smoke: staged clang failed to compile' }
+
+    $sout = & $Emul --rom $StringRom --load-addr 0x0100 --halt-exit --dump-cpu 2>&1 | Out-String
+    Write-Host $sout
+    if ($sout -notmatch 'TEST_OUT\s+port=0xED\s+value=0xAB') {
+        throw '<string.h> smoke: expected TEST_OUT port=0xED value=0xAB'
+    }
+    if ($sout -notmatch 'HALT') { throw '<string.h> smoke: emulator did not reach HALT' }
+    Write-Host "<string.h> smoke test PASSED."
+
+    # O81 Test B: <stdlib.h> from installed layout — no -isystem flag.
+    # Verifies min() macro is present and abort()/exit() compile.
+    Write-Host "Compiling stdlib_smoke.c (tests <stdlib.h> from installed layout) ..."
+    $StdlibSrc = Join-Path $Tmp 'stdlib_smoke.c'
+    @'
+#include <stdint.h>
+#include <stdlib.h>
+int main(void) {
+    uint8_t x = (uint8_t)min(200, 100);  /* expects 100 = 0x64 */
+    __builtin_v6c_out(0xED, x);
+    __builtin_v6c_hlt();
+    return 0;
+}
+'@ | Set-Content -Path $StdlibSrc -NoNewline
+
+    $StdlibRom = Join-Path $Tmp 'stdlib_smoke.rom'
+    & $Clang --target=i8080-unknown-v6c -O2 $StdlibSrc -o $StdlibRom
+    if ($LASTEXITCODE -ne 0) { throw '<stdlib.h> smoke: staged clang failed to compile' }
+
+    $lout = & $Emul --rom $StdlibRom --load-addr 0x0100 --halt-exit --dump-cpu 2>&1 | Out-String
+    Write-Host $lout
+    if ($lout -notmatch 'TEST_OUT\s+port=0xED\s+value=0x64') {
+        throw '<stdlib.h> smoke: expected TEST_OUT port=0xED value=0x64'
+    }
+    if ($lout -notmatch 'HALT') { throw '<stdlib.h> smoke: emulator did not reach HALT' }
+    Write-Host "<stdlib.h> smoke test PASSED."
+
     Write-Host ''
     Write-Host 'Smoke test PASSED.'
 }

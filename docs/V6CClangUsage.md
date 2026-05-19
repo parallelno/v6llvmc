@@ -149,17 +149,19 @@ unsigned char read_a(void) {
 | `I` | 8-bit unsigned immediate (0–255) |
 | `J` | 16-bit unsigned immediate (0–65535) |
 
-## V6C Resource-Dir Headers
+## V6C Runtime Headers
 
-The V6C driver auto-injects `<resource-dir>/lib/v6c/include/` ahead of
-Clang's stock freestanding directory, so the following headers resolve
-without any `-I` flag:
+All V6C runtime headers live in a single directory:
+`compiler-rt/lib/builtins/v6c/include/` (dev tree) or
+`<resource-dir>/lib/v6c/include/` (installed). The driver injects this
+directory via `-internal-isystem`, so the following headers resolve
+without any `-I` or `-isystem` flag:
 
 | Header | Provides |
 |--------|----------|
-| `<string.h>` | `memcpy`, `memset`, `memmove`, `strlen`, `strcmp`, `strcpy` (header-only inline asm, opt-in via `#include`) |
-| `<stdlib.h>` | `EXIT_SUCCESS` / `EXIT_FAILURE`, `abort()`, `exit(int)` (both `noreturn`, expand to `HLT` loop) |
-| `<v6c.h>` | `__v6c_in`, `__v6c_out`, `__v6c_di`, `__v6c_ei`, `__v6c_hlt`, `__v6c_nop` thin inline wrappers around the `__builtin_v6c_*` family |
+| `<string.h>` | `memcpy`, `memset`, `memmove`, `strlen`, `strcmp`, `strcpy` — header-only inline asm; opt-in via `#include` |
+| `<stdlib.h>` | `EXIT_SUCCESS`/`EXIT_FAILURE`, `abort()`, `exit(int)` (both `noreturn`, expand to `HLT` loop), `abs()`, `labs()`, `min()`, `max()` |
+| `<v6c.h>` | `__v6c_in`, `__v6c_out`, `__v6c_di`, `__v6c_ei`, `__v6c_hlt`, `__v6c_nop` — thin inline wrappers around the `__builtin_v6c_*` family |
 | `v6c_arith.h` | Math runtime (`__mulqi3`, `__mulhi3`, `__udivhi3`, `__divhi3`, `__ashlhi3`, ...). **Auto-included** via `-include v6c_arith.h` on V6C targets; suppress with `-fno-v6c-auto-include`. See [V6CRuntimeAndInlineAsm.md](V6CRuntimeAndInlineAsm.md). |
 
 All runtime routines are header-only inline-`__asm__` helpers — there
@@ -172,14 +174,7 @@ ELF sections are emitted. Pass `-Wl,--gc-sections` at the link step to
 prune unreferenced helper functions transitively. Override the
 per-function sections with `-fno-function-sections` if needed.
 
-`<string.h>` and `v6c_arith.h` are shipped from
-`compiler-rt/lib/builtins/v6c/include/` (dev tree) or
-`<resource-dir>/lib/v6c/include/` (installed). `<stdlib.h>` and
-`<v6c.h>` are shipped from `clang/lib/Driver/ToolChains/V6C/include/`
-(dev tree) or `<resource-dir>/v6c/include/` (installed). Both
-directories are added as `-internal-isystem`.
-
-The V6C include directories are injected only by the V6C toolchain;
+The V6C include directory is injected only by the V6C toolchain;
 cross-host compiles for x86 and other targets are unaffected.
 
 ## Inline Assembly Patterns

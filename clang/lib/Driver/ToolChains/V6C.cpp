@@ -232,30 +232,10 @@ void V6CToolChain::addClangTargetOptions(
   }
 }
 
-/// Locate the V6C resource-dir include directory that ships
-/// `<stdlib.h>`, `<v6c.h>`. Search order mirrors
-/// findV6CDriverFile / findV6CRuntimeFile.
-static std::string findV6CIncludeDir(const ToolChain &TC) {
-  StringRef Dir = TC.getDriver().Dir;
-  llvm::SmallString<256> Installed(TC.getDriver().ResourceDir);
-  llvm::sys::path::append(Installed, "lib", "v6c", "include");
-
-  llvm::SmallString<256> DevTree(Dir);
-  llvm::sys::path::append(DevTree, "..", "..", "clang", "lib");
-  llvm::sys::path::append(DevTree, "Driver", "ToolChains", "V6C", "include");
-
-  llvm::SmallString<256> MirrorTree(Dir);
-  llvm::sys::path::append(MirrorTree, "..", "..", "llvm-project", "clang");
-  llvm::sys::path::append(MirrorTree, "lib", "Driver", "ToolChains", "V6C");
-  llvm::sys::path::append(MirrorTree, "include");
-
-  return findFirstExisting({std::string(Installed), std::string(DevTree),
-                            std::string(MirrorTree)});
-}
-
-/// O80: locate the compiler-rt-side V6C runtime header directory that
-/// ships `<string.h>` and `v6c_arith.h`. Same search shape as
-/// findV6CHeader, but returns the *directory* for `-internal-isystem`.
+/// O81: locate the V6C runtime header directory — the single source of
+/// truth for all V6C runtime headers (<string.h>, <stdlib.h>, <v6c.h>,
+/// v6c_arith.h, v6c_rt_macros.h). Returns the *directory* for
+/// `-internal-isystem`. Search order mirrors findV6CHeader.
 static std::string findV6CRuntimeIncludeDir(const ToolChain &TC) {
   StringRef Dir = TC.getDriver().Dir;
   llvm::SmallString<256> Installed(TC.getDriver().ResourceDir);
@@ -273,17 +253,11 @@ void V6CToolChain::AddClangSystemIncludeArgs(
   if (DriverArgs.hasArg(options::OPT_nostdinc))
     return;
 
-  // V6C-specific resource headers come first so they can shadow nothing
-  // (Clang's stock freestanding directory has no <string.h>).
+  // O81: single runtime include path — compiler-rt/lib/builtins/v6c/include/
+  // (dev tree) or <ResourceDir>/lib/v6c/include/ (installed). This directory
+  // is the sole source for all V6C runtime headers: <string.h>, <stdlib.h>,
+  // <v6c.h>, v6c_arith.h, v6c_rt_macros.h.
   if (!DriverArgs.hasArg(options::OPT_nostdlibinc)) {
-    std::string IncDir = findV6CIncludeDir(*this);
-    if (!IncDir.empty()) {
-      CC1Args.push_back("-internal-isystem");
-      CC1Args.push_back(DriverArgs.MakeArgString(IncDir));
-    }
-    // O80: compiler-rt-side headers (<string.h>, v6c_arith.h, ...)
-    // live in compiler-rt/lib/builtins/v6c/include — same pattern as
-    // the math runtime header.
     std::string RtIncDir = findV6CRuntimeIncludeDir(*this);
     if (!RtIncDir.empty()) {
       CC1Args.push_back("-internal-isystem");

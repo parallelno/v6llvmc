@@ -1,16 +1,44 @@
-/* stdlib.h - Minimal V6C <stdlib.h> subset.
+/* stdlib.h - V6C <stdlib.h>.
  *
- * Provides the integer absolute-value macros needed by V6C C code.
- * No dynamic allocation, no exit/abort — those require OS support
- * that the bare-metal V6C target does not have.
+ * Single canonical <stdlib.h> for the V6C bare-metal target.
+ * Provides the standard C subset that makes sense on a freestanding
+ * i8080 target plus common embedded convenience macros.
  *
- * Add entries here as the need arises.
+ * Contents:
+ *   EXIT_SUCCESS / EXIT_FAILURE — standard exit codes
+ *   abort() / exit()            — noreturn; both spin on HLT (no OS)
+ *   abs() / labs()              — standard C integer absolute value
+ *   min() / max()               — embedded convenience macros
  */
 #ifndef V6C_STDLIB_H_INCLUDED
 #define V6C_STDLIB_H_INCLUDED
 
 #ifndef __V6C__
 #error "<stdlib.h> here is V6C-only; compile with -target i8080-unknown-v6c"
+#endif
+
+#define EXIT_SUCCESS 0
+#define EXIT_FAILURE 1
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+static inline __attribute__((always_inline, __noreturn__))
+void abort(void) {
+    for (;;)
+        __builtin_v6c_hlt();
+}
+
+static inline __attribute__((always_inline, __noreturn__))
+void exit(int __status) {
+    (void)__status;
+    for (;;)
+        __builtin_v6c_hlt();
+}
+
+#ifdef __cplusplus
+}
 #endif
 
 #ifndef abs

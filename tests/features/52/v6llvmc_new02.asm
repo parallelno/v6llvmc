@@ -18,11 +18,6 @@ mul_u16:                                ; @mul_u16
 	;  arg0 = HL
 	;  arg1 = DE
 ; %bb.0:
-	MOV	B, H
-	MOV	C, L
-	XCHG
-	MOV	D, B
-	MOV	E, C
 	JMP	__mulhi3
                                         ; -- End function
 	.section	.text.div_u16,"ax",@progbits
