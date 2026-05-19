@@ -139,23 +139,22 @@ New-Item -ItemType Directory -Force -Path $StageRtIncDir | Out-Null
 $RtSrcDir = Join-Path $repoRoot 'compiler-rt\lib\builtins\v6c'
 # O80: all integer-math and mem* helpers are now header-only inline-asm
 # routines emitted per-TU. Only crt0 still needs to ship as an object.
-$RtSources = @('crt0.s')
+# crt0.o is produced out-of-band by scripts/build_v6c_runtime.ps1 (which
+# build_release.ps1 invokes right after ninja). make_dist.ps1 itself just
+# copies the prebuilt object — building it here would mask a broken or
+# missing runtime build step.
+$RtObjects = @('crt0.o')
 
-# Use the just-built clang to assemble each .s -> .o so the resulting
-# object files are byte-identical to what the released clang will produce.
-foreach ($s in $RtSources) {
-    $sPath = Join-Path $RtSrcDir $s
-    if (-not (Test-Path $sPath)) {
-        Write-Warning "Missing runtime source: $s"
-        continue
+foreach ($o in $RtObjects) {
+    $srcPath = Join-Path $RtSrcDir $o
+    if (-not (Test-Path $srcPath)) {
+        throw "V6C runtime object '$o' not found at $srcPath. " +
+              "Run scripts/build_v6c_runtime.ps1 first " +
+              "(it is invoked automatically by scripts/build_release.ps1)."
     }
-    $oName = [System.IO.Path]::ChangeExtension($s, '.o')
-    $oPath = Join-Path $StageRtDir $oName
-    Write-Host "Assembling $s -> $oName"
-    & $Clang --target=i8080-unknown-v6c -c $sPath -o $oPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to assemble $s"
-    }
+    $dstPath = Join-Path $StageRtDir $o
+    Write-Host "Copying runtime $o"
+    Copy-Item -Force $srcPath -Destination $dstPath
 }
 
 # O80: ship the header-only V6C runtime (v6c_arith.h, v6c_rt_macros.h,

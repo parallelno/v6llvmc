@@ -10,6 +10,7 @@
 #include "CommonArgs.h"
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
+#include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/InputInfo.h"
 #include "clang/Driver/Options.h"
 #include "llvm/ADT/SmallString.h"
@@ -135,12 +136,25 @@ void v6c::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back("--gc-sections");
 
   // crt0.o (suppressed by -nostartfiles or -nostdlib).
+  //
+  // crt0.o is NOT built by ninja. It must be assembled out-of-band from
+  // compiler-rt/lib/builtins/v6c/crt0.s (see scripts/build_v6c_runtime.ps1
+  // and docs/V6CBuildGuide.md "V6C runtime build"). If we silently skip it,
+  // ld.lld --gc-sections has no _start root and drops *every* code section,
+  // producing a zero-byte ROM. Make that a hard error so the failure is
+  // obvious at link time; users who really mean to link without a startup
+  // file must pass -nostartfiles (or -nostdlib).
   bool UseStartFiles = !Args.hasArg(options::OPT_nostartfiles,
                                     options::OPT_nostdlib, options::OPT_r);
   if (UseStartFiles) {
     std::string Crt0 = findV6CRuntimeFile(TC, "crt0.o");
-    if (!Crt0.empty())
-      CmdArgs.push_back(Args.MakeArgString(Crt0));
+    if (Crt0.empty()) {
+      D.Diag(diag::err_drv_no_such_file)
+          << "crt0.o (V6C startup) — assemble crt0.s with "
+             "scripts/build_v6c_runtime.ps1, or pass -nostartfiles to opt out";
+      return;
+    }
+    CmdArgs.push_back(Args.MakeArgString(Crt0));
   }
 
   // User input objects and -l libraries.

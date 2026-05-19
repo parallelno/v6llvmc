@@ -69,6 +69,13 @@ if (-not $SkipBuild) {
         llvm-objcopy llvm-readelf llvm-objdump llvm-ar llvm-mc llvm-nm `
         FileCheck not llvm-lit
     if ($LASTEXITCODE -ne 0) { throw 'ninja build failed' }
+
+    # crt0.o is not built by ninja (compiler-rt is not configured for i8080).
+    # Assemble it now using the just-built clang so the dev tree, tests, and
+    # downstream make_dist.ps1 all see an up-to-date object next to crt0.s.
+    Write-Host '--- Assemble V6C runtime (crt0.o) ---'
+    & (Join-Path $PSScriptRoot 'build_v6c_runtime.ps1') -BuildDir $BuildDir
+    if ($LASTEXITCODE -ne 0) { throw 'build_v6c_runtime.ps1 failed' }
 }
 
 if (-not $SkipTests) {

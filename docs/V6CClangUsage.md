@@ -260,3 +260,45 @@ No `-nostartfiles`, `-nodefaultlibs`, or `-Wl,--defsym=_start=main`
 workaround is needed. `crt0.s` is assembled by the V6C MC AsmParser
 (Phase 3 of the asm-interop overhaul), and `_start` is the canonical
 entry point declared in `crt0.s`.
+
+## crt0.o is Mandatory (and How to Opt Out)
+
+Every V6C link pulls in `crt0.o`, which defines `_start` — the entry
+symbol named by `v6c.ld`. Without it, `ld.lld --gc-sections` would have
+no root and silently drop every code section, producing a zero-byte ROM.
+To make that failure visible at build time, the clang driver **errors
+out** when `crt0.o` cannot be located:
+
+```text
+clang: error: no such file or directory: 'crt0.o (V6C startup) —
+assemble crt0.s with scripts/build_v6c_runtime.ps1, or pass
+-nostartfiles to opt out'
+```
+
+The driver searches two locations (see
+`clang/lib/Driver/ToolChains/V6C.cpp` → `findV6CRuntimeFile`):
+
+1. `<ResourceDir>/lib/v6c/crt0.o` — installed release tree
+   (populated by `scripts/make_dist.ps1`).
+2. `<clang-bin>/../../compiler-rt/lib/builtins/v6c/crt0.o` — dev tree
+   (populated by `scripts/build_v6c_runtime.ps1`, which
+   `scripts/build_release.ps1` invokes automatically after `ninja`).
+
+If the error fires in a dev checkout, run `scripts/build_v6c_runtime.ps1`
+to assemble `crt0.s` → `crt0.o` next to the source. See
+[V6CBuildGuide.md → Build the V6C Runtime](V6CBuildGuide.md#build-the-v6c-runtime-crt0o).
+
+### Freestanding / `-nostartfiles` Builds
+
+Pass `-nostartfiles` (or `-nostdlib`) to tell the driver **not** to link
+`crt0.o`. This is for programs that supply their own startup, e.g. a
+custom `_start`, ROM monitor entry, or a bootloader stub:
+
+```bash
+clang -target i8080-unknown-v6c -nostartfiles -Wl,--defsym=_start=main \
+      main.c -o out.rom
+```
+
+Without a `_start` symbol (either from `crt0.o` or `--defsym`),
+`ld.lld` emits `cannot find entry symbol _start; not setting start
+address` and the resulting ROM has no defined entry point.

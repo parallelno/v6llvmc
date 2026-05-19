@@ -48,6 +48,32 @@ The `lld` project provides `ld.lld`, the native ELF linker used by the V6C
 toolchain (replaces the legacy Python `scripts/v6c_link.py`, now stubbed).
 See plan [design/plan_O_LLD_native_linker.md](../design/plan_O_LLD_native_linker.md).
 
+## Build the V6C Runtime (crt0.o)
+
+`compiler-rt` is **not** configured for the i8080 target, so the LLVM
+ninja build does **not** produce `crt0.o`. After every `ninja` run that
+rebuilds `clang.exe`, assemble the V6C startup object with the just-built
+clang:
+
+```powershell
+pwsh scripts\build_v6c_runtime.ps1
+```
+
+This assembles `compiler-rt\lib\builtins\v6c\crt0.s` into
+`compiler-rt\lib\builtins\v6c\crt0.o` (placed next to its source). The
+script is a no-op when the `.o` is newer than both the `.s` and
+`clang.exe`. The release orchestrator
+[scripts/build_release.ps1](../scripts/build_release.ps1) invokes this
+script automatically immediately after `ninja`; `make_dist.ps1` then
+copies the prebuilt `crt0.o` into the staged install tree (it does **not**
+reassemble it).
+
+`crt0.o` is **mandatory** for every link: the clang driver fails with
+`no such file or directory: 'crt0.o (V6C startup) — ...'` if it is
+missing. Freestanding programs that provide their own `_start` can opt
+out with `-nostartfiles` (see
+[V6CClangUsage.md](V6CClangUsage.md#freestanding--nostartfiles-builds)).
+
 Verify the target is registered:
 
 ```bash
