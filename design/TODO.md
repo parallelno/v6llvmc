@@ -5,9 +5,11 @@ Status: works correctly via LLVM defaults, but no v6c-specific jump-table tuning
 =====================================
 funcs in v6c_arith.h doesn't define clobber regs, return regs. how RA nows what is not clobbered?
 =============================
-why unused static arith funcs are in the asm?
-temp\asm_inline\no_arith.c
-temp\asm_inline\no_arith.s
+dist\v6c-2026.04.27-windows-x64\lib\clang\18\lib\v6c\*.o
+are those *.o is used any where?
+
+dist\v6c-2026.04.27-windows-x64\lib\clang\18\lib\v6c\include\README.txt
+is this folder needed for anything?
 ============================
 From the chat. below your quotes followed by my questions or asks:
 

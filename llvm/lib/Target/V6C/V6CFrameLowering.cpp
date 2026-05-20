@@ -238,6 +238,18 @@ void V6CFrameLowering::emitPrologue(MachineFunction &MF,
     BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrM))
         .addReg(V6C::D, RegState::Define);
     // Reload saved HL: at SP + OrigStackSize + 2 (next 2 bytes on stack).
+    // We need a byte scratch register to hold the L byte while loading H
+    // (because the MOVrM instruction uses HL itself as the address pointer).
+    //
+    // Every byte register that's not H/L is either potentially live-in as
+    // an argument (A, B, C, D, E) or reserved (FP). Rather than try to
+    // pick a "safe" scratch via liveness analysis (which is fragile —
+    // e.g. when DE is live-in as a pair, isLiveIn(E) returns false even
+    // though E is semantically live), we unconditionally save/restore A
+    // around the scratch use via PUSH/POP PSW. Cost is +1 byte / +21 cc,
+    // only on functions hitting this Case 1 (rare).
+    BuildMI(MBB, MBBI, DL, TII.get(V6C::PUSH))
+        .addReg(V6C::PSW, RegState::Undef);  // preserve A (FLAGS undef at entry)
     BuildMI(MBB, MBBI, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
     BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrM))
         .addReg(V6C::A, RegState::Define);   // A = saved L
@@ -247,6 +259,8 @@ void V6CFrameLowering::emitPrologue(MachineFunction &MF,
     BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
         .addReg(V6C::L, RegState::Define)
         .addReg(V6C::A);                     // L = saved L (from A)
+    BuildMI(MBB, MBBI, DL, TII.get(V6C::POP))
+        .addReg(V6C::PSW, RegState::Define | RegState::Dead);  // restore A
     return;
   }
 

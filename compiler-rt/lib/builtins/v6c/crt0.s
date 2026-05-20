@@ -23,6 +23,7 @@
     .section .text._start, "ax"
     .globl _start
 _start:
+    DI                       ; Disable interrupts during setup
     LXI SP, __stack_top      ; Initialize stack pointer
 
     ; Zero [__bss_start, __bss_end). Empty range is handled correctly
