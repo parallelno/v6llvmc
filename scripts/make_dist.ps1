@@ -171,31 +171,12 @@ if (Test-Path $RtIncSrcDir) {
 $StageSamples = Join-Path $Stage 'share\v6c\samples'
 New-Item -ItemType Directory -Force -Path $StageSamples | Out-Null
 
-$SampleSources = @(
-    'tests\features\o_lld_bsort.c'
-)
-foreach ($f in $SampleSources) {
-    $src = Join-Path $repoRoot $f
-    if (Test-Path $src) {
-        Copy-Item $src -Destination $StageSamples
-    }
+$SamplesRepo = Join-Path $repoRoot 'samples'
+if (Test-Path $SamplesRepo) {
+    Copy-Item -Recurse (Join-Path $SamplesRepo '*') -Destination $StageSamples
+} else {
+    Write-Warning "samples/ directory not found at $SamplesRepo — skipping"
 }
-
-# Hello sample (synthesized so the dist always contains a trivial example).
-$Hello = @'
-// hello.c -- minimal V6C ROM. Build with:
-//   clang -target i8080-unknown-v6c -O2 hello.c -o hello.rom
-// Run in the bundled emulator:
-//   v6emul --rom hello.rom --load-addr 0x0100 --halt-exit --dump-cpu
-#include <stdint.h>
-
-int main(void) {
-    __builtin_v6c_out(0xED, 0x42);  // emit 0x42 on debug port
-    __builtin_v6c_hlt();
-    return 0;
-}
-'@
-$Hello | Set-Content -Path (Join-Path $StageSamples 'hello.c') -NoNewline
 
 # ------------------------------------------------------- share/v6c/docs
 $StageDocs = Join-Path $Stage 'share\v6c\docs'

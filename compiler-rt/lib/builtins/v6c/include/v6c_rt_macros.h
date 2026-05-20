@@ -39,3 +39,13 @@
 #define V6C_RT static __attribute__((noinline, used, naked, \
                                      annotate("v6c-rt-helper")))
 #endif
+
+#ifndef V6C_NOINLINE
+#define V6C_NOINLINE static __attribute__((noinline, \
+                                     annotate("v6c-rt-helper")))
+#endif
+
+#ifndef V6C_INLINE
+#define V6C_INLINE static inline __attribute__((always_inline, \
+                                     annotate("v6c-rt-helper")))
+#endif
