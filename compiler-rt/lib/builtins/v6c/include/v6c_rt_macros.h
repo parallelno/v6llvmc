@@ -4,9 +4,9 @@
  * inline-asm runtime routine (math in `v6c_arith.h`, string/memory
  * in `<string.h>`). Pull this in instead of redefining `V6C_RT`
  * locally — that way the attribute set stays consistent and the
- * `annotate("v6c-rt-helper")` tag (used to suppress these bodies
- * from `-S` output unless `-mv6c-print-rt-helpers` is passed) is
- * applied uniformly.
+ * `v6c_rt_helper` tag (used to suppress these bodies from `-S`
+ * output unless `-mv6c-print-rt-helpers` is passed) is applied
+ * uniformly.
  *
  * This header is pure macro plumbing: no declarations, no includes.
  * It is safe to pull into any V6C runtime header without dragging
@@ -22,8 +22,12 @@
  *     the inline-asm string; every byte hand-placed; relies on the
  *     V6C C calling convention having operands already in named
  *     registers. Each body must emit its own `RET`.
- *   - annotate("v6c-rt-helper"): tag for V6CAsmPrinter to suppress
- *     these bodies from `.s` dumps by default.
+ *   - v6c_rt_helper: tag for V6CAsmPrinter to suppress these bodies
+ *     from `.s` dumps by default. Lowered to the LLVM string function
+ *     attribute "v6c-rt-helper" — does NOT take the function's
+ *     address and does NOT block IPO (IPSCCP / ArgumentPromotion /
+ *     DeadArgumentElimination), unlike `annotate("v6c-rt-helper")`
+ *     which it replaces.
  */
 /* No file-level include guard: each consumer header `#undef`s
  * `V6C_RT` at end-of-file to keep the macro out of user code, so
@@ -37,15 +41,15 @@
 
 #ifndef V6C_RT
 #define V6C_RT static __attribute__((noinline, used, naked, \
-                                     annotate("v6c-rt-helper")))
+                                     v6c_rt_helper))
 #endif
 
 #ifndef V6C_NOINLINE
 #define V6C_NOINLINE static __attribute__((noinline, \
-                                     annotate("v6c-rt-helper")))
+                                     v6c_rt_helper))
 #endif
 
 #ifndef V6C_INLINE
 #define V6C_INLINE static inline __attribute__((always_inline, \
-                                     annotate("v6c-rt-helper")))
+                                     v6c_rt_helper))
 #endif

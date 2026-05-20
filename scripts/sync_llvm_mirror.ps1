@@ -44,6 +44,8 @@ xcopy /Y /I "$root\llvm-project\clang\lib\Driver\Driver.cpp" "$root\clang\lib\Dr
 xcopy /Y /I "$root\llvm-project\clang\lib\Driver\CMakeLists.txt" "$root\clang\lib\Driver\" > $null
 # O70: V6C driver options (-fno-v6c-auto-include)
 xcopy /Y /I "$root\llvm-project\clang\include\clang\Driver\Options.td" "$root\clang\include\clang\Driver\" > $null
+# V6C: clang attribute v6c_rt_helper (lowers to LLVM string fn attr "v6c-rt-helper").
+xcopy /Y /I "$root\llvm-project\clang\include\clang\Basic\Attr.td" "$root\clang\include\clang\Basic\" > $null
 # Clang.cpp (unsigned char default)
 xcopy /Y /I "$root\llvm-project\clang\lib\Driver\ToolChains\Clang.cpp" "$root\clang\lib\Driver\ToolChains\" > $null
 # CommonArgs.cpp (frame pointer default)

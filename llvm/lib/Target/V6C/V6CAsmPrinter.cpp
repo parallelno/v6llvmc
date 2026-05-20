@@ -45,7 +45,6 @@ public:
 
   StringRef getPassName() const override { return "V6C Assembly Printer"; }
 
-  bool doInitialization(Module &M) override;
   bool runOnMachineFunction(MachineFunction &MF) override;
 
   void emitFunctionBodyStart() override;
@@ -53,40 +52,7 @@ public:
 
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
                        const char *ExtraCode, raw_ostream &O) override;
-
-private:
-  /// Names of functions tagged `__attribute__((annotate("v6c-rt-helper")))`
-  /// in the current module. Populated in doInitialization().
-  StringSet<> RTHelperNames;
 };
-
-bool V6CAsmPrinter::doInitialization(Module &M) {
-  // Scan `@llvm.global.annotations` once per module to find functions
-  // tagged with `__attribute__((annotate("v6c-rt-helper")))` so we can
-  // suppress them from .s output unless -mv6c-print-rt-helpers is on.
-  RTHelperNames.clear();
-  if (auto *GA = M.getNamedGlobal("llvm.global.annotations")) {
-    if (auto *CA = dyn_cast_or_null<ConstantArray>(GA->getInitializer())) {
-      for (auto &Op : CA->operands()) {
-        auto *CS = dyn_cast<ConstantStruct>(&*Op);
-        if (!CS || CS->getNumOperands() < 2)
-          continue;
-        auto *F = dyn_cast<Function>(
-            CS->getOperand(0)->stripPointerCasts());
-        auto *StrGV = dyn_cast<GlobalVariable>(
-            CS->getOperand(1)->stripPointerCasts());
-        if (!F || !StrGV || !StrGV->hasInitializer())
-          continue;
-        auto *CDA = dyn_cast<ConstantDataArray>(StrGV->getInitializer());
-        if (!CDA || !CDA->isCString())
-          continue;
-        if (CDA->getAsCString() == "v6c-rt-helper")
-          RTHelperNames.insert(F->getName());
-      }
-    }
-  }
-  return AsmPrinter::doInitialization(M);
-}
 
 bool V6CAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   // Suppress auto-included v6c_arith.h runtime helpers from human-readable
@@ -94,8 +60,13 @@ bool V6CAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   // Only applies to text (`-S`) emission — when emitting an object file
   // (`-filetype=obj`) every helper must still be encoded so the linker
   // can resolve calls to `__mulqi3` etc.
+  //
+  // Functions are tagged via `__attribute__((v6c_rt_helper))` (see
+  // clang/include/clang/Basic/Attr.td), which lowers to the LLVM string
+  // function attribute "v6c-rt-helper". Unlike __attribute__((annotate))
+  // this does NOT take the function's address and does NOT block IPO.
   if (!getV6CPrintRTHelpersEnabled() && OutStreamer->hasRawTextSupport() &&
-      RTHelperNames.contains(MF.getName()))
+      MF.getFunction().hasFnAttribute("v6c-rt-helper"))
     return false;
   return AsmPrinter::runOnMachineFunction(MF);
 }

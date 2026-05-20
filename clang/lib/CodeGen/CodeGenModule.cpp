@@ -2507,6 +2507,12 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
 
   F->addFnAttrs(B);
 
+  // V6C: tag for the V6C AsmPrinter (suppression in `-S` text output).
+  // Emitted as an LLVM string function attribute so it does not affect
+  // IPO/IPSCCP/ArgumentPromotion (unlike __attribute__((annotate))).
+  if (D->hasAttr<V6CRtHelperAttr>())
+    F->addFnAttr("v6c-rt-helper");
+
   unsigned alignment = D->getMaxAlignment() / Context.getCharWidth();
   if (alignment)
     F->setAlignment(llvm::Align(alignment));
