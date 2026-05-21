@@ -1,8 +1,6 @@
 /*===---- v6c_inter.h - V6C target-specific interrupt handling utilities ----===
  *
- * Thin inline wrappers around the __builtin_v6c_* family. These map
- * directly onto i8080 instructions (IN, OUT, DI, EI, HLT, NOP) and are
- * always inlined; including this header has zero call overhead.
+ * Interrupt and hardware setup.
  *
  *===------------------------------------------------------------------------===
  */
@@ -23,38 +21,28 @@
  * handling is needed.
  */
 V6C_INLINE
-void set_empty_int() {
+void v6c_set_empty_interrupt() {
     __asm__ volatile (
-        "mvi a, %[ret] \n\t"
-        "sta 0x38      \n\t"
+        "MVI A, %[ei] \n\t"
+        "STA 0x38     \n\t"
+        "MVI A, %[ret] \n\t"
+        "STA 0x39      \n\t"
         :
-        : [ret] "i"(OPCODE_RET)
+        :  [ei] "i"(OPCODE_EI), [ret] "i"(OPCODE_RET)
+        : "A"
     );
 }
 
 
 /*
- * Example palette initialization routine. The caller provides a pointer to a
- * 16-color palette in memory, and this function writes it out to the hardware
- * palette registers over PORT0.
- *
- * This is a `noinline` function to keep the body out of the caller's IR and
- * to ensure that the register constraints in the inline asm are respected even
- * under heavy register pressure in the caller. The body is pure inline asm with
- * no extended-asm operands, so all data flow in/out and clobbers are managed
- * by the caller's register-asm bindings plus the `noinline` attribute that
- * prevents reordering.
- *
- * Contract:
- *   IN:    HL = pointer to 16-color palette data (16 bytes)
- *   OUT:   none
- *   CLOBBERS: A, B, FLAGS
+ * Palette initialization routine.
+ * IN: palette_end - pointer to a last byte of a 16-color palette in memory.
 */
 
 V6C_NOINLINE
-void palette_init(uint8_t* palette)
+void v6c_set_palette(uint8_t* palette_end)
 {
-    register uint16_t pal_reg asm("HL") = (uint16_t)palette;
+    register uint16_t pal_reg asm("HL") = (uint16_t)palette_end;
 
     __asm__ volatile (
             "hlt             \n"
@@ -74,10 +62,9 @@ void palette_init(uint8_t* palette)
 			"out 0x0C        \n"
 			"jp	1b           \n"
             : /* no outputs */
-            : "r"(pal_reg), [port] "i"(PORT0_OUT_OUT), [len] "i"(PALETTE_LEN)
+            : "r"(pal_reg), [port] "i"(PORT0_OUT_OUT), [len] "i"(PALETTE_LEN-1)
             : "A", "B", "FLAGS"
     );
-    return;
 }
 
 #endif /* __V6C_V6C_INTER_H */

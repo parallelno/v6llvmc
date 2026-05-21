@@ -1,8 +1,7 @@
-/*===---- v6c.h - V6C target-specific intrinsic wrappers ------------------===
+/*===---- v6c.h - V6C target-specific hardware instruction wrappers -------===
  *
- * Thin inline wrappers around the __builtin_v6c_* family. These map
- * directly onto i8080 instructions (IN, OUT, DI, EI, HLT, NOP) and are
- * always inlined; including this header has zero call overhead.
+ * Inline asm wrappers for i8080 instructions (IN, OUT, DI, EI, HLT, NOP,
+ * LXI SP).  Always inlined; including this header has zero call overhead.
  *
  *===-----------------------------------------------------------------------===
  */

@@ -213,8 +213,6 @@ static inline void v6c_out(uint8_t port, uint8_t v) {
 }
 ```
 
-Prefer `__builtin_v6c_out(port, v)` when available — it lets the optimizer
-see the operation.
 
 ### 7.2 Read-modify-write the accumulator
 

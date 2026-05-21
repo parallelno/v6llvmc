@@ -3,7 +3,7 @@ LLVM's SimplifyCFG and SwitchLowering can produce jump tables, bit tests, or bal
 
 Status: works correctly via LLVM defaults, but no v6c-specific jump-table tuning has been documented.
 =====================================
-funcs in v6c_arith.h doesn't define clobber regs, return regs. how RA nows what is not clobbered?
+replace crt.o + srt.s with crt.c or find a way to provide the sp addr viar cl arg
 =============================
 dist\v6c-2026.04.27-windows-x64\lib\clang\18\lib\v6c\*.o
 are those *.o is used any where?

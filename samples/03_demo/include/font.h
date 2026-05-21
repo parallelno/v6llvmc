@@ -7,16 +7,6 @@
 #include "memory.h"
 
 V6C_NOINLINE
-void fill_screen() {
-    for (uint16_t y = 0; y < SCR_HEIGHT; ++y) {
-        for (uint8_t x = 0; x < SCR_BYTES_W; ++x) {
-            uint8_t* scr_pos = SCR0_ADDR + (y * SCR_BYTES_W) + x;
-            *scr_pos = 0xFF; // set all pixels in this byte to on
-        }
-    }
-}
-
-V6C_NOINLINE
 void fill_rect(uint8_t addr_x, uint8_t pos_y, uint8_t b, uint8_t h) {
     for (uint16_t x = addr_x; x < addr_x + b; ++x) {
         for (uint16_t y = pos_y; y < pos_y + h; ++y) {

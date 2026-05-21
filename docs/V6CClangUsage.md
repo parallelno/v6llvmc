@@ -92,33 +92,36 @@ void send_message(const unsigned char *buf, unsigned int len) {
 }
 ```
 
-## Built-in Functions (Intrinsics)
+## Hardware Instruction Wrappers (`<v6c.h>`)
 
-Hardware-specific operations available as built-in functions:
+Include `<v6c.h>` for always-inlined wrappers around i8080 hardware instructions:
 
-| Intrinsic | Assembly | Purpose |
-|-----------|----------|---------|
-| `__builtin_v6c_in(port)` | `IN port` | Read I/O port (returns `unsigned char`) |
-| `__builtin_v6c_out(port, val)` | `OUT port` | Write `val` to I/O port |
-| `__builtin_v6c_di()` | `DI` | Disable interrupts |
-| `__builtin_v6c_ei()` | `EI` | Enable interrupts |
-| `__builtin_v6c_hlt()` | `HLT` | Halt processor |
-| `__builtin_v6c_nop()` | `NOP` | No-operation |
+| Function | Assembly | Purpose |
+|----------|----------|---------|
+| `v6c_in(port)` | `IN port` | Read I/O port (returns `uint8_t`) |
+| `v6c_out(port, val)` | `OUT port` | Write `val` to I/O port |
+| `v6c_di()` | `DI` | Disable interrupts |
+| `v6c_ei()` | `EI` | Enable interrupts |
+| `v6c_hlt()` | `HLT` | Halt processor |
+| `v6c_nop()` | `NOP` | No-operation |
+| `v6c_set_sp(addr)` | `LXI SP, addr` | Set stack pointer to a compile-time constant |
 
 Example:
 ```c
-void write_port(unsigned char port, unsigned char val) {
-    __builtin_v6c_out(port, val);
+#include <v6c.h>
+
+void write_port(uint8_t port, uint8_t val) {
+    v6c_out(port, val);
 }
 
-unsigned char read_port(unsigned char port) {
-    return __builtin_v6c_in(port);
+uint8_t read_port(uint8_t port) {
+    return v6c_in(port);
 }
 
 void critical_section(void) {
-    __builtin_v6c_di();
+    v6c_di();
     // ... critical code ...
-    __builtin_v6c_ei();
+    v6c_ei();
 }
 ```
 
@@ -161,7 +164,7 @@ without any `-I` or `-isystem` flag:
 |--------|----------|
 | `<string.h>` | `memcpy`, `memset`, `memmove`, `strlen`, `strcmp`, `strcpy` — header-only inline asm; opt-in via `#include` |
 | `<stdlib.h>` | `EXIT_SUCCESS`/`EXIT_FAILURE`, `abort()`, `exit(int)` (both `noreturn`, expand to `HLT` loop), `abs()`, `labs()`, `min()`, `max()` |
-| `<v6c.h>` | `__v6c_in`, `__v6c_out`, `__v6c_di`, `__v6c_ei`, `__v6c_hlt`, `__v6c_nop` — thin inline wrappers around the `__builtin_v6c_*` family |
+| `<v6c.h>` | `v6c_in`, `v6c_out`, `v6c_di`, `v6c_ei`, `v6c_hlt`, `v6c_nop`, `v6c_set_sp` — inline asm wrappers for i8080 hardware instructions |
 | `v6c_arith.h` | Math runtime (`__mulqi3`, `__mulhi3`, `__udivhi3`, `__divhi3`, `__ashlhi3`, ...). **Auto-included** via `-include v6c_arith.h` on V6C targets; suppress with `-fno-v6c-auto-include`. See [V6CRuntimeAndInlineAsm.md](V6CRuntimeAndInlineAsm.md). |
 
 All runtime routines are header-only inline-`__asm__` helpers — there

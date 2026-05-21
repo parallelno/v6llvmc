@@ -47,8 +47,7 @@
  * Inputs:  HL = dst, DE = src, BC = n
  * Clobbers: A, B, C, D, E, FLAGS
  * ------------------------------------------------------------------ */
-V6C_NOINLINE
-void memcpy(uint8_t* dst, const uint8_t* src, uint16_t n)
+V6C_NOINLINE void memcpy(uint8_t* dst, const uint8_t* src, uint16_t n)
 {
     register uint16_t dst_reg asm("HL") = (uint16_t)dst; /* input, clobbers */
     register uint16_t src_reg asm("DE") = (uint16_t)src; /* input, clobbers */
@@ -74,35 +73,12 @@ void memcpy(uint8_t* dst, const uint8_t* src, uint16_t n)
 /* ------------------------------------------------------------------
  * memset(dst, val, n) — fill n bytes at dst with low byte of val.
  * No return value — code like char *p = memset(...) would break.
- *
- * Inputs:  HL = dst, DE = val (E = byte value, D ignored), BC = n
- * Clobbers: A, B, C, FLAGS
- *
- * Note: C requires only the low byte of `int val` to be used.
  * ------------------------------------------------------------------ */
-V6C_NOINLINE
-void memset(uint8_t* dst, uint8_t val, uint16_t n)
+V6C_NOINLINE void memset(uint8_t* dst, uint8_t val, uint16_t n)
 {
     for (uint16_t i = 0; i < n; i++) {
         dst[i] = val;
     }
-    // register uint16_t dst_reg asm("HL") = (uint16_t)dst; /* input, clobbers */
-    // register uint8_t val_reg asm("E") = val;   /* input, clobbers */
-    // register uint16_t n_reg asm("BC") = n;      /* input, clobbers */
-
-    // __asm__ volatile (
-    //     "1:                  \n\t"
-    //     "MOV  A, B           \n\t"
-    //     "ORA  C              \n\t"
-    //     "RZ                  \n\t"
-    //     "MOV  M, E           \n\t"   /* *dst = (uint8_t)val */
-    //     "INX  H              \n\t"
-    //     "DCX  B              \n\t"
-    //     "JMP  1b             \n"
-    //     : /* no outputs */
-    //     : "r"(dst_reg), "r"(val_reg), "r"(n_reg) /* input constraints */
-    //     : "A", "FLAGS" /* clobbers */
-    // );
 }
 
 /* ------------------------------------------------------------------
@@ -114,8 +90,7 @@ void memset(uint8_t* dst, uint8_t val, uint16_t n)
  * If dst < src: forward copy is safe (same as memcpy).
  * If dst >= src: copy backward starting from (dst+n-1, src+n-1).
  * ------------------------------------------------------------------ */
-V6C_NOINLINE
-void memmove(uint8_t* dst, const uint8_t* src, uint16_t n)
+V6C_NOINLINE void memmove(uint8_t* dst, const uint8_t* src, uint16_t n)
 {
     if (!n) return;
 

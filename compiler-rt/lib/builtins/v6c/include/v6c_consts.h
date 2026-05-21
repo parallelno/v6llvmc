@@ -173,6 +173,7 @@
  * ======================================================= */
 #define OPCODE_NOP          0x00u
 #define OPCODE_XCHG         0xEBu
+#define OPCODE_EI           0xFBu
 #define OPCODE_RET          0xC9u
 #define OPCODE_RC           0xD8u
 #define OPCODE_RNC          0xD0u
