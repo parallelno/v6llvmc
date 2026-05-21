@@ -14,37 +14,53 @@
 #error "<v6c.h> is only valid for the V6C target"
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdint.h>
+#include "v6c_rt_macros.h"
 
-static inline __attribute__((always_inline))
-unsigned char __v6c_in(unsigned char __port) {
-    return __builtin_v6c_in(__port);
+V6C_INLINE
+uint8_t v6c_in(uint8_t port) {
+    register uint8_t in_val asm("A");
+    asm(
+        "in %[_port]            \n\t"
+        : "=r"(in_val)
+        : [_port] "i"(port) /* input constraint: immediate value */
+        : "FLAGS" /* clobbers */
+    );
+    return in_val;
 }
 
-static inline __attribute__((always_inline))
-void __v6c_out(unsigned char __port, unsigned char __val) {
-    __builtin_v6c_out(__port, __val);
+V6C_INLINE
+void v6c_out(uint8_t port, uint8_t val) {
+
+    asm(
+        "mov a, %[_val]         \n\t"
+        "out %[_port]           \n\t"
+        :
+        : [_val] "r"(val), [_port] "i"(port) /* input constraints */
+        : "A", "FLAGS" /* clobbers */
+    );
 }
 
-static inline __attribute__((always_inline))
-void __v6c_di(void)  { __builtin_v6c_di(); }
+V6C_INLINE
+void v6c_di(void)  { asm ("di"); }
 
-static inline __attribute__((always_inline))
-void __v6c_ei(void)  { __builtin_v6c_ei(); }
+V6C_INLINE
+void v6c_ei(void)  { asm ("ei"); }
 
-static inline __attribute__((always_inline, noreturn))
-void __v6c_hlt(void) {
-    for (;;)
-        __builtin_v6c_hlt();
+V6C_INLINE
+void v6c_hlt(void) { asm("hlt"); }
+
+V6C_INLINE
+void v6c_nop(void) { asm("nop"); }
+
+V6C_INLINE
+void v6c_set_sp(uint16_t sp) {
+    asm(
+        "lxi sp, %0"
+        :/* no output */
+        : "i"(sp) /* input constraint: immediate value */
+        : "SP" /* clobbers stack pointer */
+    );
 }
-
-static inline __attribute__((always_inline))
-void __v6c_nop(void) { __builtin_v6c_nop(); }
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* __V6C_V6C_H */

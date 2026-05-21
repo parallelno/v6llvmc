@@ -37,82 +37,96 @@
 #error "<string.h> here is V6C-only; compile with -target i8080-unknown-v6c"
 #endif
 
-#include <stddef.h>
-
 #include "v6c_rt_macros.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 /* ------------------------------------------------------------------
  * memcpy(dst, src, n) — copy n bytes from src to dst (non-overlapping).
+ * No return value — code like char *p = memcpy(...) would break.
  *
  * Inputs:  HL = dst, DE = src, BC = n
- * Output:  HL = dst (unchanged)
  * Clobbers: A, B, C, D, E, FLAGS
  * ------------------------------------------------------------------ */
-V6C_RT void *memcpy(void *dst, const void *src, size_t n) {
+V6C_NOINLINE
+void memcpy(uint8_t* dst, const uint8_t* src, uint16_t n)
+{
+    register uint16_t dst_reg asm("HL") = (uint16_t)dst; /* input, clobbers */
+    register uint16_t src_reg asm("DE") = (uint16_t)src; /* input, clobbers */
+    register uint16_t n_reg asm("BC") = n; /* input, clobbers */
+
     __asm__ volatile (
-        "PUSH H              \n"     /* save dst for return */
         "1:                  \n\t"
         "MOV  A, B           \n\t"
         "ORA  C              \n\t"
-        "JZ   2f             \n\t"   /* n == 0? */
+        "RZ                  \n\t"   /* n == 0? */
         "LDAX D              \n\t"   /* A = *src */
         "MOV  M, A           \n\t"   /* *dst = A */
         "INX  H              \n\t"
         "INX  D              \n\t"
         "DCX  B              \n\t"
         "JMP  1b             \n"
-        "2:                  \n\t"
-        "POP  H              \n\t"   /* HL = original dst */
-        "RET                 \n\t"
+        : /* no outputs */
+        : "r"(dst_reg), "r"(src_reg), "r"(n_reg) /* input constraints */
+        : "A", "FLAGS" /* clobbers */
     );
 }
 
 /* ------------------------------------------------------------------
  * memset(dst, val, n) — fill n bytes at dst with low byte of val.
+ * No return value — code like char *p = memset(...) would break.
  *
  * Inputs:  HL = dst, DE = val (E = byte value, D ignored), BC = n
- * Output:  HL = dst (unchanged)
  * Clobbers: A, B, C, FLAGS
  *
  * Note: C requires only the low byte of `int val` to be used.
  * ------------------------------------------------------------------ */
-V6C_RT void *memset(void *dst, int val, size_t n) {
-    __asm__ volatile (
-        "PUSH H              \n"
-        "1:                  \n\t"
-        "MOV  A, B           \n\t"
-        "ORA  C              \n\t"
-        "JZ   2f             \n\t"
-        "MOV  M, E           \n\t"   /* *dst = (uint8_t)val */
-        "INX  H              \n\t"
-        "DCX  B              \n\t"
-        "JMP  1b             \n"
-        "2:                  \n\t"
-        "POP  H              \n\t"
-        "RET                 \n\t"
-    );
+V6C_NOINLINE
+void memset(uint8_t* dst, uint8_t val, uint16_t n)
+{
+    for (uint16_t i = 0; i < n; i++) {
+        dst[i] = val;
+    }
+    // register uint16_t dst_reg asm("HL") = (uint16_t)dst; /* input, clobbers */
+    // register uint8_t val_reg asm("E") = val;   /* input, clobbers */
+    // register uint16_t n_reg asm("BC") = n;      /* input, clobbers */
+
+    // __asm__ volatile (
+    //     "1:                  \n\t"
+    //     "MOV  A, B           \n\t"
+    //     "ORA  C              \n\t"
+    //     "RZ                  \n\t"
+    //     "MOV  M, E           \n\t"   /* *dst = (uint8_t)val */
+    //     "INX  H              \n\t"
+    //     "DCX  B              \n\t"
+    //     "JMP  1b             \n"
+    //     : /* no outputs */
+    //     : "r"(dst_reg), "r"(val_reg), "r"(n_reg) /* input constraints */
+    //     : "A", "FLAGS" /* clobbers */
+    // );
 }
 
 /* ------------------------------------------------------------------
  * memmove(dst, src, n) — copy n bytes; safe on overlapping ranges.
  *
  * Inputs:  HL = dst, DE = src, BC = n
- * Output:  HL = dst (unchanged)
  * Clobbers: A, B, C, D, E, FLAGS
  *
  * If dst < src: forward copy is safe (same as memcpy).
  * If dst >= src: copy backward starting from (dst+n-1, src+n-1).
  * ------------------------------------------------------------------ */
-V6C_RT void *memmove(void *dst, const void *src, size_t n) {
+V6C_NOINLINE
+void memmove(uint8_t* dst, const uint8_t* src, uint16_t n)
+{
+    if (!n) return;
+
+    register uint16_t dst_reg asm("HL") = (uint16_t)dst; /* input, clobbers */
+    register uint16_t src_reg asm("DE") = (uint16_t)src; /* input, clobbers */
+    register uint16_t n_reg asm("BC") = n; /* input, clobbers */
+
     __asm__ volatile (
-        "PUSH H              \n\t"   /* save dst for return */
         "MOV  A, B           \n\t"
         "ORA  C              \n\t"
-        "JZ   5f             \n\t"   /* n == 0 → done */
+        "RZ                  \n\t"   /* n == 0 → done */
 
         /* compare dst (HL) vs src (DE), set CY if HL < DE */
         "MOV  A, L           \n\t"
@@ -134,7 +148,7 @@ V6C_RT void *memmove(void *dst, const void *src, size_t n) {
         "2:                  \n\t"
         "MOV  A, B           \n\t"
         "ORA  C              \n\t"
-        "JZ   5f             \n\t"
+        "RZ                  \n\t"
         "LDAX D              \n\t"
         "MOV  M, A           \n\t"
         "DCX  H              \n\t"
@@ -149,16 +163,13 @@ V6C_RT void *memmove(void *dst, const void *src, size_t n) {
         "4:                  \n\t"
         "MOV  A, B           \n\t"
         "ORA  C              \n\t"
-        "JZ   5f             \n\t"
+        "RZ                  \n\t"
         "LDAX D              \n\t"
         "MOV  M, A           \n\t"
         "INX  H              \n\t"
         "INX  D              \n\t"
         "DCX  B              \n\t"
         "JMP  4b             \n"
-        "5:                  \n\t"
-        "POP  H              \n\t"   /* HL = original dst */
-        "RET                 \n\t"
     );
 }
 
@@ -169,7 +180,8 @@ V6C_RT void *memmove(void *dst, const void *src, size_t n) {
  * Output:  HL = length
  * Clobbers: A, D, E, FLAGS
  * ------------------------------------------------------------------ */
-V6C_RT size_t strlen(const char *s) {
+V6C_NOINLINE
+uint16_t strlen(const char *s) {
     __asm__ volatile (
         "PUSH H              \n"     /* save start */
         "1:                  \n\t"
@@ -205,7 +217,8 @@ V6C_RT size_t strlen(const char *s) {
  * (e.g., *a=0x80, *b=0x00 → unsigned: a>b, but byte diff 0x80
  * sign-extends to negative — wrong). Returning ±1 / 0 sidesteps it.
  * ------------------------------------------------------------------ */
-V6C_RT int strcmp(const char *a, const char *b) {
+V6C_NOINLINE
+int strcmp(const char *a, const char *b) {
     __asm__ volatile (
         "1:                  \n\t"
         "LDAX D              \n\t"   /* A = *b */
@@ -238,7 +251,8 @@ V6C_RT int strcmp(const char *a, const char *b) {
  * Output:  HL = dst (unchanged)
  * Clobbers: A, D, E, FLAGS
  * ------------------------------------------------------------------ */
-V6C_RT char *strcpy(char *dst, const char *src) {
+V6C_NOINLINE
+char* strcpy(char *dst, const char *src) {
     __asm__ volatile (
         "PUSH H              \n"     /* save dst */
         "1:                  \n\t"
@@ -252,11 +266,5 @@ V6C_RT char *strcpy(char *dst, const char *src) {
         "RET                 \n\t"
     );
 }
-
-#ifdef __cplusplus
-}
-#endif
-
-#undef V6C_RT
 
 #endif /* V6C_STRING_H_INCLUDED */

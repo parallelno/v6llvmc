@@ -45,11 +45,13 @@
 #endif
 
 #ifndef V6C_NOINLINE
-#define V6C_NOINLINE static __attribute__((noinline, \
-                                     v6c_rt_helper))
+#define V6C_NOINLINE static __attribute__((noinline))
 #endif
 
 #ifndef V6C_INLINE
-#define V6C_INLINE static inline __attribute__((always_inline, \
-                                     v6c_rt_helper))
+#define V6C_INLINE static inline __attribute__((always_inline))
+#endif
+
+#ifndef V6C_INLINE_NORETURN
+#define V6C_INLINE_NORETURN static inline __attribute__((always_inline, __noreturn__))
 #endif
