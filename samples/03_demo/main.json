@@ -1,23 +1,13 @@
 {
     "breakpoints": [
         {
-            "addr": "0x01F8",
-            "autoDel": false,
-            "comment": "",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 1,
-            "value": "0x00"
-        },
-        {
             "addr": "0x0100",
             "autoDel": false,
             "comment": "",
             "cond": "=ANY",
             "memPages": 4294967295,
             "operand": "A",
-            "status": 1,
+            "status": 0,
             "value": "0x00"
         }
     ],

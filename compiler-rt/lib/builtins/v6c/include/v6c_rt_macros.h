@@ -45,7 +45,7 @@
 #endif
 
 #ifndef V6C_NOINLINE
-#define V6C_NOINLINE static __attribute__((noinline))
+#define V6C_NOINLINE static __attribute__((noinline, leaf))
 #endif
 
 #ifndef V6C_INLINE

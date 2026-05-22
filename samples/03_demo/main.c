@@ -46,7 +46,7 @@ void main() {
         uint8_t lo = r & 0xFF;
         uint8_t x = min(hi, 250) + 3; // [3, 253]
         uint8_t y = min(lo, 250) + 3; // [3, 253]
-        //draw_line(127, 127, x, y, SCREEN0_ADDR);
-        draw_pixel(x, y, SCREEN0_ADDR);
+        draw_line(127, 127, x, y, SCREEN0_ADDR);
+        //draw_pixel(x, y, SCREEN0_ADDR);
     }
 }
