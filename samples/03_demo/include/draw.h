@@ -9,7 +9,7 @@
 #include "memory.h"
 
 // bit mask for each bit position in a byte
-uint8_t BIT_MASK[8] = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
+const uint8_t BIT_MASK[8] = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
 
 __attribute__((noinline)) static
 void draw_pixel(uint8_t x, uint8_t y, uint8_t* plane_addr)
@@ -46,9 +46,9 @@ void draw_pixel(uint8_t x, uint8_t y, uint8_t* plane_addr)
         "MOV H, A          \n\t"
         "MVI A, 0x07       \n\t"
         "ANA C             \n\t" // a is bit offset within the byte (0-7)
-        "ADI %[B_MASK_L]   \n\t"
+        "ADI LOW[BIT_MASK]   \n\t"
         "MOV C, A          \n\t"
-        "ADC %[B_MASK_H]   \n\t"
+        "ACI HIGH[BIT_MASK]   \n\t"
         "SUB C             \n\t"
         "MOV B, A          \n\t"
         "LDAX B            \n\t"
@@ -57,8 +57,7 @@ void draw_pixel(uint8_t x, uint8_t y, uint8_t* plane_addr)
 
 
         : /* no outputs */
-        : "r" (addr_reg), "r" (addr_x_reg), "r" (addr_y_reg),
-          [B_MASK_L]"i" ((uint8_t)((uint16_t)1)), [B_MASK_H]"i" (((uint16_t)1) >> 8)  /* input constraints */
+        : "r" (addr_reg), "r" (addr_x_reg), "r" (addr_y_reg) /* input constraints */
         : "A", "BC", "FLAGS"
     );
     // uint8_t addr_hi = x / 8;
