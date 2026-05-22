@@ -205,6 +205,14 @@ Note: when relocating to a non-default base, the V6C runtime
 (`__stack_top = 0x0000`) and crt0 entry stay the same; only the code/data
 addresses change. The legal range is `0x0000`–`0xFFFF`.
 
+To also move the initial stack pointer, add `--defsym`:
+```bash
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 \
+    -Wl,-Ttext=0x8000 -Wl,--defsym=__stack_top=0xBFFF input.c -o output.rom
+```
+`--defsym=__stack_top=ADDR` overrides the linker-script default (`0x0000`).
+`crt0` will execute `LXI SP, ADDR` as its very first instruction.
+
 ### Intel HEX Format
 
 Standalone conversion from flat binary to Intel HEX:

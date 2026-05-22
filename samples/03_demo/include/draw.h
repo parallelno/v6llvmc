@@ -8,13 +8,63 @@
 
 #include "memory.h"
 
-V6C_NOINLINE
+// bit mask for each bit position in a byte
+uint8_t BIT_MASK[8] = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
+
+__attribute__((noinline)) static
 void draw_pixel(uint8_t x, uint8_t y, uint8_t* plane_addr)
 {
-    uint8_t addr_hi = x / 8;
-    uint16_t byte_index = (addr_hi<<8) + y;
-    uint8_t bit_index = 7 - (x % 8);
-    plane_addr[byte_index] |= 1 << bit_index;
+    register uint8_t addr_x_reg asm("A") = x;
+    register uint8_t addr_y_reg asm("L") = y;
+    register uint8_t addr_reg asm("H") = (((uint16_t)plane_addr) >> 8);
+    asm (
+    //     "MOV B, A          \n\t"
+    //     "RRC               \n\t"
+    //     "RRC               \n\t"
+    //     "RRC               \n\t"
+    //     "ANI 0x1F          \n\t" // a is byte offset within the plane (0-31)
+    //     "ADD H             \n\t"
+    //     "MOV H, A          \n\t"
+    //     "MVI A, 0x07       \n\t"
+    //     "ANA B             \n\t" // a is bit offset within the byte (0-7)
+    //     "MOV B, A          \n\t"
+    //     "MVI A, 0x80       \n\t"
+    // "1:                    \n\t"
+    //     "RRC               \n\t"
+    //     "DCR B             \n\t"
+    //     "JNZ 1b            \n\t"
+    //     "ORA M             \n\t"
+    //     "MOV M, A          \n\t"
+
+
+        "MOV C, A          \n\t"
+        "RRC               \n\t"
+        "RRC               \n\t"
+        "RRC               \n\t"
+        "ANI 0x1F          \n\t" // a is byte offset within the plane (0-31)
+        "ADD H             \n\t"
+        "MOV H, A          \n\t"
+        "MVI A, 0x07       \n\t"
+        "ANA C             \n\t" // a is bit offset within the byte (0-7)
+        "ADI %[B_MASK_L]   \n\t"
+        "MOV C, A          \n\t"
+        "ADC %[B_MASK_H]   \n\t"
+        "SUB C             \n\t"
+        "MOV B, A          \n\t"
+        "LDAX B            \n\t"
+        "ORA M             \n\t"
+        "MOV M, A          \n\t"
+
+
+        : /* no outputs */
+        : "r" (addr_reg), "r" (addr_x_reg), "r" (addr_y_reg),
+          [B_MASK_L]"i" ((uint8_t)((uint16_t)1)), [B_MASK_H]"i" (((uint16_t)1) >> 8)  /* input constraints */
+        : "A", "BC", "FLAGS"
+    );
+    // uint8_t addr_hi = x / 8;
+    // uint16_t byte_index = (addr_hi<<8) + y;
+    // uint8_t bit_index = 7 - (x % 8);
+    // plane_addr[byte_index] |= 1 << bit_index;
 }
 
 V6C_NOINLINE

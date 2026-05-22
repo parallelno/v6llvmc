@@ -50,6 +50,21 @@ the symbols `__bss_start`, `__bss_end`, and `__stack_top = 0x0000`.
 To relocate `.text` to a different base, override the script base via
 `-Wl,-Ttext=0xNNNN` or pass a custom script with `-Wl,-T,my.ld`.
 
+### Overriding the Initial Stack Pointer
+
+`crt0` sets `SP = __stack_top` before calling `main`. The default value
+`0x0000` causes the first `PUSH` to wrap SP to `0xFFFE` (top of RAM).
+To place the stack elsewhere, override the symbol at link time:
+
+```bash
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 \
+    -Wl,--defsym=__stack_top=0xBFFF input.c -o output.elf
+```
+
+`-Wl,` forwards the flag to `ld.lld`; `--defsym` overrides the value
+defined in `v6c.ld`. The new SP takes effect at the very first instruction
+of `_start` — before any C code runs.
+
 ## Supported Type Widths
 
 | C Type | Width | LLVM Type | Support |
