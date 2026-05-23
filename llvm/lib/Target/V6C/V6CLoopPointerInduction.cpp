@@ -223,9 +223,14 @@ bool V6CLoopPointerInduction::rewriteExitCondition(
   if (!ExitCmp || !ExitLimit)
     return false;
 
-  // Compute end-of-pointer: PtrBase + ExitLimit * Step
-  // For typical case: PtrBase + 100 (when step=1, limit=100)
-  int64_t EndOffset = ExitLimit->getSExtValue() * Step;
+  // Compute end-of-pointer: PtrBase + ExitLimit.
+  // The pointer phi always equals Base + counter, so when counter_next ==
+  // ExitLimit the pointer_next == Base + ExitLimit.  Multiplying by Step
+  // would be wrong: codegen's LSR may have already folded the original
+  // step-1 counter into a step-N counter (e.g. step=2, limit=16 for an
+  // 8-iteration loop with stride 2), making ExitLimit the correct byte
+  // offset directly.
+  int64_t EndOffset = ExitLimit->getSExtValue();
 
   BasicBlock *Preheader = L->getLoopPreheader();
   IRBuilder<> PreBuilder(Preheader->getTerminator());
