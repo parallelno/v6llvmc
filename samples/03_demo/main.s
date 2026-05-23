@@ -1,12 +1,43 @@
 	.text
+	.section	.text.v6c_set_palette,"ax",@progbits
+v6c_set_palette:                        ; -- Begin function v6c_set_palette
+                                        ; @v6c_set_palette
+.Lfunc_begin0:
+	;=== void v6c_set_palette(void) ===
+; %bb.0:
+	LXI	H, palette+15
+	;APP
+	HLT
+
+	MVI	A, 0x88
+	OUT	0
+	MVI	B, 0xf
+.Ltmp0:
+	MOV	A, B
+	OUT	2
+	MOV	A, M
+	OUT	0xc
+	PUSH	PSW
+	POP	PSW
+	PUSH	PSW
+	POP	PSW
+	DCX	H
+	DCR	B
+	OUT	0xc
+	JP	.Ltmp0
+
+	;NO_APP
+	RET
+.Lfunc_end0:
+                                        ; -- End function
 	.section	.text.rand,"ax",@progbits
 rand:                                   ; -- Begin function rand
                                         ; @rand
-.Lfunc_begin0:
+.Lfunc_begin1:
 	;=== int rand(void) ===
 ; %bb.0:
 	;APP
-.Ltmp0:
+.Ltmp1:
 	LHLD	__v6c_rand_state
 	MOV	A, H
 	RAR
@@ -31,321 +62,99 @@ rand:                                   ; -- Begin function rand
 	;NO_APP
 	;DEBUG_VALUE: rand:__r <- $hl
 	RET
-.Lfunc_end0:
+.Lfunc_end1:
                                         ; -- End function
-	.section	.text.draw_pixel,"ax",@progbits
-draw_pixel:                             ; -- Begin function draw_pixel
-                                        ; @draw_pixel
-.Lfunc_begin1:
-	;=== void draw_pixel(char x, char y) ===
-	;  x = A
-	;  y = B
-	;  [folded: plane_addr=0x8000]
+	.section	.text.draw_line2,"ax",@progbits
+draw_line2:                             ; -- Begin function draw_line2
+                                        ; @draw_line2
+.Lfunc_begin2:
+	;=== void draw_line2(char x1, char y1) ===
+	;  x1 = A
+	;  y1 = B
+	;  [folded: scr_addr_h=-128, x0=127, y0=127]
 ; %bb.0:
-	;DEBUG_VALUE: draw_pixel:x <- $a
-	;DEBUG_VALUE: draw_pixel:y <- $b
-	;DEBUG_VALUE: draw_pixel:plane_addr <- -32768
-	;DEBUG_VALUE: draw_pixel:addr_x_reg <- $a
-	;DEBUG_VALUE: draw_pixel:addr_y_reg <- $b
-	;DEBUG_VALUE: draw_pixel:addr_reg <- -128
-	MVI	H, 0x80
-	MOV	L, B
-	;DEBUG_VALUE: draw_pixel:addr_y_reg <- $l
-	;DEBUG_VALUE: draw_pixel:y <- $l
+	;DEBUG_VALUE: draw_line2:x1 <- $a
+	;DEBUG_VALUE: draw_line2:y1 <- $b
+	;DEBUG_VALUE: draw_line2:_x1 <- $a
+	;DEBUG_VALUE: draw_line2:_y1 <- $b
+	MOV	E, B
+	;DEBUG_VALUE: draw_line2:_y1 <- $e
+	;DEBUG_VALUE: draw_line2:y1 <- $e
+	MOV	D, A
+	;DEBUG_VALUE: draw_line2:_y0 <- 127
+	;DEBUG_VALUE: draw_line2:_x0 <- 127
+	;DEBUG_VALUE: draw_line2:_scr_addr_h <- -128
+	;DEBUG_VALUE: draw_line2:y0 <- 127
+	;DEBUG_VALUE: draw_line2:x0 <- 127
+	;DEBUG_VALUE: draw_line2:scr_addr_h <- -128
+	;DEBUG_VALUE: draw_line2:_x1 <- $d
+	;DEBUG_VALUE: draw_line2:x1 <- $d
+	MVI	A, 0x80
+	MVI	B, 0x7f
+	MOV	C, B
 	;APP
-	MOV	C, A
-	RRC
-
-	RRC
-
-	RRC
-
-	ANI	0x1f
-	ADD	H
-	MOV	H, A
-	MVI	A, 7
-	ANA	C
-	LXI	B, BIT_MASK
-	ADD	C
-	MOV	C, A
-	ADC	B
+	STA	.ADDR_H+1
+	MOV	A, D
+	SUB	B
+	STA	.DX+1
+	JC	.L1
+	MOV	A, E
 	SUB	C
-	MOV	B, A
-	LDAX	B
-	ORA	M
+	STA	.DY+1
+	JC	.L1
+	LXI	H, BIT_MASK
+	MVI	A, 7
+	ANA	B
+	MOV	E, A
+	MVI	D, 0
+	DAD	D
+	MOV	A, M
+	STA	.BIT_MASK+1
+	MVI	A, 0xf8
+	ANA	B
+	RRC
+
+	RRC
+
+	RRC
+
+.ADDR_H:
+	ADI	0x80
+	MOV	H, A
+	MOV	L, C
+.DX:
+	MVI	B, 0
+	MOV	C, B
+	MOV	E, B
+	INR	E
+.BIT_MASK:
+	MVI	D, 0
+.L0:
+	MOV	A, M
+	ORA	D
 	MOV	M, A
+	MOV	A, D
+	RRC
+
+	MOV	D, A
+	JNC	.NO_ADV_X
+	INR	H
+.NO_ADV_X:
+	MOV	A, C
+.DY:
+	SUI	0
+	JNC	.NO_ADV_Y
+	ADD	B
+	INR	L
+.NO_ADV_Y:
+	MOV	C, A
+	DCR	E
+	JNZ	.L0
+.L1:
+	RET
 
 	;NO_APP
 	RET
-.Lfunc_end1:
-                                        ; -- End function
-	.section	.text.draw_line,"ax",@progbits
-draw_line:                              ; -- Begin function draw_line
-                                        ; @draw_line
-.Lfunc_begin2:
-	;=== void draw_line(char x1, char y1) ===
-	;  x1 = A
-	;  y1 = B
-	;  [folded: x0=127, y0=127, plane_addr=0x8000]
-; %bb.0:
-	;DEBUG_VALUE: draw_line:x1 <- $a
-	;DEBUG_VALUE: draw_line:y1 <- $b
-	;--- V6C_SPILL8 ---
-	LXI	H, .LLo61_1+1
-	MOV	M, B
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;DEBUG_VALUE: draw_line:y0 <- 127
-	;DEBUG_VALUE: draw_line:x0 <- 127
-	;DEBUG_VALUE: draw_line:y1 <- [$sp+0]
-	;--- V6C_SPILL8 ---
-	STA	.LLo61_4+1
-	;DEBUG_VALUE: draw_line:x1 <- [$sp+0]
-	CPI	0x7f
-	;--- V6C_BRCOND ---
-	JNC	.LBB17_1
-.LBB17_13:
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	RET
-.LBB17_1:
-	;DEBUG_VALUE: draw_line:x1 <- [$sp+0]
-	;DEBUG_VALUE: draw_line:y1 <- [$sp+0]
-	;DEBUG_VALUE: draw_line:x0 <- 127
-	;DEBUG_VALUE: draw_line:y0 <- 127
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;--- V6C_RELOAD8 ---
-	LXI	H, .LLo61_1+1
-	MOV	L, M
-	;--- V6C_CMP8_ZERO ---
-	XRA	A
-	CMP	L
-	JP	.LBB17_2
-; %bb.3:
-	;DEBUG_VALUE: draw_line:x1 <- [$sp+0]
-	;DEBUG_VALUE: draw_line:y1 <- [$sp+0]
-	;DEBUG_VALUE: draw_line:x0 <- 127
-	;DEBUG_VALUE: draw_line:y0 <- 127
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_1+1
-	ADI	0x81
-	JMP	.LBB17_4
-.LBB17_2:
-	;DEBUG_VALUE: draw_line:x1 <- [$sp+0]
-	;DEBUG_VALUE: draw_line:y1 <- [$sp+0]
-	;DEBUG_VALUE: draw_line:x0 <- 127
-	;DEBUG_VALUE: draw_line:y0 <- 127
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_1+1
-	XRI	0x7f
-.LBB17_4:
-	;DEBUG_VALUE: draw_line:x1 <- [$sp+0]
-	;DEBUG_VALUE: draw_line:y1 <- [$sp+0]
-	;DEBUG_VALUE: draw_line:x0 <- 127
-	;DEBUG_VALUE: draw_line:y0 <- 127
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;--- V6C_SPILL8 ---
-	STA	.LLo61_2+1
-	;DEBUG_VALUE: draw_line:dy <- [$sp+0]
-	;DEBUG_VALUE: draw_line:dx <- undef
-	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_1+1
-	CPI	0x7f
-	;--- V6C_BRCOND ---
-	RC
-.LBB17_5:
-	;DEBUG_VALUE: draw_line:x0 <- 127
-	;DEBUG_VALUE: draw_line:y0 <- 127
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_4+1
-	ADI	0x81
-	;DEBUG_VALUE: draw_line:dx <- $a
-	MOV	L, A
-	;DEBUG_VALUE: draw_line:dx <- $l
-	;--- V6C_RELOAD8 ---
-	MOV	B, A
-	LDA	.LLo61_2+1
-	MOV	H, A
-	MOV	A, B
-	;--- V6C_SPILL8 ---
-	MOV	A, L
-	STA	.LLo61_5+1
-	MOV	A, B
-	;DEBUG_VALUE: draw_line:dx <- [$sp+0]
-	CMP	H
-	;--- V6C_BRCOND ---
-	RC
-.LBB17_6:
-	;DEBUG_VALUE: draw_line:x0 <- 127
-	;DEBUG_VALUE: draw_line:y0 <- 127
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;DEBUG_VALUE: draw_line:x0 <- 127
-	;DEBUG_VALUE: draw_line:y0 <- 127
-	;DEBUG_VALUE: draw_line:err <- [$sp+0]
-	MVI	A, 0x7f
-	MOV	B, A
-	CALL	draw_pixel
-	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_1+1
-	CPI	0x7f
-	;--- V6C_BRCOND ---
-	RZ
-.LBB17_7:
-	;DEBUG_VALUE: draw_line:x0 <- 127
-	;DEBUG_VALUE: draw_line:y0 <- 127
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_4+1
-	CPI	0x7f
-	;--- V6C_BRCOND ---
-	RZ
-.LBB17_8:
-	;DEBUG_VALUE: draw_line:x0 <- 127
-	;DEBUG_VALUE: draw_line:y0 <- 127
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	MVI	A, 0x7f
-	;--- V6C_SPILL8 ---
-	STA	.LLo61_0+1
-	MVI	E, 0x80
-	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_5+1
-.LBB17_9:                               ; =>This Inner Loop Header: Depth=1
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;DEBUG_VALUE: draw_line:x0 <- $e
-	;DEBUG_VALUE: draw_line:y0 <- [$sp+0]
-	;DEBUG_VALUE: draw_line:err <- $l
-	;--- V6C_RELOAD8 ---
-	;DEBUG_VALUE: draw_line:err <- $a
-.LLo61_2:
-	SUI	0
-	;DEBUG_VALUE: draw_line:err <- $a
-	MOV	D, A
-	;DEBUG_VALUE: draw_line:err <- $d
-	MVI	L, 0
-	XRA	A
-	;--- V6C_SPILL8 ---
-	STA	.LLo61_3+1
-	;--- V6C_BUILD_PAIR ---
-	MOV	H, L
-	MOV	L, D
-	;--- V6C_SRL16 ---
-	MOV	A, H
-	ORA	A
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	MOV	A, H
-	ORA	A
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	MOV	A, H
-	ORA	A
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	MOV	A, H
-	ORA	A
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	MOV	A, H
-	ORA	A
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	MOV	A, H
-	ORA	A
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-	MOV	A, H
-	ORA	A
-	RAR
-	MOV	H, A
-	MOV	A, L
-	RAR
-	MOV	L, A
-                                        ; kill: def $l killed $l killed $hl
-	;--- V6C_RELOAD8 ---
-.LLo61_0:
-	MVI	A, 0
-	;DEBUG_VALUE: draw_line:y0 <- $a
-	ADD	L
-	;DEBUG_VALUE: draw_line:y0 <- $a
-	MOV	B, A
-	;DEBUG_VALUE: draw_line:y0 <- $b
-	MOV	A, E
-	;--- V6C_SPILL8 ---
-	LXI	H, .LLo61_0+1
-	MOV	M, B
-	;DEBUG_VALUE: draw_line:y0 <- [$sp+0]
-	CALL	draw_pixel
-	MOV	H, D
-	;DEBUG_VALUE: draw_line:err <- $h
-	;--- V6C_CMP8_ZERO ---
-	XRA	A
-	CMP	D
-	JP	.LBB17_11
-; %bb.10:                               ;   in Loop: Header=BB17_9 Depth=1
-	;DEBUG_VALUE: draw_line:err <- $h
-	;DEBUG_VALUE: draw_line:y0 <- [$sp+0]
-	;DEBUG_VALUE: draw_line:x0 <- $e
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;--- V6C_RELOAD8 ---
-.LLo61_5:
-	MVI	A, 0
-	;--- V6C_SPILL8 ---
-	STA	.LLo61_3+1
-.LBB17_11:                              ;   in Loop: Header=BB17_9 Depth=1
-	;DEBUG_VALUE: draw_line:err <- $h
-	;DEBUG_VALUE: draw_line:y0 <- [$sp+0]
-	;DEBUG_VALUE: draw_line:x0 <- $e
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;DEBUG_VALUE: draw_line:err <- undef
-	;--- V6C_RELOAD8 ---
-.LLo61_1:
-	MVI	L, 0
-	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_0+1
-	CMP	L
-	MOV	A, H
-	;--- V6C_BRCOND ---
-	RZ
-.LBB17_12:                              ;   in Loop: Header=BB17_9 Depth=1
-	;DEBUG_VALUE: draw_line:x0 <- $e
-	;DEBUG_VALUE: draw_line:plane_addr <- -32768
-	;--- V6C_RELOAD8 ---
-.LLo61_3:
-	ADI	0
-	;DEBUG_VALUE: draw_line:err <- $a
-	MOV	L, E
-	INR	L
-	MOV	H, A
-	;DEBUG_VALUE: draw_line:err <- $h
-	;--- V6C_RELOAD8 ---
-.LLo61_4:
-	MVI	A, 0
-	CMP	E
-	MOV	A, H
-	;DEBUG_VALUE: draw_line:err <- $a
-	MOV	E, L
-	;--- V6C_BRCOND ---
-	JNZ	.LBB17_9
-	JMP	.LBB17_13
 .Lfunc_end2:
                                         ; -- End function
 	.section	.text.main,"ax",@progbits
@@ -354,12 +163,24 @@ main:                                   ; @main
 .Lfunc_begin3:
 	;=== void main(void) ===
 ; %bb.0:
-	;DEBUG_VALUE: i <- 0
+	;APP
+	MVI	A, 0xfb
+	STA	0x38
+	MVI	A, 0xc9
+	STA	0x39
+
+	;NO_APP
+	;APP
+	EI
+
+	;NO_APP
+	CALL	v6c_set_palette
 	MVI	A, 0x64
+	;DEBUG_VALUE: i <- 0
 .LBB18_1:                               ; =>This Inner Loop Header: Depth=1
 	;DEBUG_VALUE: i <- undef
 	;--- V6C_SPILL8 ---
-	STA	.LLo61_7+1
+	STA	.LLo61_1+1
 	CALL	rand
 	;DEBUG_VALUE: lo <- [DW_OP_LLVM_convert 16 7, DW_OP_LLVM_convert 8 7, DW_OP_stack_value] $hl
 	;DEBUG_VALUE: r <- $hl
@@ -381,13 +202,13 @@ main:                                   ; @main
 	PUSH	H
 	MOV	L, C
 	MOV	H, B
-	SHLD	.LLo61_6+1
+	SHLD	.LLo61_0+1
 	POP	H
 	JC	.LBB18_3
 ; %bb.2:                                ;   in Loop: Header=BB18_1 Depth=1
 	;--- V6C_SPILL16 ---
 	XCHG
-	SHLD	.LLo61_6+1
+	SHLD	.LLo61_0+1
 	XCHG
 .LBB18_3:                               ;   in Loop: Header=BB18_1 Depth=1
 	;--- V6C_SRL16 ---
@@ -400,7 +221,7 @@ main:                                   ; @main
 	MOV	A, H
 	SBB	H
 	;--- V6C_RELOAD8 ---
-.LLo61_7:
+.LLo61_1:
 	MVI	A, 0
 	LXI	D, 0xfa
 	JC	.LBB18_5
@@ -414,7 +235,7 @@ main:                                   ; @main
 	MOV	E, A
 	;DEBUG_VALUE: x <- $e
 	;--- V6C_RELOAD16 ---
-.LLo61_6:
+.LLo61_0:
 	LXI	H, 0
 	MOV	A, L
 	ADI	3
@@ -422,10 +243,10 @@ main:                                   ; @main
 	MOV	B, A
 	;DEBUG_VALUE: y <- $b
 	MOV	A, E
-	CALL	draw_line
+	CALL	draw_line2
 	;DEBUG_VALUE: i <- undef
 	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_7+1
+	LDA	.LLo61_1+1
 	DCR	A
 	;--- V6C_BRCOND ---
 	JNZ	.LBB18_1
@@ -452,13 +273,6 @@ BIT_MASK:
 palette:
 	.ascii	"\000\021\"3DUfw\210\231\252\273\314\335\356\377"
 
-	.section	.bss,"aw",@nobits
-	.globl	test                            ; @test
-test:
-	DB	0                               ; 0x0
-
-	.local	__v6c_ss.draw_line              ; @__v6c_ss.draw_line
-	.comm	__v6c_ss.draw_line,5,1
 	.addrsig
 	.addrsig_sym __mulqi3
 	.addrsig_sym __v6c_mulqihi3
@@ -475,3 +289,4 @@ test:
 	.addrsig_sym __ashlhi3
 	.addrsig_sym __lshrhi3
 	.addrsig_sym __ashrhi3
+	.addrsig_sym palette

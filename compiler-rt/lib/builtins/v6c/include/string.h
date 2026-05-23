@@ -47,7 +47,7 @@
  * Inputs:  HL = dst, DE = src, BC = n
  * Clobbers: A, B, C, D, E, FLAGS
  * ------------------------------------------------------------------ */
-V6C_NOINLINE void memcpy(uint8_t* dst, const uint8_t* src, uint16_t n)
+V6C_NOINLINE_ASM void memcpy(uint8_t* dst, const uint8_t* src, uint16_t n)
 {
     register uint16_t dst_reg asm("HL") = (uint16_t)dst; /* input, clobbers */
     register uint16_t src_reg asm("DE") = (uint16_t)src; /* input, clobbers */
@@ -90,7 +90,7 @@ V6C_NOINLINE void memset(uint8_t* dst, uint8_t val, uint16_t n)
  * If dst < src: forward copy is safe (same as memcpy).
  * If dst >= src: copy backward starting from (dst+n-1, src+n-1).
  * ------------------------------------------------------------------ */
-V6C_NOINLINE void memmove(uint8_t* dst, const uint8_t* src, uint16_t n)
+V6C_NOINLINE_ASM void memmove(uint8_t* dst, const uint8_t* src, uint16_t n)
 {
     if (!n) return;
 
@@ -155,7 +155,7 @@ V6C_NOINLINE void memmove(uint8_t* dst, const uint8_t* src, uint16_t n)
  * Output:  HL = length
  * Clobbers: A, D, E, FLAGS
  * ------------------------------------------------------------------ */
-V6C_NOINLINE
+V6C_NOINLINE_ASM
 uint16_t strlen(const char *s) {
     __asm__ volatile (
         "PUSH H              \n"     /* save start */
@@ -192,7 +192,7 @@ uint16_t strlen(const char *s) {
  * (e.g., *a=0x80, *b=0x00 → unsigned: a>b, but byte diff 0x80
  * sign-extends to negative — wrong). Returning ±1 / 0 sidesteps it.
  * ------------------------------------------------------------------ */
-V6C_NOINLINE
+V6C_NOINLINE_ASM
 int strcmp(const char *a, const char *b) {
     __asm__ volatile (
         "1:                  \n\t"
@@ -226,7 +226,7 @@ int strcmp(const char *a, const char *b) {
  * Output:  HL = dst (unchanged)
  * Clobbers: A, D, E, FLAGS
  * ------------------------------------------------------------------ */
-V6C_NOINLINE
+V6C_NOINLINE_ASM
 char* strcpy(char *dst, const char *src) {
     __asm__ volatile (
         "PUSH H              \n"     /* save dst */

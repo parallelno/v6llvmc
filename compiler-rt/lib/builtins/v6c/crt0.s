@@ -45,4 +45,5 @@ _crt0_bss_done:
 
     CALL main                ; Run user code
 
+    DI                       ; Disable interrupts before halting
     HLT                      ; Stop the CPU on return

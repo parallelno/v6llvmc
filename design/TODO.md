@@ -11,6 +11,16 @@ are those *.o is used any where?
 dist\v6c-2026.04.27-windows-x64\lib\clang\18\lib\v6c\include\README.txt
 is this folder needed for anything?
 ============================
+Maybe it is possible to teach compiler+linker to operate fraction of address. like take a hi or lo byte of a address that will be resolved at the linking time.
+============================
+Soft Alignment.
+A special aligment that guarantee aligment INTO block, not at start of the block.
+For example the data below all :
+static soft_align(256) uint8_t arr[10]
+static soft_align(256) uint8_t arr[10]
+static int A = 10;
+Research it. perhaps it can be done via lld scripts.
+============================
 From the chat. below your quotes followed by my questions or asks:
 
 >__mulqi3 returns u16, not u8 — libgcc divergence accepted (V6C is freestanding). Documented as a risk in §5.

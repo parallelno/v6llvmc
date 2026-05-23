@@ -47,8 +47,13 @@
  * ======================================================= */
 #define SCR_VERTICAL_OFFSET_DEFAULT 255u
 
-#define SCR_ADDR            0x8000u
-#define SCR_BUFF0_ADDR      0x8000u
+#define SCR_BUFF0_ADDR_H    0x80u
+#define SCR_HEIGHT         256u
+
+#define SCR_ADDR            (SCR_BUFF0_ADDR_H << 8u)
+#define SCR_ADDR_PTR        ((void*)(SCR_BUFF0_ADDR_H << 8u))
+#define SCR_BUFF0_ADDR      SCR_ADDR
+#define SCR_BUFF0_PTR       SCR_ADDR_PTR
 #define SCR_BUFF1_ADDR      0xA000u
 #define SCR_BUFF2_ADDR      0xC000u
 #define SCR_BUFF3_ADDR      0xE000u
@@ -59,6 +64,7 @@
 #define BACK_BUFF2_ADDR     0xA000u
 #define BACK_BUFF2_LEN      (SCR_BUFF_LEN * 3u)
 #define SCR_ADDR_MASK       0xE0u   /* %1110_0000 */
+
 
 /* =======================================================
  * Sprite
@@ -195,6 +201,8 @@
 #define OPCODE_LXI_D        0x11u
 #define OPCODE_LXI_H        0x21u
 #define OPCODE_LXI_SP       0x31u
+#define OPCODE_INR_L        0x2Cu
+#define OPCODE_DCR_L        0x2Du
 
 /* =======================================================
  * AY-3-8910 sound chip constants

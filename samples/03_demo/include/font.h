@@ -3,14 +3,13 @@
 
 #include <stdint.h>
 #include <v6c_rt_macros.h>
-
-#include "memory.h"
+#include <v6c_consts.h>
 
 V6C_NOINLINE
 void fill_rect(uint8_t addr_x, uint8_t pos_y, uint8_t b, uint8_t h) {
     for (uint16_t x = addr_x; x < addr_x + b; ++x) {
         for (uint16_t y = pos_y; y < pos_y + h; ++y) {
-            uint8_t* scr_pos = SCR0_ADDR + (x * SCR_BYTES_H) + y;
+            uint8_t* scr_pos = SCR_BUFF0_PTR + (x * SCR_HEIGHT) + y;
             *scr_pos = 0xFF;
         }
     }
@@ -48,7 +47,7 @@ void draw_text(const char* text, uint8_t addr_x, uint8_t y) {
         uint8_t* font_data = font + (c * 8); // each char is 8 bytes
         for (uint8_t i = 0; i < 8; ++i) {
             uint8_t line_data = font_data[i];
-            uint8_t* scr_pos = SCR0_ADDR + ((addr_x + i) * SCR_BYTES_H) + y;
+            uint8_t* scr_pos = SCR_BUFF0_PTR + ((addr_x + i) * SCR_HEIGHT) + y;
             *scr_pos = line_data;
         }
         ++text;

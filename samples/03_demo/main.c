@@ -1,23 +1,13 @@
-/*
-This is a demo project to stress out the V6C backend with various code patterns,
-to help identify and fix bugs and performance issues. It is not intended to be a
-real application or library, and deliberately uses some bad practices (global
-variables, etc.) to generate more interesting codegen patterns. The main goal is
-to prove that the V6C backend can handle a variety of challenging code patterns.
-*/
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 #include <v6c.h>
 #include <v6c_inter.h>
+#include <v6c_consts.h>
 
 #include "include/font.h"
 #include "include/draw.h"
-#include "include/memory.h"
 
-
-#define SCREEN0_ADDR (void*)0x8000
-#define SCREEN0_LEN  0x2000u
 
 uint8_t palette[16] = {
     0x00, 0x11, 0x22, 0x33,
@@ -26,27 +16,40 @@ uint8_t palette[16] = {
     0xCC, 0xDD, 0xEE, 0xFF
 };
 
-static const uint16_t STACK_ADDR = 0x100;
-uint8_t test;
+#define LINES 8
+
+uint8_t pos[] = {
+    255, 0xFE,
+    255, 0xFA,
+    255, 0xC8,
+    255, 0x8C,
+    255, 0x7F,
+    255, 0x64,
+    255, 0x28,
+    255, 0x00
+};
 
 void main() {
     // v6c_set_empty_interrupt();
     // v6c_ei();
     // // clean up the screen.
-    // memset(SCREEN0_ADDR, 0x00, SCREEN0_LEN * 4);
     // v6c_set_palette(palette + PALETTE_LEN - 1);
 
+    // memset(SCR_BUFF0_PTR, 0x00, SCR_BUFF_LEN * 4);
     // fill_rect(8, 50, 16, 156);
     // draw_text("HELLO WORLD", 10, 10);
 
     // draw 100 random lines.
-    for (int i = 0; i < 100; i++) {
-        uint16_t r = rand();
-        uint8_t hi = r >> 8;
-        uint8_t lo = r & 0xFF;
-        uint8_t x = min(hi, 250) + 3; // [3, 253]
-        uint8_t y = min(lo, 250) + 3; // [3, 253]
-        draw_line(127, 127, x, y, SCREEN0_ADDR);
-        //draw_pixel(x, y, SCREEN0_ADDR);
+    for (int i = 0; i < LINES; i++) {
+        // uint16_t r = rand();
+        // uint8_t hi = r >> 8;
+        // uint8_t lo = r & 0xFF;
+        // uint8_t x = min(hi, 250) + 3; // [3, 253]
+        // uint8_t y = min(lo, 250) + 3; // [3, 253]
+        //draw_line(127, 127, x, y, SCR_ADDR_PTR);
+        uint8_t x = pos[0 + i*2];
+        uint8_t y = pos[1 + i*2];
+        //draw_line2(SCR_BUFF0_ADDR_H, 127, 127, x, y);
+        draw_line(127, 127, x, y, SCR_ADDR_PTR);
     }
 }

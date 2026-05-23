@@ -44,8 +44,12 @@
                                      v6c_rt_helper))
 #endif
 
+#ifndef V6C_NOINLINE_ASM
+#define V6C_NOINLINE_ASM static __attribute__((noinline, leaf))
+#endif
+
 #ifndef V6C_NOINLINE
-#define V6C_NOINLINE static __attribute__((noinline, leaf))
+#define V6C_NOINLINE static __attribute__((noinline))
 #endif
 
 #ifndef V6C_INLINE

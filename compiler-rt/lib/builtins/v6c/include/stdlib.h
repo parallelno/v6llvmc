@@ -81,7 +81,7 @@ void srand(uint16_t __seed) {
 }
 
 /* rand() — xorshift16(7,9,8), result masked to [0, RAND_MAX]. */
-V6C_NOINLINE
+V6C_NOINLINE_ASM
 uint16_t rand(void) {
     register uint16_t __r asm("HL");
     __asm__ volatile (

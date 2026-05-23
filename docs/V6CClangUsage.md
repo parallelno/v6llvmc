@@ -130,14 +130,26 @@ void critical_section(void) {
 The V6C target supports GCC-style inline assembly with 8080 mnemonics:
 
 ```c
-void nop_sled(void) {
-    asm volatile("NOP");
-    asm volatile("NOP");
-}
+V6C_INLINE
+uint8_t v6c_set_empty_interrupt(uint8_t a0, uint8_t a1) {
+    register uint8_t _a0 asm("B") = a0;
+    register uint8_t _a1 asm("C") = a1;
+    uint8_t val;
 
-unsigned char read_a(void) {
-    unsigned char val;
-    asm volatile("" : "=a"(val));  // read accumulator
+    __asm__ volatile (
+        "MVI A, %[ei]       \n"
+        "STA 0x38           \n"
+        "MVI A, %[ret]      \n"
+        "STA 0x39           \n"
+        "ADD B              \n"
+        "ADD C              \n"
+        /* outputs */
+        : "=a"(val)
+        /* input constraints */
+        : [ei] "i"(OPCODE_EI), [ret] "i"(OPCODE_RET), [_a0] "r"(a0), [_a1] "r"(a1)
+        /* clobbered regs */
+        : "A", "FLAGS"
+    );
     return val;
 }
 ```

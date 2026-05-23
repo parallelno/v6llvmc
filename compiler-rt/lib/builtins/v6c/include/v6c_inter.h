@@ -28,7 +28,7 @@ void v6c_set_empty_interrupt() {
         "MVI A, %[ret] \n\t"
         "STA 0x39      \n\t"
         :
-        :  [ei] "i"(OPCODE_EI), [ret] "i"(OPCODE_RET)
+        : [ei] "i"(OPCODE_EI), [ret] "i"(OPCODE_RET)
         : "A"
     );
 }
@@ -39,7 +39,7 @@ void v6c_set_empty_interrupt() {
  * IN: palette_end - pointer to a last byte of a 16-color palette in memory.
 */
 
-V6C_NOINLINE
+V6C_NOINLINE_ASM
 void v6c_set_palette(uint8_t* palette_end)
 {
     register uint16_t pal_reg asm("HL") = (uint16_t)palette_end;

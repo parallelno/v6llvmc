@@ -5,194 +5,228 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <v6c_rt_macros.h>
+#include "v6c_consts.h"
 
-#include "memory.h"
 
 // bit mask for each bit position in a byte
 const uint8_t BIT_MASK[8] = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
 
-V6C_NOINLINE
-void draw_pixel(uint8_t x, uint8_t y, uint8_t* plane_addr)
+V6C_NOINLINE_ASM
+void draw_pixel2(uint8_t x, uint8_t y, uint8_t* plane_addr)
 {
     register uint8_t addr_x_reg asm("A") = x;
     register uint8_t addr_y_reg asm("L") = y;
     register uint8_t addr_reg asm("H") = (((uint16_t)plane_addr) >> 8);
     asm (
-        "MOV C, A          \n\t"
-        "RRC               \n\t"
-        "RRC               \n\t"
-        "RRC               \n\t"
-        "ANI 0x1F          \n\t" // a is byte offset within the plane (0-31)
-        "ADD H             \n\t"
-        "MOV H, A          \n\t"
-        "MVI A, 0x07       \n\t"
-        "ANA C             \n\t" // a is bit offset within the byte (0-7)
-        "LXI B, BIT_MASK   \n\t"
-        "ADD C             \n\t"
-        "MOV C, A          \n\t"
-        "ADC B             \n\t"
-        "SUB C             \n\t"
-        "MOV B, A          \n\t"
-        "LDAX B            \n\t"
-        "ORA M             \n\t"
-        "MOV M, A          \n\t"
+        "MOV C, A          \n"
+        "RRC               \n"
+        "RRC               \n"
+        "RRC               \n"
+        "ANI 0x1F          \n" // a is byte offset within the plane (0-31)
+        "ADD H             \n"
+        "MOV H, A          \n"
+        "MVI A, 0x07       \n"
+        "ANA C             \n" // a is bit offset within the byte (0-7)
+        "LXI B, BIT_MASK   \n"
+        "ADD C             \n"
+        "MOV C, A          \n"
+        "ADC B             \n"
+        "SUB C             \n"
+        "MOV B, A          \n"
+        "LDAX B            \n"
+        "ORA M             \n"
+        "MOV M, A          \n"
         : /* no outputs */
         : "r" (addr_reg), "r" (addr_x_reg), "r" (addr_y_reg) /* input constraints */
-        : "A", "BC", "FLAGS"
+        : "A", "BC", "FLAGS" /* clobbered registers */
     );
-    // uint8_t addr_hi = x / 8;
-    // uint16_t byte_index = (addr_hi<<8) + y;
-    // uint8_t bit_index = 7 - (x % 8);
-    // plane_addr[byte_index] |= 1 << bit_index;
 }
 
-V6C_NOINLINE
-void draw_line(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint8_t* plane_addr)
+V6C_NOINLINE_ASM
+void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)
 {
-    // Bresenham's line algorithm
-//     int dx = abs(x1 - x0);
-//     int dy = -abs(y1 - y0);
-//     int sx = x0 < x1 ? 1 : -1;
-//     int sy = y0 < y1 ? 1 : -1;
-//     int err = dx + dy;
-//     while (true) {
-//         draw_pixel(x0, y0, plane_addr);
-//         if (x0 == x1 && y0 == y1) break;
-//         int err2 = 2 * err;
-//         if (err2 >= dy) {
-//             err += dy;
-//             x0 += sx;
-//         }
-//         if (err2 <= dx) {
-//             err += dx;
-//             y0 += sy;
-//         }
-//     }
-
-    // uint8_t tmp;
-    // // swap points to be always left-to-right.
-    // if (x0 > x1 || y0 > y1) {
-    //     return;
-    // }
-    // uint8_t dx = x1 - x0;
-    // uint8_t dy = y1 > y0 ? (y1 - y0) : (y0 - y1);
-    // if (dy > dx) {
-    //     return; // not supported yet
-    // }
-
-    // int8_t err = dx;
-    // while(true){
-    //     draw_pixel(x0, y0, plane_addr);
-
-    //     if (x0 == x1) break;
-    //     x0++;
-    //     err -= dy;
-    //     if (err < 0) {
-    //         y0 += 1;
-    //         err += dx;
-    //     }
-    // }
-    // A = x0
-    // B = y0
-    // C = x1
-    // D = y1
-    // HL = plane_addr
+    register uint8_t _scr_addr_h asm("A") = scr_addr_h;
+    register uint8_t _x0 asm("B") = x0;
+    register uint8_t _y0 asm("C") = y0;
+    register uint8_t _x1 asm("D") = x1;
+    register uint8_t _y1 asm("E") = y1;
 
     asm(
-        "MOV E, A         \n\t" // E = x0
-        // check x slop
-        "CMP C            \n\t" // compare x0 with x1
-        "JNC .L1           \n\t" // if x0 >= x1, jump to .L1
-        // check the y slop
-        "MOV A, B         \n\t" // A = y0
-        "SUB D            \n\t" // compare y0 with y1
-        "JNC .L1           \n\t" // if y0 >= y1, jump to .L1
+        // A = scr_addr_h
+        // B = x0
+        // C = y0
+        // D = x1
+        // E = y1
+        "STA .ADDR_H+1          \n"
 
+        // calc+check x slop
+        "MOV A, D               \n"
+        "SUB B                  \n"
+        //"JC .REVERS_X           \n" // if x0 >= x1, jump to .REVERS_X
+        "JC .L1 \n"
+        "STA .DX+1              \n" // .DX+1 = dx
+    ".STRAIGHT_X:"
+
+        // calc+check y slop
+        "MOV A, E               \n" // A = y1
+        "SUB C                  \n" // compare y0 with y1
+        "JC .ADV_Y_NEG          \n" // if y0 >= y1, jump to .ADV_Y_NEG
+
+    // --- x0 < x1, and y0 < y1 ---
+    ".ADV_Y_POS:"
+        "STA .DY+1              \n" // .DY+1 = dy
+        // set up Y advance instruction (INR L)
+        "MVI A, %[inr_l]        \n"
+        "STA .ADV_Y             \n"
+        "JMP .GET_BIT_MASK      \n"
+    // --- x0 < x1, and y0 >= y1 ---
+    ".ADV_Y_NEG:"
+        "CMA                    \n" // dy = -dy
+        "INR A                  \n" // dy++
+        "STA .DY+1              \n" // .DY+1 = dy
+        // set up Y advance instruction (DCR L)
+        "MVI A, %[dcr_l]        \n"
+        "STA .ADV_Y             \n"
+
+    ".GET_BIT_MASK:"
         // --- slop left-bottom to right-top ---
 
-        // calc and save dx, dy
-        "STA .DY+1        \n\t" // save y0 in .DY+1
-        "MOV A, C         \n\t" // A = x1
-        "SUB E            \n\t" // A = dx
-        "STA .DX+1        \n\t" // save dx in .DX+1
-        // E = x0
-        // B = y0
-        // C = x1
-        // D = y1
+        // B = x0
+        // C = y0
 
         // calc the bit mask for the current pixel
-        "MVI A, 0x07       \n\t"
-        "ANA E             \n\t" // A = bit offset within the byte (0-7)
-        "LXI H, BIT_MASK   \n\t"
-        "ADD L             \n\t"
-        "MOV L, A          \n\t"
-        "ADC H             \n\t"
-        "SUB L             \n\t"
-        "MOV H, A          \n\t"
-        "MOV A, M          \n\t"
-        "STA .BIT_MASK+1   \n\t" // save bit mask for the current pixel
+        "LXI H, BIT_MASK   \n"
+        "MVI A, 0x07       \n"
+        "ANA B             \n" // A = bit offset within the byte (0-7)
+        "MOV E, A          \n"
+        "MVI D, 0          \n"
+        "DAD D             \n"
+        "MOV A, M          \n"
+        "STA .BIT_MASK+1   \n"
 
         // calc the byte address for the current pixel
-        "MVI A, 0xF8       \n\t"
-        "ANA E             \n\t" // A = byte offset within the plane (0-31)
-        "RRC               \n\t"
-        "RRC               \n\t"
-        "RRC               \n\t"
+        "MVI A, 0xF8       \n"
+        "ANA B             \n" // A = byte offset within the scr buff (0-31)
+        "RRC               \n"
+        "RRC               \n"
+        "RRC               \n"
     ".ADDR_H:"
-        "ADI 0x80          \n\t" // plane_addr_hi, self-modified code
-        "MOV H, A          \n\t"
-        "MOV L, B          \n\t" // L = y0
+        "ADI 0x80          \n" // scr_addr_hi, self-modified code
+        "MOV H, A          \n"
+        "MOV L, C          \n" // L = y0
         // HL = byte address of the current pixel
 
     ".DX:"
-        "MOV B, 0          \n\t" // B = dx, self-modified code
-        "MVI C, B          \n\t" // C = err
-        "MOV E, B          \n\t"
-        "INR E              \n\t" // E = dx + 1 (loop counter)
-    ".BIT_MASK:            \n\t"
-        "MVI D, 0          \n\t" // bit mask. self-modified code
+        "MVI A, 0          \n" // A = dx, self-modified code
+        "MOV E, A          \n"
+        "INR E             \n" // E = dx + 1 (loop counter)
+        "MOV B, A          \n" // B = dx
+        "RRC               \n"
+        "MOV C, A          \n" // C = err
+
+    ".BIT_MASK:"
+        "MVI D, 0          \n" // bit mask. self-modified code
         // HL = byte address of the current pixel
         // C = err
         // B = dx
         // E = loop counter
         // D = bit mask
 
-        // loop
-    ".L0:                  \n\t"
+        // --- loop ---
+    ".LOOP:"
         // set pixel
-        "MOV A, M          \n\t"
-        "ORA D             \n\t" // set the current pixel
-        "MOV M, A          \n\t"
+        "MOV A, M          \n"
+        "ORA D             \n" // set the current pixel
+        "MOV M, A          \n"
 
         // shift bit mask right for the next pixel
-        "MOV A, D          \n\t" // A = bit mask
-        "RRC               \n\t" // shift bit mask right for the next pixel
-        "MOV D, A          \n\t" // save updated bit mask
+        "MOV A, D          \n" // A = bit mask
+        "RRC               \n" // shift bit mask right for the next pixel
+        "MOV D, A          \n" // save updated bit mask
         // advance x
-        "JNC .NO_ADV_X     \n\t"
+        "JNC .NO_ADV_X     \n"
         // if bit mask didn't cross byte boundary, skip addr_x increment
-        "INR H             \n\t" // addr_x++
-    ".NO_ADV_X:            \n\t"
+        "INR H             \n" // addr_x++
+    ".NO_ADV_X:"
 
         // err -= dy
-        "MOV A, C          \n\t" // A = err
-    ".DY:                  \n\t"
-        "SUI 0             \n\t" // A = err - dy, self-modified code
+        "MOV A, C          \n" // A = err
+    ".DY:"
+        "SUI 0             \n" // A = err - dy, self-modified code
         // advance y if err < 0
-        "JNC .NO_ADV_Y     \n\t"
-        "INR L             \n\t" // y++
-        "ADD B             \n\t" // err += dx
-    ".NO_ADV_Y:            \n\t"
-        "MOV C, A          \n\t" // C = err + dx
-        "DCR E              \n\t" // loop counter--
-        "JNZ .L0            \n\t" // if loop counter != 0, repeat
-
+        "JNC .NO_ADV_Y     \n"
+        "ADD B             \n" // A = err + dx
+    ".ADV_Y:"
+        "INR L              \n" // y++, self-modified code
+    ".NO_ADV_Y:"
+        "MOV C, A           \n" // C = err
+        "DCR E              \n" // loop counter--
+        "JNZ .LOOP          \n" // if loop counter != 0, repeat
 
         ".L1:"
         // TODO: implement the line drawing algorithm in assembly.
-        "RET"
+        "RET                \n"
+
+    ".REVERS_X:"
+        // A = -dx
+        "CMA                    \n" // dx = -dx
+        "INR A                  \n" // dx++
+        "STA .DX+1              \n" // .DX+1 = dx
+        // swap (x0, y0) with (x1, y1)
+        // B = x0
+        // C = y0
+        // D = x1
+        // E = y1
+        "XCHG               \n"
+        "MOV D, B           \n"
+        "MOV E, C           \n"
+        "MOV B, H           \n"
+        "MOV C, L           \n"
+        // jump to the common code for the rest of the algorithm
+        "JMP .STRAIGHT_X   \n"
+
+
+        : /* no outputs */
+        /* input constraints */
+        : "r" (_scr_addr_h), "r" (_x0), "r" (_y0), "r" (_x1), "r" (_y1),
+          [inr_l] "i" (OPCODE_INR_L), [dcr_l] "i" (OPCODE_DCR_L)
+        /* clobbered regs */
+        : "A", "BC", "DE", "HL", "FLAGS"
     );
 
+}
+
+V6C_NOINLINE
+void draw_pixel(uint8_t x, uint8_t y, uint8_t* plane_addr)
+{
+    uint8_t addr_hi = x / 8;
+    uint16_t byte_index = (addr_hi<<8) + y;
+    uint8_t bit_index = 7 - (x % 8);
+    plane_addr[byte_index] |= 1 << bit_index;
+}
+
+V6C_NOINLINE
+void draw_line(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1, uint8_t* plane_addr)
+{
+    // Bresenham's line algorithm
+    int dx = abs(x1 - x0);
+    int dy = -abs(y1 - y0);
+    int sx = x0 < x1 ? 1 : -1;
+    int sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy;
+    while (true) {
+        draw_pixel(x0, y0, plane_addr);
+        if (x0 == x1 && y0 == y1) break;
+        int err2 = 2 * err;
+        if (err2 >= dy) {
+            err += dy;
+            x0 += sx;
+        }
+        if (err2 <= dx) {
+            err += dx;
+            y0 += sy;
+        }
+    }
 }
 
 #endif /* DRAW_H */
