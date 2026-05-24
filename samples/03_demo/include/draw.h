@@ -102,61 +102,40 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
         // C = y0
         // D = dx
 
-        // calc the bit mask for the current pixel
-        "LXI H, %[B_MASK]   \n"
-        "MVI A, 0x07       \n"
-        "ANA B             \n" // A = bit offset within the byte (0-7)
-        "ADD L             \n"
-        "MOV L, A          \n"
-        "ADC H             \n"
-        "SUB L             \n"
-        "MOV H, A          \n"
-        "MOV A, M          \n"
-        "STA .BIT_MASK+1   \n"
-
-        // calc the byte address for the current pixel
-        "MVI A, 0xF8       \n"
-        "ANA B             \n" // A = byte offset within the scr buff (0-31)
-        "RRC               \n"
-        "RRC               \n"
-        "RRC               \n"
-    ".ADDR_H:"
-        "ADI 0x80          \n" // scr_addr_hi, self-modified code
-        "MOV H, A          \n"
-        "MOV L, C          \n" // L = y0
+        "call .GET_PIXEL_ADDR_AND_MASK \n"
         // HL = byte address of the current pixel
+        // E = bit mask
 
 
-        "MOV E, D          \n"
-        "INR E             \n" // E = dx + 1 (loop counter)
-        "MOV B, D          \n" // B = dx
+        // D = dx, E = bit mask
+        // set up: err, loop counter
+        "MOV B, D          \n"
+        "INR B             \n" // B = dx + 1 (loop counter)
         "XRA A             \n"
         "ORA D             \n" // A = dx, set CY = 0
         "RAR               \n" // err = dx/2
         "MOV C, A          \n" // C = err
 
-    ".BIT_MASK:"
-        "MVI B, 0          \n" // bit mask. self-modified code
+        // --- loop ---
+    ".LOOP:"
         // HL = byte address of the current pixel
         // C = err
         // D = dx
-        // E = loop counter
-        // B = bit mask
+        // B = loop counter
+        // E = bit mask
 
-        // --- loop ---
-    ".LOOP:"
         // set pixel
         "MOV A, M          \n"
-        "ORA B             \n" // set the current pixel
+        "ORA E             \n" // set the current pixel
         "MOV M, A          \n"
 
         // shift bit mask right for the next pixel
-        "ANA B             \n" // A = bit mask
+        "ANA E             \n" // A = bit mask
         "RRC               \n" // shift bit mask right for the next pixel
-        "MOV B, A          \n" // save updated bit mask
+        "MOV E, A          \n" // save updated bit mask
         // if bit mask didn't cross byte boundary, skip addr_x increment
         "ADC H            \n"
-        "SUB B            \n"
+        "SUB E            \n"
         "MOV H, A         \n"
 
         // err -= dy
@@ -170,11 +149,8 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
         "INR L              \n" // y++, self-modified code
     ".NO_ADV_Y:"
         "MOV C, A           \n" // C = err
-        "DCR E              \n" // loop counter--
+        "DCR B              \n" // loop counter--
         "JNZ .LOOP          \n" // if loop counter != 0, repeat
-
-        ".L1:"
-        // TODO: implement the line drawing algorithm in assembly.
         "RET                \n"
 
     // swap (x0, y0) with (x1, y1)
@@ -186,9 +162,9 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
         // D = x1
         // E = y1
         // out: A = dx, swapped (x0, y0) with (x1, y1)
-        "CMA                    \n" // dx = -dx
-        "INR A                  \n" // dx++
-
+        "CMA                    \n"
+        "INR A                  \n" // dx = -dx
+        // swap
         "XCHG               \n"
         "MOV D, B           \n"
         "MOV E, C           \n"
@@ -198,6 +174,37 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
 
     ".VERTICAL_DRAW:"
         // TODO: implement vertical line drawing routine
+        "RET               \n"
+
+    ".GET_PIXEL_ADDR_AND_MASK:"
+        // in: B = x0, C = y0
+        // out:
+        // HL = byte address of the current pixel
+        // E = bit mask for the pixel
+
+        // calc the bit mask for the current pixel
+        "LXI H, %[B_MASK]  \n"
+        "MVI A, 0x07       \n"
+        "ANA B             \n" // A = bit offset within the byte (0-7)
+        "ADD L             \n"
+        "MOV L, A          \n"
+        "ADC H             \n"
+        "SUB L             \n"
+        "MOV H, A          \n"
+        "MOV E, M          \n"
+        // E = bit mask
+
+        // calc the byte address for the current pixel
+        "MVI A, 0xF8       \n"
+        "ANA B             \n" // A = byte offset within the scr buff (0-31)
+        "RRC               \n"
+        "RRC               \n"
+        "RRC               \n"
+    ".ADDR_H:"
+        "ADI 0x80          \n" // scr_addr_hi, self-modified code
+        "MOV H, A          \n"
+        "MOV L, C          \n" // L = y0
+        // HL = byte address of the current pixel
         "RET               \n"
 
         : /* no outputs */
