@@ -15,7 +15,8 @@ void fill_rect(uint8_t addr_x, uint8_t pos_y, uint8_t b, uint8_t h) {
     }
 }
 
-uint8_t font[32 * 8] = {
+
+static uint8_t font[32 * 8] = {
     // font data for 32 chars (ASCII 0-31), each char is 8 bytes (8x8 pixels)
     // A
     0x00, 0x18, 0x24, 0x42, 0x7E, 0x42, 0x42, 0x00,

@@ -9,7 +9,8 @@
 
 
 // bit mask for each bit position in a byte
-const uint8_t BIT_MASK[8] = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
+static const uint8_t BIT_MASK[8] = {
+    0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
 
 V6C_NOINLINE_ASM
 void draw_pixel2(uint8_t x, uint8_t y, uint8_t* plane_addr)
@@ -27,7 +28,7 @@ void draw_pixel2(uint8_t x, uint8_t y, uint8_t* plane_addr)
         "MOV H, A          \n"
         "MVI A, 0x07       \n"
         "ANA C             \n" // a is bit offset within the byte (0-7)
-        "LXI B, BIT_MASK   \n"
+        "LXI B, %[B_MASK]  \n"
         "ADD C             \n"
         "MOV C, A          \n"
         "ADC B             \n"
@@ -37,7 +38,8 @@ void draw_pixel2(uint8_t x, uint8_t y, uint8_t* plane_addr)
         "ORA M             \n"
         "MOV M, A          \n"
         : /* no outputs */
-        : "r" (addr_reg), "r" (addr_x_reg), "r" (addr_y_reg) /* input constraints */
+         /* input constraints */
+        : "r" (addr_reg), "r" (addr_x_reg), "r" (addr_y_reg), [B_MASK] "i" (BIT_MASK)
         : "A", "BC", "FLAGS" /* clobbered registers */
     );
 }
