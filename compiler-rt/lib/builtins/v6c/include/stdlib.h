@@ -83,7 +83,7 @@ void srand(uint16_t __seed) {
 /* rand() — xorshift16(7,9,8), result masked to [0, RAND_MAX]. */
 V6C_NOINLINE_ASM
 uint16_t rand(void) {
-    register uint16_t __r asm("HL");
+    register uint16_t _out asm("HL");
     __asm__ volatile (
     "1:  lhld   __v6c_rand_state    \n\t"
         "mov    a, h                \n\t"  /* --- seed ^= seed >> 9 --- */
@@ -101,9 +101,11 @@ uint16_t rand(void) {
         "xra    h                   \n\t"  /* --- seed ^= seed << 8 --- */
         "mov    h, a                \n\t"  /* H  = old-L ^ ...         */
         "shld   __v6c_rand_state    \n\t"  /* store updated state       */
-        : "=r"(__r) :: "A", "FLAGS"
+        : "=r"(_out)
+        : /* no inputs */
+        : "A", "FLAGS"
     );
-    return (int)__r;
+    return _out;
 }
 
 #endif /* V6C_STDLIB_H_INCLUDED */
