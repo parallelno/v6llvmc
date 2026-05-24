@@ -63,48 +63,54 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
         // E = y1
         "STA .ADDR_H+1          \n"
 
-        // calc+check x slop
+        // calc+check dx
         "MOV A, D               \n"
         "SUB B                  \n"
-        //"JC .REVERS_X           \n" // if x0 >= x1, jump to .REVERS_X
-        "JC .L1 \n"
-        "STA .DX+1              \n" // .DX+1 = dx
-    ".STRAIGHT_X:"
+        "JC .SWAP_POINTS        \n" // if x0 >= x1, SWAP_POINTS
+    ".SET_DX:"
+        "MOV D, A               \n" // D = dx
 
-        // calc+check y slop
+        // calc+check dy
+        "LXI H, .ADV_Y          \n"
         "MOV A, E               \n" // A = y1
         "SUB C                  \n" // compare y0 with y1
         "JC .ADV_Y_NEG          \n" // if y0 >= y1, jump to .ADV_Y_NEG
 
-    // --- x0 < x1, and y0 < y1 ---
+        // --- x0 < x1, and y0 < y1 ---
     ".ADV_Y_POS:"
-        "STA .DY+1              \n" // .DY+1 = dy
         // set up Y advance instruction (INR L)
-        "MVI A, %[inr_l]        \n"
-        "STA .ADV_Y             \n"
-        "JMP .GET_BIT_MASK      \n"
-    // --- x0 < x1, and y0 >= y1 ---
+        "MVI M, %[inr_l]        \n"
+        "JMP .CHECK_SLOP        \n"
+        // --- x0 < x1, and y0 >= y1 ---
     ".ADV_Y_NEG:"
         "CMA                    \n" // dy = -dy
         "INR A                  \n" // dy++
-        "STA .DY+1              \n" // .DY+1 = dy
-        // set up Y advance instruction (DCR L)
-        "MVI A, %[dcr_l]        \n"
-        "STA .ADV_Y             \n"
+        "MVI M, %[dcr_l]        \n"
 
-    ".GET_BIT_MASK:"
+    ".CHECK_SLOP:"
+        // D = |dx|
+        // A = |dy|
+        // if dy > dx, call vertical line drawing routine
+        "CMP D                  \n" // compare dy with dx
+        "JNC .VERTICAL_DRAW     \n" // if dy > dx, jump to vertical draw routine
+
+        // .DY+1 = dy
+        "STA .DY+1              \n"
+
         // --- slop left-bottom to right-top ---
-
         // B = x0
         // C = y0
+        // D = dx
 
         // calc the bit mask for the current pixel
         "LXI H, %[B_MASK]   \n"
         "MVI A, 0x07       \n"
         "ANA B             \n" // A = bit offset within the byte (0-7)
-        "MOV E, A          \n"
-        "MVI D, 0          \n"
-        "DAD D             \n"
+        "ADD L             \n"
+        "MOV L, A          \n"
+        "ADC H             \n"
+        "SUB L             \n"
+        "MOV H, A          \n"
         "MOV A, M          \n"
         "STA .BIT_MASK+1   \n"
 
@@ -120,38 +126,38 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
         "MOV L, C          \n" // L = y0
         // HL = byte address of the current pixel
 
-    ".DX:"
-        "MVI A, 0          \n" // A = dx, self-modified code
-        "MOV E, A          \n"
+
+        "MOV E, D          \n"
         "INR E             \n" // E = dx + 1 (loop counter)
-        "MOV B, A          \n" // B = dx
-        "RRC               \n"
+        "MOV B, D          \n" // B = dx
+        "XRA A             \n"
+        "ORA D             \n" // A = dx, set CY = 0
+        "RAR               \n" // err = dx/2
         "MOV C, A          \n" // C = err
 
     ".BIT_MASK:"
-        "MVI D, 0          \n" // bit mask. self-modified code
+        "MVI B, 0          \n" // bit mask. self-modified code
         // HL = byte address of the current pixel
         // C = err
-        // B = dx
+        // D = dx
         // E = loop counter
-        // D = bit mask
+        // B = bit mask
 
         // --- loop ---
     ".LOOP:"
         // set pixel
         "MOV A, M          \n"
-        "ORA D             \n" // set the current pixel
+        "ORA B             \n" // set the current pixel
         "MOV M, A          \n"
 
         // shift bit mask right for the next pixel
-        "MOV A, D          \n" // A = bit mask
+        "ANA B             \n" // A = bit mask
         "RRC               \n" // shift bit mask right for the next pixel
-        "MOV D, A          \n" // save updated bit mask
-        // advance x
-        "JNC .NO_ADV_X     \n"
+        "MOV B, A          \n" // save updated bit mask
         // if bit mask didn't cross byte boundary, skip addr_x increment
-        "INR H             \n" // addr_x++
-    ".NO_ADV_X:"
+        "ADC H            \n"
+        "SUB B            \n"
+        "MOV H, A         \n"
 
         // err -= dy
         "MOV A, C          \n" // A = err
@@ -159,7 +165,7 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
         "SUI 0             \n" // A = err - dy, self-modified code
         // advance y if err < 0
         "JNC .NO_ADV_Y     \n"
-        "ADD B             \n" // A = err + dx
+        "ADD D             \n" // A = err + dx
     ".ADV_Y:"
         "INR L              \n" // y++, self-modified code
     ".NO_ADV_Y:"
@@ -171,24 +177,28 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
         // TODO: implement the line drawing algorithm in assembly.
         "RET                \n"
 
-    ".REVERS_X:"
+    // swap (x0, y0) with (x1, y1)
+    ".SWAP_POINTS:"
+        // in:
         // A = -dx
-        "CMA                    \n" // dx = -dx
-        "INR A                  \n" // dx++
-        "STA .DX+1              \n" // .DX+1 = dx
-        // swap (x0, y0) with (x1, y1)
         // B = x0
         // C = y0
         // D = x1
         // E = y1
+        // out: A = dx, swapped (x0, y0) with (x1, y1)
+        "CMA                    \n" // dx = -dx
+        "INR A                  \n" // dx++
+
         "XCHG               \n"
         "MOV D, B           \n"
         "MOV E, C           \n"
         "MOV B, H           \n"
         "MOV C, L           \n"
-        // jump to the common code for the rest of the algorithm
-        "JMP .STRAIGHT_X   \n"
+        "JMP .SET_DX        \n"
 
+    ".VERTICAL_DRAW:"
+        // TODO: implement vertical line drawing routine
+        "RET               \n"
 
         : /* no outputs */
         /* input constraints */

@@ -17,17 +17,18 @@ static const uint8_t palette[16] = {
 };
 
 #define NEW_DRAW
-//#define RAND_LINES
-#define POS_X 200
+#define RAND_LINES
+
 
 #ifdef RAND_LINES
 #define LINES 100
 #else
-#define LINES 1
+#define LINES 8
 #endif
 
+#define POS_X 195
 static const uint8_t pos[] = {
-    POS_X, 0xFE,
+    0xC2, 0x23,//0x58, //0xFE,
     POS_X, 0xFA,
     POS_X, 0xC8,
     POS_X, 0x8C,
