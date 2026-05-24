@@ -65,35 +65,33 @@ draw_line2:                             ; -- Begin function draw_line2
 	STA	.ADDR_H+1
 	MOV	A, D
 	SUB	B
-	JC	.L1
-.STRAIGHT_X:
-	STA	.DX+1
-	MOV	H, A
+	JC	.SWAP_POINTS
+.SET_DX:
+	MOV	D, A
+	LXI	H, .ADV_Y
 	MOV	A, E
 	SUB	C
-	CMP	H
-	JNC	.VERTICAL_DRAW
-	ORA	A
 	JC	.ADV_Y_NEG
 .ADV_Y_POS:
-	STA	.DY+1
-	MVI	A, 0x2c
-	STA	.ADV_Y
-	JMP	.GET_BIT_MASK
+	MVI	M, 0x2c
+	JMP	.CHECK_SLOP
 .ADV_Y_NEG:
 	CMA
 
 	INR	A
+	MVI	M, 0x2d
+.CHECK_SLOP:
+	CMP	D
+	JNC	.VERTICAL_DRAW
 	STA	.DY+1
-	MVI	A, 0x2d
-	STA	.ADV_Y
-.GET_BIT_MASK:
 	LXI	H, BIT_MASK
 	MVI	A, 7
 	ANA	B
-	MOV	E, A
-	MVI	D, 0
-	DAD	D
+	ADD	L
+	MOV	L, A
+	ADC	H
+	SUB	L
+	MOV	H, A
 	MOV	A, M
 	STA	.BIT_MASK+1
 	MVI	A, 0xf8
@@ -108,33 +106,32 @@ draw_line2:                             ; -- Begin function draw_line2
 	ADI	0x80
 	MOV	H, A
 	MOV	L, C
-.DX:
-	MVI	A, 0
-	MOV	E, A
+	MOV	E, D
 	INR	E
-	MOV	B, A
-	ORA	A
+	MOV	B, D
+	XRA	A
+	ORA	D
 	RAR
 
 	MOV	C, A
 .BIT_MASK:
-	MVI	D, 0
+	MVI	B, 0
 .LOOP:
 	MOV	A, M
-	ORA	D
+	ORA	B
 	MOV	M, A
-	MOV	A, D
+	ANA	B
 	RRC
 
-	MOV	D, A
-	JNC	.NO_ADV_X
-	INR	H
-.NO_ADV_X:
+	MOV	B, A
+	ADC	H
+	SUB	B
+	MOV	H, A
 	MOV	A, C
 .DY:
 	SUI	0
 	JNC	.NO_ADV_Y
-	ADD	B
+	ADD	D
 .ADV_Y:
 	INR	L
 .NO_ADV_Y:
@@ -144,7 +141,7 @@ draw_line2:                             ; -- Begin function draw_line2
 .L1:
 	RET
 
-.REVERS_X:
+.SWAP_POINTS:
 	CMA
 
 	INR	A
@@ -154,7 +151,7 @@ draw_line2:                             ; -- Begin function draw_line2
 	MOV	E, C
 	MOV	B, H
 	MOV	C, L
-	JMP	.STRAIGHT_X
+	JMP	.SET_DX
 .VERTICAL_DRAW:
 	RET
 
@@ -170,7 +167,7 @@ main:                                   ; @main
 	;=== void main(void) ===
 ; %bb.0:
 	;DEBUG_VALUE: i <- 0
-	MVI	A, 0x64
+	MVI	A, 0x12
 .LBB17_1:                               ; =>This Inner Loop Header: Depth=1
 	;DEBUG_VALUE: i <- undef
 	;--- V6C_SPILL8 ---
@@ -225,17 +222,17 @@ main:                                   ; @main
 .LBB17_5:                               ;   in Loop: Header=BB17_1 Depth=1
 	MOV	A, E
 	ADI	3
-	;DEBUG_VALUE: x <- $a
+	;DEBUG_VALUE: main:x <- $a
 	MOV	E, A
-	;DEBUG_VALUE: x <- $e
+	;DEBUG_VALUE: main:x <- $e
 	;--- V6C_RELOAD16 ---
 .LLo61_0:
 	LXI	H, 0
 	MOV	A, L
 	ADI	3
-	;DEBUG_VALUE: y <- $a
+	;DEBUG_VALUE: main:y <- $a
 	MOV	B, A
-	;DEBUG_VALUE: y <- $b
+	;DEBUG_VALUE: main:y <- $b
 	MOV	A, E
 	CALL	draw_line2
 	;DEBUG_VALUE: i <- undef

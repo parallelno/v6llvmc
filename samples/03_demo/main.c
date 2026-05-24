@@ -19,9 +19,8 @@ static const uint8_t palette[16] = {
 #define NEW_DRAW
 #define RAND_LINES
 
-
 #ifdef RAND_LINES
-#define LINES 100
+#define LINES 18
 #else
 #define LINES 8
 #endif
@@ -48,17 +47,18 @@ void main() {
     // fill_rect(8, 50, 16, 156);
     // draw_text("HELLO WORLD", 10, 10);
 
+    uint8_t x, y;
     // draw 100 random lines.
     for (int i = 0; i < LINES; i++) {
 #ifdef RAND_LINES
         uint16_t r = rand();
         uint8_t hi = r >> 8;
         uint8_t lo = r & 0xFF;
-        uint8_t x = min(hi, 250) + 3; // [3, 253]
-        uint8_t y = min(lo, 250) + 3; // [3, 253]
+        x = min(hi, 250) + 3; // [3, 253]
+        y = min(lo, 250) + 3; // [3, 253]
 #else
-        uint8_t x = pos[0 + i*2];
-        uint8_t y = pos[1 + i*2];
+        x = pos[0 + i*2];
+        y = pos[1 + i*2];
 #endif
 
 #ifdef NEW_DRAW
@@ -67,4 +67,10 @@ void main() {
         draw_line(127, 127, x, y, SCR_ADDR_PTR);
 #endif
     }
+
+#ifdef NEW_DRAW
+    //draw_line2(SCR_BUFF0_ADDR_H, 127, 127, x, y);
+#else
+    //draw_line(127, 127, x, y, SCR_ADDR_PTR);
+#endif
 }

@@ -1,7 +1,7 @@
 {
     "breakpoints": [
         {
-            "addr": "0x0134",
+            "addr": "0x015A",
             "autoDel": false,
             "comment": "",
             "cond": "=ANY",
@@ -17,11 +17,11 @@
             "cond": "=ANY",
             "memPages": 4294967295,
             "operand": "A",
-            "status": 0,
+            "status": 1,
             "value": "0x00"
         },
         {
-            "addr": "0x015A",
+            "addr": "0x0134",
             "autoDel": false,
             "comment": "",
             "cond": "=ANY",
