@@ -49,7 +49,7 @@
  * Output:  HL = dst
  * Clobbers: A, B, C, D, E, FLAGS
  * ------------------------------------------------------------------ */
-V6C_NOINLINE_ASM void *memcpy(uint8_t* dst, const uint8_t* src, uint16_t n)
+V6C_NOINLINE_ASM void *memcpy(void *dst, const void *src, uint16_t n)
 {
     register uint16_t dst_reg asm("HL") = (uint16_t)dst; /* input, clobbers */
     register uint16_t src_reg asm("DE") = (uint16_t)src; /* input, clobbers */
@@ -80,10 +80,11 @@ V6C_NOINLINE_ASM void *memcpy(uint8_t* dst, const uint8_t* src, uint16_t n)
  * memset(dst, val, n) — fill n bytes at dst with low byte of val.
  * Returns dst (standard C signature).
  * ------------------------------------------------------------------ */
-V6C_NOINLINE void *memset(uint8_t* dst, uint8_t val, uint16_t n)
+V6C_NOINLINE void *memset(void *dst, int val, uint16_t n)
 {
+    uint8_t *p = (uint8_t *)dst;
     for (uint16_t i = 0; i < n; i++) {
-        dst[i] = val;
+        p[i] = (uint8_t)val;
     }
     return dst;
 }
