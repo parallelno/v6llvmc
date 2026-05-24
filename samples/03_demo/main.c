@@ -16,7 +16,7 @@ static const uint8_t palette[16] = {
     0xCC, 0xDD, 0xEE, 0xFF
 };
 
-#define NEW_DRAW
+//#define NEW_DRAW
 #define RAND_LINES
 
 #ifdef RAND_LINES

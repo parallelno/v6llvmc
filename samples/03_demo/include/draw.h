@@ -97,17 +97,13 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
         // .DY+1 = dy
         "STA .DY+1              \n"
 
-        // --- slop left-bottom to right-top ---
+        // --- left-to-right horizontal line ---
         // B = x0
         // C = y0
         // D = dx
 
         "call .GET_PIXEL_ADDR_AND_MASK \n"
-        // HL = byte address of the current pixel
-        // E = bit mask
 
-
-        // D = dx, E = bit mask
         // set up: err, loop counter
         "MOV B, D          \n"
         "INR B             \n" // B = dx + 1 (loop counter)
@@ -126,27 +122,28 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
 
         // set pixel
         "MOV A, M          \n"
-        "ORA E             \n" // set the current pixel
+        "ORA E             \n"
         "MOV M, A          \n"
 
         // shift bit mask right for the next pixel
-        "ANA E             \n" // A = bit mask
-        "RRC               \n" // shift bit mask right for the next pixel
-        "MOV E, A          \n" // save updated bit mask
+        "ANA E              \n" // A = bit mask
+        "RRC                \n" // shift bit mask right for the next pixel
+        "MOV E, A           \n" // save updated bit mask
         // if bit mask didn't cross byte boundary, skip addr_x increment
-        "ADC H            \n"
-        "SUB E            \n"
-        "MOV H, A         \n"
+        "ADC H              \n"
+        "SUB E              \n"
+        "MOV H, A           \n"
 
         // err -= dy
-        "MOV A, C          \n" // A = err
+        "MOV A, C           \n" // A = err
     ".DY:"
-        "SUI 0             \n" // A = err - dy, self-modified code
+        "SUI 0              \n" // A = err - dy, self-modified code
         // advance y if err < 0
-        "JNC .NO_ADV_Y     \n"
-        "ADD D             \n" // A = err + dx
+        "JNC .NO_ADV_Y      \n"
+        "ADD D              \n" // A = err + dx
     ".ADV_Y:"
         "INR L              \n" // y++, self-modified code
+
     ".NO_ADV_Y:"
         "MOV C, A           \n" // C = err
         "DCR B              \n" // loop counter--
@@ -173,14 +170,77 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
         "JMP .SET_DX        \n"
 
     ".VERTICAL_DRAW:"
-        // TODO: implement vertical line drawing routine
-        "RET               \n"
+        // D = |dx|
+        // A = |dy|
+        // B = x0
+        // C = y0
+
+        "LXI H, .DX2+1      \n"
+        "MOV M, D           \n" // .DX2 = dx
+        "MOV D, A           \n"
+        // D = dy
+
+        // set up Y advance instruction for vertical draw routine
+        "LDA .ADV_Y         \n"
+        "STA .ADV_Y2        \n"
+        // --- left-to-right vertical line ---
+        "call .GET_PIXEL_ADDR_AND_MASK \n"
+
+        // set up: err, loop counter
+        "MOV B, D           \n"
+        "INR B              \n" // B = dy + 1 (loop counter)
+        "XRA A              \n"
+        "ORA D              \n" // A = dy, set CY = 0
+        "RAR                \n" // err = dy/2
+        "MOV C, A           \n" // C = err
+
+        // --- loop ---
+    ".LOOP2:"
+        // HL = byte address of the current pixel
+        // C = err
+        // D = dy
+        // B = loop counter
+        // E = bit mask
+
+        // set pixel
+        "MOV A, M           \n"
+        "ORA E              \n"
+        "MOV M, A           \n"
+
+        // advance y
+    ".ADV_Y2:"
+        "INR L              \n" // y++, self-modified code
+
+        // err -= dx
+        "MOV A, C           \n" // A = err
+    ".DX2:"
+        "SUI 0              \n" // A = err - dx, self-modified code
+        "MOV C, A           \n" // C = err
+        // if err < 0, advance x
+    "JNC .NO_ADV_X2         \n"
+        "ADD D              \n" // A = err + dy
+        "MOV C, A           \n" // C = err
+
+        // shift bit mask right for the next pixel
+        "MOV A, E           \n" // A = bit mask
+        "RRC                \n" // shift bit mask right for the next pixel
+        "MOV E, A           \n" // save updated bit mask
+        // if bit mask didn't cross byte boundary, skip addr_x increment
+        "ADC H              \n"
+        "SUB E              \n"
+        "MOV H, A           \n"
+
+    ".NO_ADV_X2:"
+        "DCR B              \n" // loop counter--
+        "JNZ .LOOP2         \n" // if loop counter != 0, repeat
+        "RET                \n"
 
     ".GET_PIXEL_ADDR_AND_MASK:"
         // in: B = x0, C = y0
         // out:
         // HL = byte address of the current pixel
-        // E = bit mask for the pixel
+        // E = bit mask
+        // clobbers: A, B, C, E, H, L, FLAGS
 
         // calc the bit mask for the current pixel
         "LXI H, %[B_MASK]  \n"
