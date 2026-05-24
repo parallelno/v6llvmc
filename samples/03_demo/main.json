@@ -1,7 +1,7 @@
 {
     "breakpoints": [
         {
-            "addr": "0x02EB",
+            "addr": "0x0100",
             "autoDel": false,
             "comment": "",
             "cond": "=ANY",
@@ -21,7 +21,7 @@
             "value": "0x00"
         },
         {
-            "addr": "0x0100",
+            "addr": "0x02EB",
             "autoDel": false,
             "comment": "",
             "cond": "=ANY",
