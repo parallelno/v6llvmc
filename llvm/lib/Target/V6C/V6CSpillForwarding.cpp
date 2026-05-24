@@ -178,6 +178,21 @@ bool V6CSpillForwarding::processBlock(MachineBasicBlock &MBB) {
       Register DstReg = MI.getOperand(0).getReg();
       int FI = MI.getOperand(1).getIndex();
 
+      // Dead reload elimination: if the destination operand is marked dead,
+      // the reloaded value is unused.  The pseudo's only other effect is an
+      // implicit-def of FLAGS (from the DAD SP used to address the slot),
+      // but that effect is purely an artifact of how stack access is
+      // implemented on V6C — semantically a reload is flag-preserving.
+      // Erasing dead reloads is critical for correctness: if a dead reload
+      // is left between a flag-setting compare and a conditional branch,
+      // the DAD SP in its post-PEI expansion clobbers CY and the branch
+      // reads the wrong flag.
+      if (MI.getOperand(0).isDead()) {
+        MII = MBB.erase(&MI);
+        Changed = true;
+        continue;
+      }
+
       auto It = Avail.find(FI);
       if (It != Avail.end()) {
         MCPhysReg SrcReg = It->second;
