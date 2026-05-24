@@ -19,28 +19,30 @@ void draw_pixel2(uint8_t x, uint8_t y, uint8_t* plane_addr)
     register uint8_t addr_y_reg asm("L") = y;
     register uint8_t addr_reg asm("H") = (((uint16_t)plane_addr) >> 8);
     asm (
-        "MOV C, A          \n"
-        "RRC               \n"
-        "RRC               \n"
-        "RRC               \n"
-        "ANI 0x1F          \n" // a is byte offset within the plane (0-31)
-        "ADD H             \n"
-        "MOV H, A          \n"
-        "MVI A, 0x07       \n"
-        "ANA C             \n" // a is bit offset within the byte (0-7)
-        "LXI B, %[B_MASK]  \n"
-        "ADD C             \n"
-        "MOV C, A          \n"
-        "ADC B             \n"
-        "SUB C             \n"
-        "MOV B, A          \n"
-        "LDAX B            \n"
-        "ORA M             \n"
-        "MOV M, A          \n"
+        "MOV C, A           \n"
+        "RRC                \n"
+        "RRC                \n"
+        "RRC                \n"
+        "ANI 0x1F           \n" // a is byte offset within the plane (0-31)
+        "ADD H              \n"
+        "MOV H, A           \n"
+        "MVI A, 0x07        \n"
+        "ANA C              \n" // a is bit offset within the byte (0-7)
+        "LXI B, %[B_MASK] \n"
+        "ADD C              \n"
+        "MOV C, A           \n"
+        "ADC B              \n"
+        "SUB C              \n"
+        "MOV B, A           \n"
+        "LDAX B             \n"
+        "ORA M              \n"
+        "MOV M, A           \n"
         : /* no outputs */
-         /* input constraints */
-        : "r" (addr_reg), "r" (addr_x_reg), "r" (addr_y_reg), [B_MASK] "i" (BIT_MASK)
-        : "A", "BC", "FLAGS" /* clobbered registers */
+        /* input constraints */
+        : "r" (addr_reg), "r" (addr_x_reg), "r" (addr_y_reg),
+            [B_MASK] "i" (BIT_MASK)
+        /* clobbered registers */
+        : "A", "BC", "FLAGS"
     );
 }
 
@@ -97,7 +99,7 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
         // C = y0
 
         // calc the bit mask for the current pixel
-        "LXI H, BIT_MASK   \n"
+        "LXI H, %[B_MASK]   \n"
         "MVI A, 0x07       \n"
         "ANA B             \n" // A = bit offset within the byte (0-7)
         "MOV E, A          \n"
@@ -191,7 +193,8 @@ void draw_line2(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t 
         : /* no outputs */
         /* input constraints */
         : "r" (_scr_addr_h), "r" (_x0), "r" (_y0), "r" (_x1), "r" (_y1),
-          [inr_l] "i" (OPCODE_INR_L), [dcr_l] "i" (OPCODE_DCR_L)
+          [inr_l] "i" (OPCODE_INR_L), [dcr_l] "i" (OPCODE_DCR_L),
+          [B_MASK] "i" (BIT_MASK)
         /* clobbered regs */
         : "A", "BC", "DE", "HL", "FLAGS"
     );

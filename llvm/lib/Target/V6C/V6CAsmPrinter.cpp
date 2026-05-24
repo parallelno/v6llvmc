@@ -298,6 +298,16 @@ bool V6CAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
   case MachineOperand::MO_Immediate:
     O << MO.getImm();
     return false;
+  case MachineOperand::MO_GlobalAddress:
+    // Symbol address used with constraint "i" (e.g. LXI B, %[sym]).
+    PrintSymbolOperand(MO, O);
+    return false;
+  case MachineOperand::MO_ExternalSymbol:
+    O << MO.getSymbolName();
+    return false;
+  case MachineOperand::MO_BlockAddress:
+    GetBlockAddressSymbol(MO.getBlockAddress())->print(O, MAI);
+    return false;
   default:
     return true;
   }
