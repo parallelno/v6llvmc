@@ -37,33 +37,39 @@
 #error "<string.h> here is V6C-only; compile with -target i8080-unknown-v6c"
 #endif
 
+#include <stdint.h>
 #include "v6c_rt_macros.h"
 
 
 /* ------------------------------------------------------------------
  * memcpy(dst, src, n) — copy n bytes from src to dst (non-overlapping).
- * No return value — code like char *p = memcpy(...) would break.
+ * Returns dst (standard C signature).
  *
  * Inputs:  HL = dst, DE = src, BC = n
+ * Output:  HL = dst
  * Clobbers: A, B, C, D, E, FLAGS
  * ------------------------------------------------------------------ */
-V6C_NOINLINE_ASM void memcpy(uint8_t* dst, const uint8_t* src, uint16_t n)
+V6C_NOINLINE_ASM void *memcpy(uint8_t* dst, const uint8_t* src, uint16_t n)
 {
     register uint16_t dst_reg asm("HL") = (uint16_t)dst; /* input, clobbers */
     register uint16_t src_reg asm("DE") = (uint16_t)src; /* input, clobbers */
     register uint16_t n_reg asm("BC") = n; /* input, clobbers */
 
     __asm__ volatile (
+        "PUSH H              \n\t"   /* save dst for return value */
         "1:                  \n\t"
         "MOV  A, B           \n\t"
         "ORA  C              \n\t"
-        "RZ                  \n\t"   /* n == 0? */
+        "JZ   2f             \n\t"   /* n == 0? done */
         "LDAX D              \n\t"   /* A = *src */
         "MOV  M, A           \n\t"   /* *dst = A */
         "INX  H              \n\t"
         "INX  D              \n\t"
         "DCX  B              \n\t"
         "JMP  1b             \n"
+        "2:                  \n\t"
+        "POP  H              \n\t"   /* HL = original dst (return value) */
+        "RET                 \n\t"
         : /* no outputs */
         : "r"(dst_reg), "r"(src_reg), "r"(n_reg) /* input constraints */
         : "A", "FLAGS" /* clobbers */
@@ -72,13 +78,14 @@ V6C_NOINLINE_ASM void memcpy(uint8_t* dst, const uint8_t* src, uint16_t n)
 
 /* ------------------------------------------------------------------
  * memset(dst, val, n) — fill n bytes at dst with low byte of val.
- * No return value — code like char *p = memset(...) would break.
+ * Returns dst (standard C signature).
  * ------------------------------------------------------------------ */
-V6C_NOINLINE void memset(uint8_t* dst, uint8_t val, uint16_t n)
+V6C_NOINLINE void *memset(uint8_t* dst, uint8_t val, uint16_t n)
 {
     for (uint16_t i = 0; i < n; i++) {
         dst[i] = val;
     }
+    return dst;
 }
 
 /* ------------------------------------------------------------------

@@ -1,13 +1,3 @@
-8.1.7 switch → Jump Tables — ⚠️ Partial / Different
-LLVM's SimplifyCFG and SwitchLowering can produce jump tables, bit tests, or balanced binary search trees. However, jump-table lowering on i8080 is awkward (no indexed jump; you'd have to compute target address into HL and do PCHL), and I don't see explicit V6C jump-table tuning in the repo memory. The backend likely falls back to the binary-search/cascade lowering. Not a blocker for correctness, but a potential code-size opportunity.
-
-Status: works correctly via LLVM defaults, but no v6c-specific jump-table tuning has been documented.
-=====================================
-replace crt.o + srt.s with crt.c or find a way to provide the sp addr viar cl arg
-=============================
-dist\v6c-2026.04.27-windows-x64\lib\clang\18\lib\v6c\*.o
-are those *.o is used any where?
-
 dist\v6c-2026.04.27-windows-x64\lib\clang\18\lib\v6c\include\README.txt
 is this folder needed for anything?
 ============================
