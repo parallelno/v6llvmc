@@ -166,22 +166,14 @@ V6C_NOINLINE_ASM void memmove(uint8_t* dst, const uint8_t* src, uint16_t n)
 V6C_NOINLINE_ASM
 uint16_t strlen(const char *s) {
     __asm__ volatile (
-        "PUSH H              \n"     /* save start */
-        "1:                  \n\t"
-        "MOV  A, M           \n\t"
-        "ORA  A              \n\t"
-        "JZ   2f             \n\t"   /* found NUL */
-        "INX  H              \n\t"
-        "JMP  1b             \n"
-        "2:                  \n\t"
-        /* HL = &NUL; length = HL - start */
-        "POP  D              \n\t"   /* DE = start */
-        "MOV  A, L           \n\t"
-        "SUB  E              \n\t"
-        "MOV  L, A           \n\t"
-        "MOV  A, H           \n\t"
-        "SBB  D              \n\t"
-        "MOV  H, A           \n\t"
+        "LXI D, -1           \n"   /* DE = -1 (length counter) */
+        "XRA A               \n"   /* A = 0 (for byte compare) */
+        "1:                  \n"
+        "CMP M               \n"   /* compare A (0) vs *s */
+        "INX D               \n"   /* DE++ (length++) */
+        "INX H               \n"   /* HL++ (advance pointer) */
+        "JNZ  1b             \n"   /* if *s != 0, loop */
+        "XCHG                \n"   /* HL = DE (length), DE = original s ptr */
         "RET                 \n\t"
     );
 }
@@ -203,27 +195,26 @@ uint16_t strlen(const char *s) {
 V6C_NOINLINE_ASM
 int strcmp(const char *a, const char *b) {
     __asm__ volatile (
-        "1:                  \n\t"
-        "LDAX D              \n\t"   /* A = *b */
-        "CMP  M              \n\t"   /* A - *a → flags; CY if *b < *a */
-        "JNZ  2f             \n\t"   /* differ */
+        "1:                  \n"
+        "LDAX D              \n"   /* A = *b */
+        "CMP  M              \n"   /* A - *a → flags; CY if *b < *a */
+        "JNZ  2f             \n"   /* differ */
+        "INX  H              \n"
+        "INX  D              \n"
+
         /* equal byte; if it's NUL, strings are equal */
-        "ORA  A              \n\t"   /* test A (still == *a == *b) */
-        "JZ   4f             \n\t"
-        "INX  H              \n\t"
-        "INX  D              \n\t"
-        "JMP  1b             \n"
-        "2:                  \n\t"
+        "ORA  A              \n"   /* test A (still == *a == *b) */
+        "JNZ   1b            \n"
+        "LXI  H, 0           \n"
+        "RET                 \n"
+        "2:                  \n"
         /* differ: CY set if *b < *a, i.e., *a > *b → return +1 */
-        "JNC  3f             \n\t"
-        "LXI  H, 1           \n\t"
+        "JNC  3f             \n"
+        "LXI  H, 1           \n"
         "RET                 \n"
-        "3:                  \n\t"
-        "LXI  H, 0xFFFF      \n\t"   /* *a < *b → return -1 */
+        "3:                  \n"
+        "LXI  H, 0xFFFF      \n"   /* *a < *b → return -1 */
         "RET                 \n"
-        "4:                  \n\t"
-        "LXI  H, 0           \n\t"
-        "RET                 \n\t"
     );
 }
 
