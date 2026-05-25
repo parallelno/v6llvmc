@@ -86,6 +86,8 @@ private:
   bool foldIncDecMviM(MachineBasicBlock &MBB);
   bool foldMviZeroToXraA(MachineBasicBlock &MBB);
   bool foldMviAluImm(MachineBasicBlock &MBB);
+  bool eliminateDeadMVI(MachineBasicBlock &MBB);
+  bool collapseMovChain(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -225,8 +227,30 @@ static bool isRegDeadAfter(MachineBasicBlock &MBB,
     for (const MachineOperand &MO : MI->operands()) {
       if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
         continue;
-      if (MO.isUse() && !MO.isUndef())
-        usesReg = true;
+      if (MO.isUse() && !MO.isUndef()) {
+        // "implicit killed $pairReg" can appear when a sibling sub-register
+        // is explicitly last-used in the same instruction (e.g. "MOV A, L"
+        // gets "implicit killed $hl" because L dies, taking HL with it).
+        // That is a liveness bookkeeping artifact — H is not being read.
+        // Detect: if MO is an implicit kill of a strict super-register of Reg,
+        // AND there exists an explicit USE of a sub-register of that pair that
+        // does NOT overlap Reg, then MO is not a genuine read of Reg.
+        bool IsArtifact = false;
+        if (MO.isImplicit() && MO.isKill() &&
+            TRI->isSubRegister(MO.getReg(), Reg)) {
+          for (const MachineOperand &Sub : MI->operands()) {
+            if (!Sub.isReg() || Sub.isImplicit() || !Sub.isUse())
+              continue;
+            if (TRI->isSubRegister(MO.getReg(), Sub.getReg()) &&
+                !TRI->regsOverlap(Sub.getReg(), Reg)) {
+              IsArtifact = true;
+              break;
+            }
+          }
+        }
+        if (!IsArtifact)
+          usesReg = true;
+      }
       if (MO.isDef())
         defsReg = true;
     }
@@ -1241,6 +1265,111 @@ bool V6CPeephole::foldMviAluImm(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// O82 Pattern A: erase MVI r, imm when r is provably dead after the
+/// instruction.  MVI r, imm writes only r and does not set FLAGS, so
+/// erasing it when r is dead is always safe.
+/// Guards:
+///   - MVI A is skipped: handled more precisely by foldMviZeroToXraA /
+///     foldMviAluImm.
+///   - O61 patched MVIs carry a pre-instruction label referenced by
+///     runtime STA spills and must never be erased.
+bool V6CPeephole::eliminateDeadMVI(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+
+  for (MachineInstr &MI : llvm::make_early_inc_range(MBB)) {
+    if (MI.getOpcode() != V6C::MVIr)
+      continue;
+    Register Dst = MI.getOperand(0).getReg();
+    if (Dst == V6C::A) // handled by foldMviZeroToXraA / foldMviAluImm
+      continue;
+    if (isO61PatchedImm(MI))
+      continue;
+    if (!isRegDeadAfter(MBB, MI.getIterator(), Dst, TRI))
+      continue;
+    MI.eraseFromParent();
+    Changed = true;
+  }
+  return Changed;
+}
+
+/// O82 Pattern B: collapse MOV X, Y ; [safe instrs] ; MOV Z, X into
+/// MOV Z, Y when X is a dead intermediate (nothing reads X between the
+/// two MOVs and X is dead after the consumer MOV).
+/// After rewriting the consumer, if X is also dead at the producer the
+/// producer is erased too.
+/// The scan window is bounded to kChainWindow to keep compile-time O(N).
+bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+
+  static constexpr unsigned kChainWindow = 8;
+
+  for (auto I = MBB.begin(), E = MBB.end(); I != E; ++I) {
+    MachineInstr &ProducerMI = *I;
+    if (ProducerMI.getOpcode() != V6C::MOVrr)
+      continue;
+
+    Register X = ProducerMI.getOperand(0).getReg(); // dead intermediate
+    Register Y = ProducerMI.getOperand(1).getReg(); // original source
+
+    if (X == Y) // self-copy — eliminateSelfMov handles these
+      continue;
+
+    // Walk forward looking for a consumer MOV Z, X.
+    unsigned Steps = 0;
+    auto J = std::next(I);
+    for (; J != E && Steps < kChainWindow; ++J) {
+      if (J->isDebugInstr())
+        continue;
+      ++Steps;
+
+      bool ReadsX = false, ClobbersX = false, ClobbersY = false;
+      for (const MachineOperand &MO : J->operands()) {
+        if (!MO.isReg() || !MO.getReg())
+          continue;
+        if (TRI->regsOverlap(MO.getReg(), X)) {
+          if (MO.isUse() && !MO.isUndef())
+            ReadsX = true;
+          if (MO.isDef())
+            ClobbersX = true;
+        }
+        if (TRI->regsOverlap(MO.getReg(), Y) && MO.isDef())
+          ClobbersY = true;
+      }
+
+      // Any clobber of X or Y makes the chain unsafe.
+      if (ClobbersX || ClobbersY)
+        break;
+
+      // Is J the consumer MOV Z, X (X used as source, dead after)?
+      // Check this BEFORE the ReadsX bail-out: the consumer itself reads X
+      // as its source operand, which would otherwise terminate the scan.
+      if (J->getOpcode() == V6C::MOVrr &&
+          TRI->regsOverlap(J->getOperand(1).getReg(), X)) {
+        if (isRegDeadAfter(MBB, J, X, TRI)) {
+          // Rewrite consumer: MOV Z, X → MOV Z, Y.
+          J->getOperand(1).setReg(Y);
+          // X is dead after consumer and has no intermediate reads,
+          // so the producer is a dead write — always safe to erase.
+          auto Next = std::next(I);
+          ProducerMI.eraseFromParent();
+          I = std::prev(Next);
+          Changed = true;
+        }
+        break;
+      }
+
+      // X is read by something other than a direct MOV Z, X — stop.
+      if (ReadsX)
+        break;
+    }
+  }
+  return Changed;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -1254,6 +1383,8 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
     Changed |= foldIncDecMviM(MBB);
     Changed |= eliminateSelfMov(MBB);
     Changed |= eliminateRedundantMov(MBB);
+    Changed |= eliminateDeadMVI(MBB);   // O82 Pattern A
+    Changed |= collapseMovChain(MBB);   // O82 Pattern B
     Changed |= foldCounterBranch(MBB);
     Changed |= foldXraCmpZeroTest(MBB);
     Changed |= foldXchgDad(MBB);

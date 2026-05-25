@@ -9,7 +9,7 @@
 #include "include/font.h"
 #include "include/draw.h"
 
-//#define DRAW_NEW
+#define DRAW_NEW
 
 
 static const uint8_t palette[16] = {

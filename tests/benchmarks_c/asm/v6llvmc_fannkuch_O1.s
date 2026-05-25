@@ -58,11 +58,10 @@ main:                                   ; @main
                                         ; =>  This Inner Loop Header: Depth=2
 	MVI	L, 0
 	;--- V6C_BUILD_PAIR ---
-	MOV	D, L
-	MOV	E, A
 	;--- V6C_DAD ---
 	PUSH	H
-	XCHG
+	MOV	H, L
+	MOV	L, A
 	DAD	B
 	XCHG
 	POP	H
@@ -128,9 +127,7 @@ main:                                   ; @main
 	MOV	D, A
 	MOV	A, L
 	STA	.LLo61_2+1
-	MOV	A, D
-	MOV	H, A
-	MOV	A, L
+	MOV	H, D
 .LBB15_14:                              ;   Parent Loop BB15_4 Depth=1
                                         ;     Parent Loop BB15_13 Depth=2
                                         ; =>    This Inner Loop Header: Depth=3

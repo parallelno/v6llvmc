@@ -22,11 +22,11 @@
 // CHECK: void *memcpy(
 // CHECK: void *memset(
 // CHECK: void abort(
-// CHECK: v6c_out(
+// CHECK: __v6c_out(
 
 void test_use(char *p) {
     memset(p, 0, 4);
-    v6c_out(0xED, 0x42);
+    __v6c_out(0xED, 0x42);
 }
 
 // ASM: .section{{.*}}.text.test_use

@@ -130,7 +130,10 @@ def V6Csrl16 : SDNode<"V6CISD::SRL16", SDT_V6CShift16>;
 def V6Csra16 : SDNode<"V6CISD::SRA16", SDT_V6CShift16>;
 
 // DAD: 16-bit add constrained to HL pair (maps to physical DAD rp).
-def V6Cdad : SDNode<"V6CISD::DAD", SDTIntBinOp, [SDNPCommutative]>;
+// SDNPCommutative intentionally absent: the combine canonicalises the
+// HL-bound operand as LHS; dropping commutative prevents the DAG combiner
+// from swapping the operands back and forcing an unnecessary HL reload.
+def V6Cdad : SDNode<"V6CISD::DAD", SDTIntBinOp, []>;
 
 // INX16/DCX16: increment/decrement i16 by immediate i8 count (1..3).
 def SDT_V6CInxDcx16 : SDTypeProfile<1, 2, [SDTCisVT<0, i16>,

@@ -19,9 +19,6 @@ hl live, de dead:
 new: xchg; lxi h, offset; dad sp; mov reg8, m; xchg; 40cc
 old: clobbers hl, which can lead to spilling or less optimal
 =================
->Option A: Drop SDNPCommutative from V6Cdad AND canonicalize in the combine so the operand already in HL (or most likely to land there) is fixed as LHS. Necessary but not sufficient — fails when the "good" operand is in DE/BC at the def point.
-is SDNPCommutative dropped from V6Cdad already?
-==================
 Potential big issue. Some helper funcs that check reg pair liveness had broken logic. For example: isHLDead returns true if H or L is dead. that means if it returtns true doesnt mean BOTH regs are live.
 Pair-Liveness Audit
 For V6C_DAD, the bug was specifically this kind of logic:

@@ -186,10 +186,9 @@ main:                                   ; @main
 	LHLD	.LLo61_0+1
 	XCHG
 	;--- V6C_SRL16 ---
-	MOV	L, D
 	MOV	H, A
 	;--- V6C_XOR16 ---
-	MOV	A, L
+	MOV	A, D
 	XRA	E
 	MOV	L, A
 	MOV	A, H

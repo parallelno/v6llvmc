@@ -1,0 +1,46 @@
+O82 — MOV chain collapse and dead high-byte elimination
+========================================================
+
+Implementation: V6CPeephole.cpp
+  - eliminateDeadMVI  (Pattern A)
+  - collapseMovChain  (Pattern B)
+  - isRegDeadAfter    (fixed: implicit-killed super-register artifact)
+
+Bug fixes required during implementation:
+  1. isRegDeadAfter incorrectly treated "implicit killed $hl" on "MOV A, L"
+     as a genuine read of H.  Root cause: when L (sub-register of HL) is
+     last-used, the RA adds "implicit killed $hl" as a liveness marker for
+     the pair — this is NOT a read of H's value.  Fixed by detecting the
+     pattern: if an implicit-killed super-register operand is present AND
+     there exists an explicit USE of a disjoint sub-register of the same
+     pair, the super-register kill is a liveness artifact, not a true read.
+
+  2. collapseMovChain consumer detection used !ReadsX in the consumer check.
+     The consumer itself reads X as its source operand, so ReadsX was always
+     true at that point, preventing the chain from ever being collapsed.
+     Fixed by checking for the consumer candidate BEFORE the "ReadsX → break"
+     guard, and moving the intermediate-read bail-out after the candidate check.
+
+  3. After rewriting the consumer (MOV Z, X → MOV Z, Y), stale
+     "implicit killed $de" operands on the rewritten instruction confused the
+     second isRegDeadAfter call that checked whether the producer could be
+     erased.  Fixed by removing that second check entirely: given no
+     intermediate reads of X (loop invariant) and X dead after the consumer
+     (first check), the producer is provably a dead write.
+
+Instruction savings (test file: tests/features/63/v6llvmc.c, -O2):
+  Old total instructions: 23
+  New total instructions: 15
+  Saved: 8 instructions (−35%)
+
+Per-function breakdown:
+  test_dead_hi:
+    Old: CALL get_val; MOV L,H; MVI H,0; MOV A,L; JMP use_byte  (5 insns)
+    New: CALL get_val; MOV A,H; JMP use_byte                     (3 insns)
+    Saved: 2 instructions, 3 bytes, 12 cycles
+
+  test_chain_and_dead_hi (3 call sites × Pattern A+B):
+    Each site: saved 2 instructions, 3 bytes, 12 cycles
+    Total: 6 instructions, 9 bytes, 36 cycles
+
+Regression tests: 3/3 suites PASS (golden, lit, benchmarks)

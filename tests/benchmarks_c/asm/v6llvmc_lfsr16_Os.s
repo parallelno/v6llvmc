@@ -28,20 +28,17 @@ main:                                   ; @main
 	MOV	C, A
 	MOV	A, H
 	ANA	B
-	MOV	B, A
 	;--- V6C_SPILL16 ---
 	PUSH	H
 	MOV	L, C
-	MOV	H, B
+	MOV	H, A
 	SHLD	.LLo61_1+1
 	POP	H
-	MOV	B, H
-	MOV	C, L
 	;--- V6C_SRL16 ---
-	MOV	A, B
+	MOV	A, H
 	RAR
 	MOV	B, A
-	MOV	A, C
+	MOV	A, L
 	RAR
 	MOV	C, A
 	;--- V6C_RELOAD16 ---
@@ -83,9 +80,8 @@ main:                                   ; @main
 	JNZ	.LBB15_1
 ; %bb.5:
 	;--- V6C_SRL16 ---
-	MOV	E, H
 	;--- V6C_XOR16 ---
-	MOV	A, E
+	MOV	A, H
 	XRA	L
 	MOV	L, A
 	MOV	A, D

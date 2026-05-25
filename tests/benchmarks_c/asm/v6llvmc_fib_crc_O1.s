@@ -64,13 +64,11 @@ main:                                   ; @main
 .LBB15_2:                               ;   Parent Loop BB15_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	;--- V6C_SRL16 ---
-	MOV	D, B
-	MOV	E, C
-	MOV	A, D
+	MOV	A, B
 	ORA	A
 	RAR
 	MOV	D, A
-	MOV	A, E
+	MOV	A, C
 	RAR
 	MOV	E, A
 	MOV	A, C
@@ -110,13 +108,11 @@ main:                                   ; @main
 .LBB15_7:                               ;   Parent Loop BB15_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	;--- V6C_SRL16 ---
-	MOV	D, H
-	MOV	E, L
-	MOV	A, D
+	MOV	A, H
 	ORA	A
 	RAR
 	MOV	D, A
-	MOV	A, E
+	MOV	A, L
 	RAR
 	MOV	E, A
 	MOV	A, L

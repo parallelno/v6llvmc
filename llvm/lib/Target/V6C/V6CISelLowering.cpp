@@ -338,8 +338,13 @@ SDValue V6CTargetLowering::PerformDAGCombine(SDNode *N,
         SDValue LHS = N->getOperand(0);
         SDValue RHS = N->getOperand(1);
 
-        if (!isCopyFromPhysReg(LHS, V6C::HL) &&
-            isCopyFromPhysReg(RHS, V6C::HL))
+        // Canonicalise: put the HL-sourced operand (either a phys-reg copy or
+        // a virtual live-in from HL, e.g. a function argument) on the LHS so
+        // that RA can allocate it to HL without an extra copy.  Now that
+        // V6Cdad lacks SDNPCommutative the combiner will not undo this order.
+        bool LHSIsHL = isCopyFromArgReg(LHS, V6C::HL, DAG);
+        bool RHSIsHL = isCopyFromArgReg(RHS, V6C::HL, DAG);
+        if (!LHSIsHL && RHSIsHL)
           std::swap(LHS, RHS);
 
         return DAG.getNode(V6CISD::DAD, DL, MVT::i16, LHS, RHS);
