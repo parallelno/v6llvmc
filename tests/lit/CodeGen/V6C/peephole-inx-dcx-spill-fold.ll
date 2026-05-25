@@ -1,59 +1,77 @@
 ; RUN: llc -march=v6c -O2 < %s | FileCheck %s
-; RUN: llc -march=v6c -O2 -v6c-disable-pop-push-elim < %s | FileCheck %s --check-prefix=DISABLED
+; RUN: llc -march=v6c -O2 -v6c-disable-inx-dcx-spill-fold < %s | FileCheck %s --check-prefix=DISABLED
 ;
-; O83: POP/PUSH pair elimination for dead register pairs.
+; O84: INX/DCX-through-spill round-trip fold.
 ;
-; When a POP rp immediately follows a matching PUSH rp with only SP-neutral,
-; rp-untouching instructions between, and rp is dead after the PUSH, both
-; instructions are eliminated.
+; After O83 removes the surrounding POP H / PUSH H pairs, two patterns are
+; exposed in the outer loop of the sieve benchmark:
 ;
-; The main() sieve outer-loop latch produces three cases:
-;   Case 1 - trivially adjacent POP/PUSH (eliminated)
-;   Case 2 - POP; INX H; INX H; PUSH  (NOT eliminated: INX H touches HL)
-;   Case 3 - POP; INX B; PUSH         (eliminated: INX B does not touch HL)
+; Pattern A — INX round-trip (6 instructions):
+;   MOV   C, L            ; copy HL into BC
+;   MOV   B, H            ;
+;   INX   B               ; increment BC
+;   MOV   L, C            ; copy BC back into HL
+;   MOV   H, B            ;
+;   SHLD  addr            ; store HL
+;
+;   Becomes: INX H / SHLD addr   (BC must be dead after SHLD)
+;
+; Pattern B — round-trip copy, no INX/DCX (5 instructions):
+;   MOV   B, H            ; copy HL into BC
+;   MOV   C, L            ;
+;   MOV   L, C            ; copy BC back into HL (no-op)
+;   MOV   H, B            ;
+;   SHLD  addr
+;
+;   Becomes: SHLD addr             (BC must be dead after SHLD)
 ;
 ; CHECK-LABEL: main:
 ; DISABLED-LABEL: main:
 ;
-; -- Case 1 (enabled) ----------------------------------------------------------
-; In the .LLo61_10 slot update (outer-loop i_sq computation), after O83 removes
-; the POP H / PUSH H pair the remaining MOV B,H/MOV C,L/MOV L,C/MOV H,B round-trip
-; is Pattern B for O84 and gets fully eliminated too.
+; -- Pattern B (enabled) -------------------------------------------------------
+; The .LLo61_10 slot update spills HL through BC with no increment.
+; After O84 the four round-trip MOVs are gone; SHLD follows DAD directly.
 ; CHECK:      .LLo61_10:
 ; CHECK-NEXT: LXI     B, 0
 ; CHECK-NEXT: PUSH    H
 ; CHECK-NEXT: DAD     B
 ; CHECK-NEXT: SHLD    .LLo61_10+1
 ;
-; -- Case 1 (disabled) ---------------------------------------------------------
+; -- Pattern A (enabled) -------------------------------------------------------
+; The .LLo61_12 slot update increments a loop-counter spill via BC.
+; After O84 the four round-trip MOVs are gone and INX H precedes SHLD.
+; Follows immediately after Pattern B's SHLD in the outer loop latch.
+; CHECK-NEXT: POP     H
+; CHECK-NEXT: INX     H
+; CHECK-NEXT: INX     H
+; CHECK-NEXT: PUSH    H
+; CHECK-NEXT: LHLD    .LLo61_12+1
+; CHECK-NEXT: INX     H
+; CHECK-NEXT: SHLD    .LLo61_12+1
+;
+; -- Pattern B (disabled) ------------------------------------------------------
 ; DISABLED:      .LLo61_10:
 ; DISABLED-NEXT: LXI     B, 0
 ; DISABLED-NEXT: PUSH    H
 ; DISABLED-NEXT: DAD     B
 ; DISABLED-NEXT: MOV     B, H
 ; DISABLED-NEXT: MOV     C, L
-; DISABLED-NEXT: POP     H
-; DISABLED-NEXT: PUSH    H
 ; DISABLED-NEXT: MOV     L, C
 ; DISABLED-NEXT: MOV     H, B
 ; DISABLED-NEXT: SHLD    .LLo61_10+1
 ;
-; -- Case 3 (enabled) ----------------------------------------------------------
-; After LHLD .LLo61_12+1 the count pair is reloaded, then INX B increments it.
-; With O83 the surrounding POP H / PUSH H is removed. O84 then folds the
-; remaining MOV round-trip + INX B into INX H, leaving just LHLD/INX H/SHLD.
-; CHECK:      LHLD    .LLo61_12+1
-; CHECK-NEXT: INX     H
-; CHECK-NEXT: SHLD    .LLo61_12+1
-;
-; -- Case 3 (disabled) ---------------------------------------------------------
-; DISABLED:      LHLD    .LLo61_12+1
+; -- Pattern A (disabled) ------------------------------------------------------
+; DISABLED-NEXT: POP     H
+; DISABLED-NEXT: INX     H
+; DISABLED-NEXT: INX     H
+; DISABLED-NEXT: PUSH    H
+; DISABLED-NEXT: LHLD    .LLo61_12+1
 ; DISABLED-NEXT: MOV     C, L
 ; DISABLED-NEXT: MOV     B, H
-; DISABLED-NEXT: POP     H
 ; DISABLED-NEXT: INX     B
-; DISABLED-NEXT: PUSH    H
 ; DISABLED-NEXT: MOV     L, C
+; DISABLED-NEXT: MOV     H, B
+; DISABLED-NEXT: SHLD    .LLo61_12+1
 
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
 target triple = "i8080-unknown-v6c"

@@ -50,6 +50,11 @@ static cl::opt<bool> DisablePopPushElim(
     cl::desc("Disable POP/PUSH pair elimination (O83)"),
     cl::init(false), cl::Hidden);
 
+static cl::opt<bool> DisableInxDcxSpillFold(
+    "v6c-disable-inx-dcx-spill-fold",
+    cl::desc("Disable INX/DCX-through-spill round-trip fold (O84)"),
+    cl::init(false), cl::Hidden);
+
 /// True if MI is an O61 patched-immediate site: it carries a
 /// pre-instr `.LLo61_N:` label (referenced by SHLD/STA spills) and/or
 /// its imm operand is flagged MO_PATCH_IMM.  Erasing such an MI loses
@@ -94,6 +99,7 @@ private:
   bool eliminateDeadMVI(MachineBasicBlock &MBB);
   bool collapseMovChain(MachineBasicBlock &MBB);
   bool eliminateDeadPopPush(MachineBasicBlock &MBB);
+  bool foldInxDcxSpillRoundTrip(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -1472,6 +1478,149 @@ bool V6CPeephole::eliminateDeadPopPush(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+bool V6CPeephole::foldInxDcxSpillRoundTrip(MachineBasicBlock &MBB) {
+  if (DisableInxDcxSpillFold)
+    return false;
+
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+  const TargetInstrInfo &TII =
+      *MBB.getParent()->getSubtarget().getInstrInfo();
+
+  // Advance past any debug instructions.
+  auto nextReal = [](MachineBasicBlock::iterator It,
+                     MachineBasicBlock::iterator End)
+      -> MachineBasicBlock::iterator {
+    ++It;
+    while (It != End && It->isDebugInstr())
+      ++It;
+    return It;
+  };
+
+  bool Changed = false;
+  for (auto I = MBB.begin(), E = MBB.end(); I != E;) {
+    // Only MOVrr instructions start either pattern.
+    if (I->getOpcode() != V6C::MOVrr || isO61PatchedImm(*I)) {
+      ++I;
+      continue;
+    }
+    Register Dst = I->getOperand(0).getReg();
+    Register Src = I->getOperand(1).getReg();
+    bool PatternMatched = false;
+
+    // ── Pattern A: MOV rl,L / MOV rh,H / INX|DCX rp /
+    //              MOV L,rl / MOV H,rh / SHLD addr ─────────────────────────
+    // rl ∈ {C, E}; rh is the paired high byte; rp is BC or DE.
+    // Replace with: INX H (or DCX H) / SHLD addr.  Requires rp dead after SHLD.
+    do {
+      if (Src != V6C::L) break;
+      if (Dst != V6C::C && Dst != V6C::E) break;
+
+      Register Rl = Dst;
+      Register Rh = (Rl == V6C::C) ? V6C::B  : V6C::D;
+      Register Rp = (Rl == V6C::C) ? V6C::BC : V6C::DE;
+
+      auto I1 = nextReal(I,  E);  if (I1 == E) break;
+      auto I2 = nextReal(I1, E);  if (I2 == E) break;
+      auto I3 = nextReal(I2, E);  if (I3 == E) break;
+      auto I4 = nextReal(I3, E);  if (I4 == E) break;
+      auto I5 = nextReal(I4, E);  if (I5 == E) break;
+
+      if (I1->getOpcode() != V6C::MOVrr)            break;
+      if (I1->getOperand(0).getReg() != Rh)          break;
+      if (I1->getOperand(1).getReg() != V6C::H)      break;
+      if (isO61PatchedImm(*I1))                      break;
+
+      bool IsInx;
+      if (I2->getOpcode() == V6C::INX &&
+          I2->getOperand(0).getReg() == Rp)
+        IsInx = true;
+      else if (I2->getOpcode() == V6C::DCX &&
+               I2->getOperand(0).getReg() == Rp)
+        IsInx = false;
+      else
+        break;
+      if (isO61PatchedImm(*I2))                      break;
+
+      if (I3->getOpcode() != V6C::MOVrr)            break;
+      if (I3->getOperand(0).getReg() != V6C::L)     break;
+      if (I3->getOperand(1).getReg() != Rl)          break;
+      if (isO61PatchedImm(*I3))                      break;
+
+      if (I4->getOpcode() != V6C::MOVrr)            break;
+      if (I4->getOperand(0).getReg() != V6C::H)     break;
+      if (I4->getOperand(1).getReg() != Rh)          break;
+      if (isO61PatchedImm(*I4))                      break;
+
+      if (I5->getOpcode() != V6C::SHLD)             break;
+      if (!isRegDeadAfter(MBB, I5, Rp, TRI))        break;
+
+      // Emit INX H or DCX H before SHLD.
+      BuildMI(MBB, I5, I5->getDebugLoc(),
+              TII.get(IsInx ? V6C::INX : V6C::DCX), V6C::HL)
+          .addReg(V6C::HL);
+
+      // Erase I4..I1 in reverse order, then erase I0.
+      I4->eraseFromParent();
+      I3->eraseFromParent();
+      I2->eraseFromParent();
+      I1->eraseFromParent();
+      I = MBB.erase(I); // erases I0; I now points to the new INX/DCX H
+      Changed = true;
+      PatternMatched = true;
+    } while (false);
+
+    if (PatternMatched) continue;
+
+    // ── Pattern B: MOV rh,H / MOV rl,L / MOV L,rl / MOV H,rh / SHLD addr ──
+    // Round-trip copy with no increment — all four MOVs are no-ops.
+    // rh ∈ {B, D}; rp is BC or DE.  Requires rp dead after SHLD.
+    do {
+      if (Src != V6C::H) break;
+      if (Dst != V6C::B && Dst != V6C::D) break;
+
+      Register Rh = Dst;
+      Register Rl = (Rh == V6C::B) ? V6C::C : V6C::E;
+      Register Rp = (Rh == V6C::B) ? V6C::BC : V6C::DE;
+
+      auto J1 = nextReal(I,  E);  if (J1 == E) break;
+      auto J2 = nextReal(J1, E);  if (J2 == E) break;
+      auto J3 = nextReal(J2, E);  if (J3 == E) break;
+      auto J4 = nextReal(J3, E);  if (J4 == E) break;
+
+      if (J1->getOpcode() != V6C::MOVrr)            break;
+      if (J1->getOperand(0).getReg() != Rl)          break;
+      if (J1->getOperand(1).getReg() != V6C::L)     break;
+      if (isO61PatchedImm(*J1))                      break;
+
+      if (J2->getOpcode() != V6C::MOVrr)            break;
+      if (J2->getOperand(0).getReg() != V6C::L)     break;
+      if (J2->getOperand(1).getReg() != Rl)          break;
+      if (isO61PatchedImm(*J2))                      break;
+
+      if (J3->getOpcode() != V6C::MOVrr)            break;
+      if (J3->getOperand(0).getReg() != V6C::H)     break;
+      if (J3->getOperand(1).getReg() != Rh)          break;
+      if (isO61PatchedImm(*J3))                      break;
+
+      if (J4->getOpcode() != V6C::SHLD)             break;
+      if (!isRegDeadAfter(MBB, J4, Rp, TRI))        break;
+
+      // Erase J3..J1 in reverse order, then erase J0.
+      J3->eraseFromParent();
+      J2->eraseFromParent();
+      J1->eraseFromParent();
+      I = MBB.erase(I); // erases J0; I now points to SHLD
+      Changed = true;
+      PatternMatched = true;
+    } while (false);
+
+    if (!PatternMatched)
+      ++I;
+  }
+  return Changed;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -1482,6 +1631,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
     Changed |= cancelAdjacentXchg(MBB);
     Changed |= foldShldLhldToPushPop(MBB);
     Changed |= eliminateDeadPopPush(MBB);   // O83: must follow O43
+    Changed |= foldInxDcxSpillRoundTrip(MBB); // O84: must follow O83
     Changed |= foldMovAluM(MBB);
     Changed |= foldIncDecMviM(MBB);
     Changed |= eliminateSelfMov(MBB);

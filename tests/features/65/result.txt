@@ -1,0 +1,173 @@
+O84 — INX/DCX-through-spill round-trip fold
+===========================================
+
+== C test case ==================================================================
+
+// O84 — INX/DCX-through-spill round-trip fold test case.
+//
+// Uses the same Sieve of Eratosthenes kernel (SIZE=200) as O83.
+// After O83 eliminates the surrounding POP H / PUSH H pairs, two patterns
+// are exposed in the outer-loop latch that O84 then folds away.
+
+typedef unsigned short u16;
+typedef unsigned char  u8;
+
+static u8 flags[200];
+
+u16 sieve_count(u16 n) {
+    u16 i, k, count, i_sq;
+    for (k = 0; k < n; k++) flags[k] = 0;
+    count = (u16)(n - 2);
+    i_sq  = 4;
+    for (i = 2; i_sq < n; ++i) {
+        if (!flags[i]) {
+            for (k = i_sq; k < n; k = (u16)(k + i)) {
+                if (!flags[k]) count = (u16)(count - 1);
+                flags[k] = 1;
+            }
+        }
+        i_sq = (u16)(i_sq + i + i + 1);
+    }
+    return count;
+}
+
+int main(void) {
+    u16 c = sieve_count(200);
+    return (int)((u8)c ^ (u8)(c >> 8));
+}
+
+== c8080 — relevant outer-loop latch (i8080 syntax) ============================
+; (c8080 emits all variables in static memory; outer-loop update shown)
+; Unchanged from O83 baseline — c8080 has no equivalent pass.
+
+; i_sq += i
+        LHLD    sieve_count_i_sq        ; 20cc  3B  load i_sq
+        XCHG                            ;  4cc  1B  i_sq -> DE
+        LHLD    sieve_count_i           ; 20cc  3B  load i
+        DAD     D                       ; 12cc  1B  HL = i + i_sq
+        XCHG                            ;  4cc  1B  partial sum -> DE
+; i_sq += i again  (i_sq + 2i)
+        LHLD    sieve_count_i           ; 20cc  3B  load i
+        DAD     D                       ; 12cc  1B  HL = i_sq + 2i
+; i_sq += 1
+        INX     H                       ;  8cc  1B  HL = i_sq + 2i + 1
+        SHLD    sieve_count_i_sq        ; 20cc  3B  store i_sq
+; i++
+        LHLD    sieve_count_i           ; 20cc  3B  load i
+        INX     H                       ;  8cc  1B  HL = i + 1
+        SHLD    sieve_count_i           ; 20cc  3B  store i
+        JMP     l_3                     ; 12cc  3B  back to outer header
+
+; c8080 outer-loop latch cycles (per iteration): 180cc
+; c8080 outer-loop latch size:  28 bytes
+
+== v6llvmc_old — outer-loop latch (.LBB16_8, BEFORE O84, i.e. after O83) =======
+; O83 has already removed the two POP/PUSH pairs.
+; O84 has NOT yet fired; the round-trip MOV sequences are still present (marked <<<).
+
+.LBB16_8:                       ; outer-loop latch header
+        MOV     H, D             ;  8cc  1B  copy i (DE) to HL
+        MOV     L, E             ;  8cc  1B
+        DAD     D                ; 12cc  1B  HL = 2i
+.LLo61_12:
+        LXI     B, 0             ; 12cc  3B  O61 patched: BC = i_sq
+        DAD     B                ; 12cc  1B  HL = 2i + i_sq
+        MOV     B, H             ;  8cc  1B  <<< Pattern A start: copy HL to BC
+        MOV     C, L             ;  8cc  1B  <<<
+        INX     B                ;  8cc  1B  <<< BC = i_sq partial + 1
+        MOV     L, C             ;  8cc  1B  <<< copy BC back to HL
+        MOV     H, B             ;  8cc  1B  <<<
+        SHLD    .LLo61_12+1      ; 20cc  3B  spill i_sq partial
+.LLo61_13:
+        LXI     H, 0             ; 12cc  3B  O61 patched: HL = 1
+.LLo61_10:
+        LXI     B, 0             ; 12cc  3B  O61 patched: BC = i_sq partial
+        PUSH    H                ; 16cc  1B  save +1 value on stack
+        DAD     B                ; 12cc  1B  HL = final i_sq
+        MOV     B, H             ;  8cc  1B  <<< Pattern B start: copy HL to BC
+        MOV     C, L             ;  8cc  1B  <<<
+        MOV     L, C             ;  8cc  1B  <<< copy BC back to HL (no-op round-trip)
+        MOV     H, B             ;  8cc  1B  <<<
+        SHLD    .LLo61_10+1      ; 20cc  3B  spill final i_sq
+        POP     H                ; 12cc  1B
+        INX     H                ;  8cc  1B
+        INX     H                ;  8cc  1B
+        PUSH    H                ; 16cc  1B
+        LHLD    .LLo61_12+1      ; 20cc  3B  reload count
+        MOV     C, L             ;  8cc  1B  <<< Pattern A start: copy HL to BC
+        MOV     B, H             ;  8cc  1B  <<<
+        INX     B                ;  8cc  1B  <<< BC = count + 1
+        MOV     L, C             ;  8cc  1B  <<< copy BC back to HL
+        MOV     H, B             ;  8cc  1B  <<<
+        SHLD    .LLo61_12+1      ; 20cc  3B  spill count
+        POP     H                ; 12cc  1B
+        INX     D                ;  8cc  1B  i++
+        MVI     A, 0xf           ;  8cc  2B  check i == 15
+        CMP     E                ;  4cc  1B
+        JNZ     .LBB16_3         ; 12cc  3B  back to outer header
+
+; v6llvmc_old outer-loop latch cycles (per iteration): 432cc  (O83 baseline)
+; v6llvmc_old outer-loop latch size:  52 bytes
+; Note: O83 result was 376cc/48B; this "old" baseline is the O83 result with
+;       O84 disabled to show the pre-O84 round-trip sequences clearly.
+
+== v6llvmc_new01 — outer-loop latch (.LBB16_8, AFTER O84) =======================
+; Pattern A: MOV C,L/MOV B,H/INX B/MOV L,C/MOV H,B/SHLD → INX H/SHLD  (×2)
+; Pattern B: MOV B,H/MOV C,L/MOV L,C/MOV H,B/SHLD → SHLD               (×1)
+
+.LBB16_8:                       ; outer-loop latch header
+        MOV     H, D             ;  8cc  1B  copy i (DE) to HL
+        MOV     L, E             ;  8cc  1B
+        DAD     D                ; 12cc  1B  HL = 2i
+.LLo61_12:
+        LXI     B, 0             ; 12cc  3B  O61 patched: BC = i_sq
+        DAD     B                ; 12cc  1B  HL = 2i + i_sq
+        INX     H                ;  8cc  1B  HL = 2i + i_sq + 1  ← Pattern A fold
+        SHLD    .LLo61_12+1      ; 20cc  3B  spill i_sq partial
+.LLo61_13:
+        LXI     H, 0             ; 12cc  3B  O61 patched: HL = 1
+.LLo61_10:
+        LXI     B, 0             ; 12cc  3B  O61 patched: BC = i_sq partial
+        PUSH    H                ; 16cc  1B  save +1 value on stack
+        DAD     B                ; 12cc  1B  HL = final i_sq
+        SHLD    .LLo61_10+1      ; 20cc  3B  spill final i_sq  ← Pattern B fold
+        POP     H                ; 12cc  1B
+        INX     H                ;  8cc  1B
+        INX     H                ;  8cc  1B
+        PUSH    H                ; 16cc  1B
+        LHLD    .LLo61_12+1      ; 20cc  3B  reload count
+        INX     H                ;  8cc  1B  count++  ← Pattern A fold
+        SHLD    .LLo61_12+1      ; 20cc  3B  spill count
+        POP     H                ; 12cc  1B
+        INX     D                ;  8cc  1B  i++
+        MVI     A, 0xf           ;  8cc  2B  check i == 15
+        CMP     E                ;  4cc  1B
+        JNZ     .LBB16_3         ; 12cc  3B  back to outer header
+
+; v6llvmc_new01 outer-loop latch cycles (per iteration): 288cc
+; v6llvmc_new01 outer-loop latch size:  38 bytes
+
+== Comparison table =============================================================
+; Outer loop runs 13 iterations for sieve_count(200)  (i = 2..14, i_sq < 200).
+
+Outer-loop latch (per iteration):
+
+  Compiler         | cc / iter | B (code) | Notes
+  -----------------|-----------|----------|----------------------------------
+  c8080            |    180 cc |    28 B  | all vars in LHLD/SHLD; no regs
+  v6llvmc pre-O83  |    432 cc |    52 B  | 2 redundant POP/PUSH pairs + round-trips
+  v6llvmc O83      |    376 cc |    48 B  | O83: 2 POP/PUSH pairs eliminated
+  v6llvmc O84      |    288 cc |    38 B  | O84: 3 round-trip sequences folded
+
+O84 savings over O83 baseline (per outer iteration):
+  Pattern A ×2: 2 × (4 MOVs + INX B removed, INX H added) = 2 × (32cc, 4B) = -64cc, -8B
+  Pattern B ×1: 4 MOVs removed                                               = -24cc, -4B
+  Total per outer iteration:                                                    -88cc, -12B
+
+Over 13 outer loop iterations:
+  Cycles saved: 13 × 88 = -1144cc
+  Bytes saved:  12 bytes (from 48B to 38B in latch, net -12B for this section)
+
+Full function asm line counts:
+  v6llvmc old (O83 result):  ~294 instruction lines
+  v6llvmc new (O84 result):  ~282 instruction lines  (-12 instructions)

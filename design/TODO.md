@@ -19,8 +19,10 @@ hl live, de dead:
 new: xchg; lxi h, offset; dad sp; mov reg8, m; xchg; 40cc
 old: clobbers hl, which can lead to spilling or less optimal
 ================================
-optimization peephole.
-eleminate push rp, pop rp sequence if:
+possible bug. the svofski line draw program doesnt work when compiled with v6asm
+================================
+make an optimization peephole design document and store it to design\future_plans\ folder. add it to design\future_plans\README.md.
+Eleminate a `push rp, pop rp` sequence if:
 - it is inside a basic block
 - rp is dead after sequence
 - no usage of the rp between the push and pop and before the rp death
