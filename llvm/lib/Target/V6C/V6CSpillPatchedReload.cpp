@@ -180,7 +180,7 @@ static uint64_t scoreReload(const MachineInstr &R, unsigned Width,
     }
   }
   MachineBasicBlock *MBB = const_cast<MachineBasicBlock *>(R.getParent());
-  bool HLLive = !isRegDeadAfterMI(V6C::HL, R, *MBB, TRI);
+  bool HLLive = !isPairDeadAfterMI(V6C::HL, R, *MBB, TRI);
   int D = deltaForReload(Dst, HLLive);
   if (D <= 0)
     return 0;
@@ -343,7 +343,7 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       DebugLoc DL = Spill->getDebugLoc();
       Register SrcReg = Spill->getOperand(0).getReg();
       bool IsKill = Spill->getOperand(0).isKill();
-      bool HLDead = isRegDeadAfterMI(V6C::HL, *Spill, *MBB, TRI);
+      bool HLDead = isPairDeadAfterMI(V6C::HL, *Spill, *MBB, TRI);
       annotate(*MBB, Spill, DL, V6C::V6C_SPILL16);
 
       if (SrcReg == V6C::HL) {

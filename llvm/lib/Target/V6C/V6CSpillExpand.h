@@ -32,6 +32,18 @@ bool isRegDeadAfterMI(unsigned Reg, const MachineInstr &MI,
                       MachineBasicBlock &MBB,
                       const TargetRegisterInfo *TRI);
 
+/// Pair-aware variant: returns true only if BOTH 8-bit halves of the
+/// pair register are dead after MI. Use this at expansion sites that
+/// want to clobber the whole pair without restoring it.
+///
+/// `isRegDeadAfterMI(V6C::HL, ...)` is unsafe at such sites: it treats
+/// the pair as a single value, so a later instruction that defines just
+/// L (or just H) makes it report dead even when the other half is still
+/// read downstream. See `plan_O81_pair_deadness_fix.md`.
+bool isPairDeadAfterMI(unsigned PairReg, const MachineInstr &MI,
+                       MachineBasicBlock &MBB,
+                       const TargetRegisterInfo *TRI);
+
 /// Return the first register in {B, C, D, E}, excluding any register
 /// whose aliases overlap `Excluded`, that is dead after MI. Returns a
 /// default-constructed Register() if none qualifies.

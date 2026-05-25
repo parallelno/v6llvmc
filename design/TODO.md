@@ -1,14 +1,14 @@
-Maybe it is possible to teach compiler+linker to operate fraction of address. like take a hi or lo byte of a address that will be resolved at the linking time.
+Investigate if it is possible to teach compiler+linker to operate fraction of address.
+like take a hi or lo byte of a address that will be resolved at the linking time.
 ============================
-Soft Alignment.
 A special aligment that guarantee aligment INTO block, not at start of the block.
-For example the data below all :
-static soft_align(256) uint8_t arr[10]
-static soft_align(256) uint8_t arr[10]
+For example the data below all:
+static block_align(256) uint8_t arr[10]
+static block_align(256) uint8_t arr[10]
 static int A = 10;
 Research it. perhaps it can be done via lld scripts.
 ============================
-improtant insights that can improve the V6C_LOAD8_FI:
+important insights that can improve the V6C_LOAD8_FI:
 1. The main goal for V6C compiler is to make static stack funcs the most performant, because they have less overhead.
 2. In static-stack mode V6C_LOAD8_FI is not very popular. It is used only for arg passing via stack.
 
@@ -18,33 +18,40 @@ improtant insights that can improve the V6C_LOAD8_FI:
 hl live, de dead:
 new: xchg; lxi h, offset; dad sp; mov reg8, m; xchg; 40cc
 old: clobbers hl, which can lead to spilling or less optimal
-=================
-Potential big issue. Some helper funcs that check reg pair liveness had broken logic. For example: isHLDead returns true if H or L is dead. that means if it returtns true doesnt mean BOTH regs are live.
-Pair-Liveness Audit
-For V6C_DAD, the bug was specifically this kind of logic:
-``` C
-isRegDeadAfter(..., V6C::HL, ...)
-```
-The old helper could decide “HL is dead” after seeing a later def of only L, even if H was still live and read later. That is wrong if the expansion is about to clobber the whole HL pair.
+================================
+optimization peephole.
+eleminate push rp, pop rp sequence if:
+- it is inside a basic block
+- rp is dead after sequence
+- no usage of the rp between the push and pop and before the rp death
+- the push pop can have other instructions in beetween
+evidence:
+tests\benchmarks_c\asm\v6llvmc_sieve_O2.s
+source:
+	DAD	B
+	MOV	B, H
+	MOV	C, L
+	POP	H
+	;--- V6C_SPILL16 ---
+	PUSH	H
+	MOV	L, C
+	MOV	H, B
+	SHLD	.LLo61_3+1
+lines: #147-#155
 
-So the targeted V6C_DAD fix was correct: when deciding whether it is safe not to preserve HL, it checks both halves:
-``` C
-bool HLDead =
-    isRegDeadAfter(..., V6C::H, ...) &&
-    isRegDeadAfter(..., V6C::L, ...);
-```
-That did not cause the broad regression. It is still the right fix and remains landed.
+the invalid sequence:
+	POP	H
+	;--- V6C_INX16 ---
+	INX	H
+	INX	H
+	;--- V6C_RELOAD16 ---
+	PUSH	H
+lines #156-#161
 
-The regression came when I tried to make the helper itself treat any pair register, like HL, DE, or BC, as dead only if both halves were independently dead. That affected many other users of the helper: spills, reloads, frame-index expansion, XCHG peepholes, store/load routing, and so on.
-
-That blanket change changed lots of codegen decisions:
-
-paths that previously skipped PUSH/POP started preserving pairs more often,
-routes through XCHG changed,
-O61 patched reload/spill shapes changed,
-some benchmark code shape shifted enough to expose wrong-code or nontermination.
-The key lesson is: “pair deadness should be half-wise” is true when the expansion may clobber the whole pair while preserving unrelated live halves. But it is not automatically safe to change every helper call globally, because each pseudo has its own contract. Some checks are asking “is this full pair value dead?” while others are really asking “can this expansion use this pair as a scratch under this specific restore path?”
-
-So your summary is correct if phrased like this:
-
-The targeted V6C_DAD pair-liveness check was changed to check H and L separately, and that is correct. But applying that behavior globally to every pair-register deadness helper caused broad code-shape regressions, so it was backed out. Other pseudos need to be audited and converted one by one, with proof that the stricter half-wise interpretation matches that pseudo’s preservation contract.
+a valid sequence with an instruction in beteen
+	POP	H
+	;--- V6C_INX16 ---
+	INX	B
+	;--- V6C_SPILL16 ---
+	PUSH	H
+lines #165 to #169

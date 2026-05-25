@@ -1,7 +1,7 @@
 // Minimal V6C ROM: emits a byte on the debug port and halts.
 //
 // Build:
-//   clang -O2 -target i8080-unknown-v6c main.c -o main.rom
+//   samples\01_hello\build.bat
 //
 // Run in the emulator:
 //   v6emul --rom main.rom --load-addr 0x0100 --halt-exit --dump-cpu

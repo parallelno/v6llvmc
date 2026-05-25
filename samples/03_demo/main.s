@@ -1,109 +1,215 @@
 	.text
-	.section	.text.mem_access,"ax",@progbits
-mem_access:                             ; -- Begin function mem_access
-                                        ; @mem_access
-.Lfunc_begin0:
-	;=== void mem_access(char x1, char y1) ===
-	;  x1 = A
-	;  y1 = B
+	.section	.text.v6c_set_palette,"ax",@progbits
+v6c_set_palette:                        ; -- Begin function v6c_set_palette
+                                        ; @v6c_set_palette
 ; %bb.0:
-	;DEBUG_VALUE: mem_access:x1 <- $a
-	;DEBUG_VALUE: mem_access:y1 <- $b
-	MVI	E, 0
-	;--- V6C_BUILD_PAIR ---
-	MOV	H, E
-	MOV	L, B
-	;--- V6C_SPILL16 ---
-	SHLD	.LLo61_2+1
-	;--- V6C_BUILD_PAIR ---
-	MOV	D, E
-	MOV	E, A
-	;--- V6C_SPILL16 ---
-	XCHG
-	SHLD	.LLo61_0+1
-	XCHG
-	;--- V6C_ADD16 ---
-	MOV	A, E
-	ADD	E
-	MOV	C, A
-	MOV	A, D
-	ADC	D
-	MOV	B, A
-	;--- V6C_SPILL16 ---
-	PUSH	H
-	MOV	L, C
-	MOV	H, B
-	SHLD	.LLo61_3+1
-	POP	H
-	LXI	D, test_arr
-	;--- V6C_DAD ---
-	PUSH	H
-	MOV	H, B
-	MOV	L, C
-	DAD	D
-	XCHG
-	POP	H
-	;--- V6C_SPILL16 ---
-	XCHG
-	SHLD	.LLo61_1+1
-	XCHG
-	;--- V6C_ADD16 ---
-	PUSH	H
-	DAD	H
-	XCHG
-	POP	H
-	;--- V6C_RELOAD16 ---
-.LLo61_1:
-	LXI	B, 0
-	;--- V6C_STORE16_P ---
-	MOV	A, E
-	STAX	B
-	INX	B
-	MOV	A, D
-	STAX	B
-	;--- V6C_RELOAD16 ---
-.LLo61_0:
-	LXI	D, 0
-	CALL	__mulhi3
-	;DEBUG_VALUE: mem_access:a <- $hl
-	;--- V6C_RELOAD16 ---
-.LLo61_2:
-	LXI	D, 0
-	;--- V6C_ADD16 ---
-	DAD	D
-	LXI	D, 0xa
-	;--- V6C_ADD16 ---
-	DAD	D
-	;--- V6C_RELOAD16 ---
-.LLo61_3:
-	LXI	B, 0
-	;--- V6C_INX16 ---
-	INX	B
-	INX	B
-	LXI	D, test_arr
-	;--- V6C_DAD ---
-	PUSH	H
-	MOV	H, B
-	MOV	L, C
-	DAD	D
-	XCHG
-	POP	H
-	;--- V6C_STORE16_P ---
-	XCHG
-	MOV	M, E
-	INX	H
-	MOV	M, D
-	XCHG
+	LXI	H, palette+15
+	;APP
+	HLT
+
+	MVI	A, 0x88
+	OUT	0
+	MVI	B, 0xf
+.Ltmp0:
+	MOV	A, B
+	OUT	2
+	MOV	A, M
+	OUT	0xc
+	PUSH	PSW
+	POP	PSW
+	PUSH	PSW
+	POP	PSW
+	DCX	H
+	DCR	B
+	OUT	0xc
+	JP	.Ltmp0
+
+	;NO_APP
 	RET
-.Lfunc_end0:
+                                        ; -- End function
+	.section	.text.memset,"ax",@progbits
+memset:                                 ; -- Begin function memset
+                                        ; @memset
+; %bb.0:
+	LXI	H, 0x8000
+.LBB16_1:                               ; =>This Inner Loop Header: Depth=1
+	MVI	M, 0
+	INX	H
+	MOV	A, H
+	ORA	L
+	JNZ	.LBB16_1
+; %bb.2:
+	RET
+                                        ; -- End function
+	.section	.text.rand,"ax",@progbits
+rand:                                   ; -- Begin function rand
+                                        ; @rand
+; %bb.0:
+	;APP
+.Ltmp1:
+	LHLD	__v6c_rand_state
+	MOV	A, H
+	RAR
+
+	MOV	A, L
+	RAR
+
+	XRA	H
+	MOV	H, A
+	MOV	A, L
+	RAR
+
+	MOV	A, H
+	RAR
+
+	XRA	L
+	MOV	L, A
+	XRA	H
+	MOV	H, A
+	SHLD	__v6c_rand_state
+
+	;NO_APP
+	RET
+                                        ; -- End function
+	.section	.text.draw_line,"ax",@progbits
+draw_line:                              ; -- Begin function draw_line
+                                        ; @draw_line
+; %bb.0:
+	MOV	E, B
+	MOV	D, A
+	MVI	A, 0x80
+	MVI	B, 0x7f
+	MOV	C, B
+	;APP
+	STA	.ADDR_H+1
+	MOV	A, D
+	SUB	B
+	JC	.SWAP_POINTS
+.SET_DX:
+	MOV	D, A
+	LXI	H, .ADV_Y
+	MOV	A, E
+	SUB	C
+	JC	.ADV_Y_NEG
+.ADV_Y_POS:
+	MVI	M, 0x2c
+	JMP	.CHECK_SLOP
+.ADV_Y_NEG:
+	CMA
+
+	INR	A
+	MVI	M, 0x2d
+.CHECK_SLOP:
+	CMP	D
+	JNC	.VERTICAL_DRAW
+	STA	.DY+1
+	CALL	.SET_LOOP_VARS
+.LOOP_H:
+	MOV	A, M
+	ORA	E
+	MOV	M, A
+	ANA	E
+	RRC
+
+	MOV	E, A
+	ADC	H
+	SUB	E
+	MOV	H, A
+	MOV	A, C
+.DY:
+	SUI	0
+	JNC	.NO_ADV_Y
+	ADD	D
+.ADV_Y:
+	INR	L
+.NO_ADV_Y:
+	MOV	C, A
+	DCR	B
+	JNZ	.LOOP_H
+	RET
+
+.SWAP_POINTS:
+	CMA
+
+	INR	A
+	XCHG
+
+	MOV	D, B
+	MOV	E, C
+	MOV	B, H
+	MOV	C, L
+	JMP	.SET_DX
+.VERTICAL_DRAW:
+	LXI	H, .DX2+1
+	MOV	M, D
+	MOV	D, A
+	LDA	.ADV_Y
+	STA	.ADV_Y2
+	CALL	.SET_LOOP_VARS
+.LOOP_V:
+	MOV	A, M
+	ORA	E
+	MOV	M, A
+.ADV_Y2:
+	INR	L
+	MOV	A, C
+.DX2:
+	SUI	0
+	MOV	C, A
+	JNC	.NO_ADV_X2
+	ADD	D
+	MOV	C, A
+	MOV	A, E
+	RRC
+
+	MOV	E, A
+	ADC	H
+	SUB	E
+	MOV	H, A
+.NO_ADV_X2:
+	DCR	B
+	JNZ	.LOOP_V
+	RET
+
+.SET_LOOP_VARS:
+	LXI	H, BIT_MASK
+	MVI	A, 7
+	ANA	B
+	ADD	L
+	MOV	L, A
+	ADC	H
+	SUB	L
+	MOV	H, A
+	MOV	E, M
+	MVI	A, 0xf8
+	ANA	B
+	RRC
+
+	RRC
+
+	RRC
+
+.ADDR_H:
+	ADI	0x80
+	MOV	H, A
+	MOV	L, C
+	MOV	B, D
+	INR	B
+	XRA	A
+	ORA	D
+	RAR
+
+	MOV	C, A
+	RET
+
+
+	;NO_APP
+	RET
                                         ; -- End function
 	.section	.text.main,"ax",@progbits
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
-.Lfunc_begin1:
-	;=== void main(void) ===
 ; %bb.0:
-	LXI	D, test_arr
 	;APP
 	MVI	A, 0xfb
 	STA	0x38
@@ -111,103 +217,38 @@ main:                                   ; @main
 	STA	0x39
 
 	;NO_APP
-	;DEBUG_VALUE: i <- 0
-	;DEBUG_VALUE: main:ttt <- 4660
-	LXI	B, test_arr
-.LBB16_1:                               ; =>This Inner Loop Header: Depth=1
-	;DEBUG_VALUE: main:ttt <- 4660
-	;DEBUG_VALUE: i <- undef
-	;--- V6C_SPILL16 ---
-	MOV	L, C
-	MOV	H, B
-	SHLD	.LLo61_6+1
-	;--- V6C_SPILL16 ---
-	XCHG
-	SHLD	.LLo61_4+1
-	XCHG
-	LXI	H, 0x14
-	;--- V6C_DAD ---
-	DAD	B
-	;--- V6C_LOAD16_P ---
-	MOV	B, M
-	INX	H
-	MOV	H, M
-	MOV	L, B
-	;DEBUG_VALUE: r1 <- $hl
-	;--- V6C_SPILL16 ---
-	SHLD	.LLo61_7+1
-	;--- V6C_SRL16 ---
-	MOV	L, H
-	MVI	H, 0
-	;DEBUG_VALUE: r1 <- [$sp+0]
-	;DEBUG_VALUE: r1 <- $hl
-	;--- V6C_SPILL16 ---
-	SHLD	.LLo61_5+1
-	;--- V6C_LOAD16_P ---
-	XCHG
-	MOV	C, M
-	INX	H
-	MOV	B, M
-	XCHG
-	;DEBUG_VALUE: x1 <- [DW_OP_LLVM_convert 16 7, DW_OP_LLVM_convert 8 7, DW_OP_stack_value] $bc
-	;DEBUG_VALUE: r1 <- $bc
-	;--- V6C_SRL16 ---
-	MOV	E, B
-	MOV	D, H
-	;DEBUG_VALUE: y1 <- [DW_OP_LLVM_convert 16 7, DW_OP_LLVM_convert 8 7, DW_OP_stack_value] $de
-	;--- V6C_RELOAD16 ---
-.LLo61_5:
-	LXI	H, 0
-	;--- V6C_ADD16 ---
-	DAD	D
-	XCHG
-	;--- V6C_RELOAD16 ---
-.LLo61_7:
-	LXI	H, 0
-	;--- V6C_ADD16 ---
-	DAD	B
-	;DEBUG_VALUE: y1 <- $e
-	;DEBUG_VALUE: x1 <- $l
+	;APP
+	EI
+
+	;NO_APP
+	CALL	v6c_set_palette
+	CALL	memset
+	MVI	A, 0x64
+.LBB19_1:                               ; =>This Inner Loop Header: Depth=1
+	STA	.LLo61_0+1
+	CALL	rand
 	MOV	A, L
-	MOV	B, E
-	CALL	mem_access
-	;--- V6C_RELOAD16 ---
-.LLo61_6:
-	LXI	B, 0
-	;--- V6C_RELOAD16 ---
-.LLo61_4:
-	LXI	D, 0
-	;--- V6C_INX16 ---
-	INX	B
-	INX	B
-	;--- V6C_INX16 ---
-	INX	D
-	INX	D
-	;--- V6C_BR_CC16_IMM ---
-	MVI	A, <(test_arr+200)
-	CMP	E
-	JNZ	.LBB16_1
-; %bb.3:                                ;   in Loop: Header=BB16_1 Depth=1
-	;DEBUG_VALUE: main:ttt <- 4660
-	MVI	A, >(test_arr+200)
-	CMP	D
-	JNZ	.LBB16_1
+	MOV	B, H
+	CALL	draw_line
+.LLo61_0:
+	MVI	A, 0
+	DCR	A
+	JNZ	.LBB19_1
 ; %bb.2:
-	;DEBUG_VALUE: main:ttt <- 4660
 	RET
-.Lfunc_end1:
                                         ; -- End function
 	.data
 	.globl	__v6c_rand_state                ; @__v6c_rand_state
 __v6c_rand_state:
 	DW	1                               ; 0x1
 
-	.section	.bss,"aw",@nobits
-	.globl	test_arr                        ; @test_arr
-test_arr:
+palette:                                ; @palette
+	.ascii	"\000\021\"3DUfw\210\231\252\273\314\335\356\377"
 
-	.local	__v6c_ss.main                   ; @__v6c_ss.main
-	.comm	__v6c_ss.main,2,1
+	.section	.rodata,"a",@progbits
+BIT_MASK:                               ; @BIT_MASK
+	.ascii	"\200@ \020\b\004\002\001"
+
 	.addrsig
 	.addrsig_sym __mulqi3
 	.addrsig_sym __v6c_mulqihi3
@@ -224,3 +265,5 @@ test_arr:
 	.addrsig_sym __ashlhi3
 	.addrsig_sym __lshrhi3
 	.addrsig_sym __ashrhi3
+	.addrsig_sym palette
+	.addrsig_sym BIT_MASK

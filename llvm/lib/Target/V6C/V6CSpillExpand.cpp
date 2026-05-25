@@ -51,6 +51,25 @@ bool llvm::isRegDeadAfterMI(unsigned Reg, const MachineInstr &MI,
   return true;
 }
 
+bool llvm::isPairDeadAfterMI(unsigned PairReg, const MachineInstr &MI,
+                             MachineBasicBlock &MBB,
+                             const TargetRegisterInfo *TRI) {
+  // Determine the pair's two 8-bit sub-registers.  Hard-coded so we
+  // don't need the V6C-specific TRI; the helper lives in code that is
+  // already V6C-scoped via V6CMCTargetDesc.h.
+  unsigned Lo = 0, Hi = 0;
+  switch (PairReg) {
+  case V6C::HL: Lo = V6C::L; Hi = V6C::H; break;
+  case V6C::DE: Lo = V6C::E; Hi = V6C::D; break;
+  case V6C::BC: Lo = V6C::C; Hi = V6C::B; break;
+  default:
+    // For non-pair registers fall back to the byte-wise query.
+    return isRegDeadAfterMI(PairReg, MI, MBB, TRI);
+  }
+  return isRegDeadAfterMI(Lo, MI, MBB, TRI) &&
+         isRegDeadAfterMI(Hi, MI, MBB, TRI);
+}
+
 Register llvm::findDeadSpareGPR8(Register Excluded, const MachineInstr &MI,
                                  MachineBasicBlock &MBB,
                                  const TargetRegisterInfo *TRI) {
@@ -120,7 +139,7 @@ void llvm::expandSpill8Static(MachineInstr &MI,
           SrcReg == V6C::D || SrcReg == V6C::E) &&
          "expandSpill8Static: expected GR8 src (A handled by caller)");
 
-  bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, TRI);
+  bool HLDead = isPairDeadAfterMI(V6C::HL, MI, MBB, TRI);
   // Row 1: HL dead -> LXI HL, addr ; MOV M, r
   if (HLDead) {
     auto B = BuildMI(MBB, InsertBefore, DL, TII.get(V6C::LXI))
@@ -233,7 +252,7 @@ void llvm::expandReload8Static(MachineInstr &MI,
           DstReg == V6C::D || DstReg == V6C::E) &&
          "expandReload8Static: expected GR8 dst (A handled by caller)");
 
-  bool HLDead = isRegDeadAfterMI(V6C::HL, MI, MBB, TRI);
+  bool HLDead = isPairDeadAfterMI(V6C::HL, MI, MBB, TRI);
   // Row 1: HL dead -> LXI HL, addr ; MOV r, M
   if (HLDead) {
     auto B = BuildMI(MBB, InsertBefore, DL, TII.get(V6C::LXI))
