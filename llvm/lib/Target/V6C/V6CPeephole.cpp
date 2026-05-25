@@ -45,6 +45,11 @@ static cl::opt<bool> DisableMviAluFold(
     cl::desc("Disable MVI R,NN + ALU R -> ALU-immediate fold (O79)"),
     cl::init(false), cl::Hidden);
 
+static cl::opt<bool> DisablePopPushElim(
+    "v6c-disable-pop-push-elim",
+    cl::desc("Disable POP/PUSH pair elimination (O83)"),
+    cl::init(false), cl::Hidden);
+
 /// True if MI is an O61 patched-immediate site: it carries a
 /// pre-instr `.LLo61_N:` label (referenced by SHLD/STA spills) and/or
 /// its imm operand is flagged MO_PATCH_IMM.  Erasing such an MI loses
@@ -88,6 +93,7 @@ private:
   bool foldMviAluImm(MachineBasicBlock &MBB);
   bool eliminateDeadMVI(MachineBasicBlock &MBB);
   bool collapseMovChain(MachineBasicBlock &MBB);
+  bool eliminateDeadPopPush(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -1370,6 +1376,102 @@ bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// O83: Eliminate POP rp / PUSH rp pairs where rp is not used between them
+/// and is dead after the PUSH.  The pair performs a useless round-trip through
+/// the stack; removing it saves 22 cycles and 2 bytes per occurrence.
+///
+/// Conditions checked:
+///   1. Same register pair for POP and PUSH.
+///   2. No instruction between them reads or writes rp (or any sub-register).
+///   3. No stack-affecting instruction between them (PUSH, POP, XTHL, SPHL,
+///      or any instruction that modifies SP).
+///   4. rp is dead after the PUSH (isRegDeadAfter).
+///   5. PSW (A+FLAGS) is never considered because FLAGS is implicitly live.
+static bool isStackAffecting(const MachineInstr &MI,
+                             const TargetRegisterInfo *TRI) {
+  unsigned Op = MI.getOpcode();
+  if (Op == V6C::PUSH || Op == V6C::POP || Op == V6C::XTHL || Op == V6C::SPHL)
+    return true;
+  return MI.modifiesRegister(V6C::SP, TRI);
+}
+
+bool V6CPeephole::eliminateDeadPopPush(MachineBasicBlock &MBB) {
+  if (DisablePopPushElim)
+    return false;
+
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+
+  bool Changed = false;
+  for (auto I = MBB.begin(), E = MBB.end(); I != E;) {
+    if (I->getOpcode() != V6C::POP) {
+      ++I;
+      continue;
+    }
+
+    Register Rp = I->getOperand(0).getReg();
+
+    // PSW contains FLAGS which is implicitly live across many instructions;
+    // skip to avoid incorrect elimination.
+    if (TRI->regsOverlap(Rp, V6C::PSW)) {
+      ++I;
+      continue;
+    }
+
+    // Scan forward from POP looking for a matching PUSH rp.
+    bool CanElim = true;
+    MachineBasicBlock::iterator PushIt = E;
+    for (auto J = std::next(I); J != E; ++J) {
+      if (J->isDebugInstr())
+        continue;
+
+      // Found a PUSH of the same register pair — candidate.
+      if (J->getOpcode() == V6C::PUSH &&
+          J->getOperand(0).getReg() == Rp) {
+        PushIt = J;
+        break;
+      }
+
+      // Any stack-affecting instruction (including PUSH/POP of other pairs)
+      // invalidates the elimination.
+      if (isStackAffecting(*J, TRI)) {
+        CanElim = false;
+        break;
+      }
+
+      // Any instruction that reads or writes rp (or its sub-registers)
+      // invalidates the elimination.
+      for (const MachineOperand &MO : J->operands()) {
+        if (!MO.isReg() || !MO.getReg().isValid())
+          continue;
+        if (TRI->regsOverlap(MO.getReg(), Rp)) {
+          CanElim = false;
+          break;
+        }
+      }
+      if (!CanElim)
+        break;
+    }
+
+    if (!CanElim || PushIt == E) {
+      ++I;
+      continue;
+    }
+
+    // Verify rp is truly dead after the PUSH.
+    if (!isRegDeadAfter(MBB, PushIt, Rp, TRI)) {
+      ++I;
+      continue;
+    }
+
+    // Eliminate the pair.  Erase PUSH first (it comes after POP).
+    PushIt->eraseFromParent();
+    I = MBB.erase(I); // advances I past the erased POP
+    Changed = true;
+  }
+  return Changed;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -1379,6 +1481,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
     Changed |= foldXchgSwapRedundancy(MBB); // reduce before cancelAdjacentXchg
     Changed |= cancelAdjacentXchg(MBB);
     Changed |= foldShldLhldToPushPop(MBB);
+    Changed |= eliminateDeadPopPush(MBB);   // O83: must follow O43
     Changed |= foldMovAluM(MBB);
     Changed |= foldIncDecMviM(MBB);
     Changed |= eliminateSelfMov(MBB);

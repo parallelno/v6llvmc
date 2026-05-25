@@ -1,0 +1,183 @@
+O83 — POP/PUSH pair elimination
+================================
+
+== C test case ==================================================================
+
+// O83 — POP/PUSH pair elimination test case.
+//
+// Uses a simplified Sieve of Eratosthenes kernel (SIZE=200) which is known
+// to generate redundant POP/PUSH pairs in the outer loop maintenance code.
+
+typedef unsigned short u16;
+typedef unsigned char  u8;
+
+static u8 flags[200];
+
+u16 sieve_count(u16 n) {
+    u16 i, k, count, i_sq;
+    for (k = 0; k < n; k++) flags[k] = 0;
+    count = (u16)(n - 2);
+    i_sq  = 4;
+    for (i = 2; i_sq < n; ++i) {
+        if (!flags[i]) {
+            for (k = i_sq; k < n; k = (u16)(k + i)) {
+                if (!flags[k]) count = (u16)(count - 1);
+                flags[k] = 1;
+            }
+        }
+        i_sq = (u16)(i_sq + i + i + 1);
+    }
+    return count;
+}
+
+int main(void) {
+    u16 c = sieve_count(200);
+    return (int)((u8)c ^ (u8)(c >> 8));
+}
+
+== c8080 — relevant outer-loop latch (i8080 syntax) ============================
+; (c8080 emits all variables in static memory; outer-loop update shown)
+; Source lines 29-30: i_sq = i_sq + i + i + 1; ++i
+
+; c8080 uses LHLD/SHLD for every 16-bit variable read/write.
+; i_sq += i
+        LHLD    sieve_count_i_sq        ; 20cc  3B  load i_sq
+        XCHG                            ;  4cc  1B  i_sq -> DE
+        LHLD    sieve_count_i           ; 20cc  3B  load i
+        DAD     D                       ; 12cc  1B  HL = i + i_sq
+        XCHG                            ;  4cc  1B  partial sum -> DE
+; i_sq += i again  (i_sq + 2i)
+        LHLD    sieve_count_i           ; 20cc  3B  load i
+        DAD     D                       ; 12cc  1B  HL = i_sq + 2i
+; i_sq += 1
+        INX     H                       ;  8cc  1B  HL = i_sq + 2i + 1
+        SHLD    sieve_count_i_sq        ; 20cc  3B  store i_sq
+; i++
+        LHLD    sieve_count_i           ; 20cc  3B  load i
+        INX     H                       ;  8cc  1B  HL = i + 1
+        SHLD    sieve_count_i           ; 20cc  3B  store i
+        JMP     l_3                     ; 12cc  3B  back to outer header
+
+; c8080 outer-loop latch cycles (per iteration): 180cc
+; c8080 outer-loop latch size:  28 bytes
+
+== v6llvmc_old — outer-loop latch (.LBB16_8, BEFORE O83) =======================
+; O61 patched-immediates keep i_sq and i in spill slots.
+; Two redundant POP/PUSH pairs are present (marked <<<).
+
+.LBB16_8:                       ; outer-loop latch header
+        MOV     H, D             ;  8cc  1B  copy i (DE) to HL
+        MOV     L, E             ;  8cc  1B
+        DAD     D                ; 12cc  1B  HL = 2i
+.LLo61_12:
+        LXI     B, 0             ; 12cc  3B  O61 patched: BC = i_sq (spill slot)
+        DAD     B                ; 12cc  1B  HL = 2i + i_sq  (partial i_sq update)
+        MOV     B, H             ;  8cc  1B  save 2i+i_sq high in B
+        MOV     C, L             ;  8cc  1B  save 2i+i_sq low  in C
+        MOV     L, C             ;  8cc  1B  restore HL from BC (HL = 2i+i_sq)
+        MOV     H, B             ;  8cc  1B
+        SHLD    .LLo61_12+1      ; 20cc  3B  spill i_sq partial sum back
+.LLo61_13:
+        LXI     H, 0             ; 12cc  3B  O61 patched: HL = 1 (for +1 step)
+.LLo61_10:
+        LXI     B, 0             ; 12cc  3B  O61 patched: BC = i_sq partial
+        PUSH    H                ; 16cc  1B  save HL (the +1 value) on stack
+        DAD     B                ; 12cc  1B  HL = 2i + i_sq + 1  (final i_sq)
+        MOV     B, H             ;  8cc  1B  save result high
+        MOV     C, L             ;  8cc  1B  save result low
+        POP     H                ; 12cc  1B  <<< Case 1: restore HL — immediately
+        PUSH    H                ; 16cc  1B  <<< Case 1: re-save same HL — dead
+        MOV     L, C             ;  8cc  1B  HL overwritten here
+        MOV     H, B             ;  8cc  1B
+        SHLD    .LLo61_10+1      ; 20cc  3B  spill final i_sq
+        POP     H                ; 12cc  1B  end of Case 2 outer POP (kept)
+        INX     H                ;  8cc  1B  HL += 1
+        INX     H                ;  8cc  1B  HL += 1  (Case 2: POP;INX H;INX H;PUSH not eliminated)
+        PUSH    H                ; 16cc  1B  Case 2 PUSH  (kept)
+        LHLD    .LLo61_12+1      ; 20cc  3B  reload i_sq partial (for count slot)
+        MOV     C, L             ;  8cc  1B
+        MOV     B, H             ;  8cc  1B
+        POP     H                ; 12cc  1B  <<< Case 3: POP before INX B — dead
+        INX     B                ;  8cc  1B  B:C = count + 1
+        PUSH    H                ; 16cc  1B  <<< Case 3: PUSH after INX B — dead
+        MOV     L, C             ;  8cc  1B  HL overwritten here
+        MOV     H, B             ;  8cc  1B
+        SHLD    .LLo61_12+1      ; 20cc  3B  spill count
+        POP     H                ; 12cc  1B  end of Case 2 outer POP (kept)
+        INX     D                ;  8cc  1B  i++
+        MVI     A, 0xf           ;  8cc  2B  check i == 15 (outer loop limit)
+        CMP     E                ;  4cc  1B
+        JNZ     .LBB16_3         ; 12cc  3B  back to outer header
+
+; v6llvmc_old outer-loop latch cycles (per iteration): 432cc
+; v6llvmc_old outer-loop latch size:  52 bytes
+
+== v6llvmc_new01 — outer-loop latch (.LBB16_8, AFTER O83) ======================
+; Both redundant POP/PUSH pairs have been eliminated.
+; Case 2 (POP H; INX H; INX H; PUSH H) is preserved — HL is live across INX H.
+
+.LBB16_8:                       ; outer-loop latch header
+        MOV     H, D             ;  8cc  1B  copy i (DE) to HL
+        MOV     L, E             ;  8cc  1B
+        DAD     D                ; 12cc  1B  HL = 2i
+.LLo61_12:
+        LXI     B, 0             ; 12cc  3B  O61 patched: BC = i_sq
+        DAD     B                ; 12cc  1B  HL = 2i + i_sq
+        MOV     B, H             ;  8cc  1B
+        MOV     C, L             ;  8cc  1B
+        MOV     L, C             ;  8cc  1B
+        MOV     H, B             ;  8cc  1B
+        SHLD    .LLo61_12+1      ; 20cc  3B  spill i_sq partial
+.LLo61_13:
+        LXI     H, 0             ; 12cc  3B  O61 patched: HL = 1
+.LLo61_10:
+        LXI     B, 0             ; 12cc  3B  O61 patched: BC = i_sq partial
+        PUSH    H                ; 16cc  1B  save +1 value on stack
+        DAD     B                ; 12cc  1B  HL = final i_sq
+        MOV     B, H             ;  8cc  1B
+        MOV     C, L             ;  8cc  1B
+        MOV     L, C             ;  8cc  1B  HL = final i_sq  (Case 1 eliminated)
+        MOV     H, B             ;  8cc  1B
+        SHLD    .LLo61_10+1      ; 20cc  3B  spill final i_sq
+        POP     H                ; 12cc  1B  Case 2 outer POP (kept)
+        INX     H                ;  8cc  1B
+        INX     H                ;  8cc  1B
+        PUSH    H                ; 16cc  1B  Case 2 PUSH (kept)
+        LHLD    .LLo61_12+1      ; 20cc  3B  reload count
+        MOV     C, L             ;  8cc  1B
+        MOV     B, H             ;  8cc  1B
+        INX     B                ;  8cc  1B  count++  (Case 3 eliminated)
+        MOV     L, C             ;  8cc  1B
+        MOV     H, B             ;  8cc  1B
+        SHLD    .LLo61_12+1      ; 20cc  3B  spill count
+        POP     H                ; 12cc  1B  Case 2 outer POP (kept)
+        INX     D                ;  8cc  1B  i++
+        MVI     A, 0xf           ;  8cc  2B  check i == 15
+        CMP     E                ;  4cc  1B
+        JNZ     .LBB16_3         ; 12cc  3B  back to outer header
+
+; v6llvmc_new01 outer-loop latch cycles (per iteration): 376cc
+; v6llvmc_new01 outer-loop latch size:  48 bytes
+
+== Comparison table =============================================================
+; Instruction timings: POP rp = 12cc / 1B, PUSH rp = 16cc / 1B (Vector 06c).
+; Outer loop runs 13 iterations for sieve_count(200)  (i = 2..14, i_sq < 200).
+
+Outer-loop latch (per iteration):
+
+  Compiler      | cc / iter | B (code) | Notes
+  --------------|-----------|----------|----------------------------------
+  c8080         |    180 cc |    28 B  | all vars in LHLD/SHLD; no regs
+  v6llvmc old   |    432 cc |    52 B  | 2 redundant POP/PUSH pairs present
+  v6llvmc new   |    376 cc |    48 B  | O83: 2 pairs eliminated (-56cc, -4B)
+
+Eliminated pairs (2 total, per outer iteration):
+  Case 1 — adjacent POP H / PUSH H:    -28cc  -2B
+  Case 3 — POP H / INX B / PUSH H:     -28cc  -2B
+  Total per outer iteration:            -56cc  -4B
+
+Full function (main, which inlines sieve_count(200)):
+  v6llvmc old   | 173 asm lines |  ~N cc
+  v6llvmc new   | 169 asm lines |  ~N-728 cc  (13 iter × 56cc)
+
+Code-size delta: -4 bytes (4 instructions × 1 byte each, eliminated from code).

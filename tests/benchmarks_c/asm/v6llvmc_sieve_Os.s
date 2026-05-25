@@ -147,9 +147,7 @@ main:                                   ; @main
 	DAD	B
 	MOV	B, H
 	MOV	C, L
-	POP	H
 	;--- V6C_SPILL16 ---
-	PUSH	H
 	MOV	L, C
 	MOV	H, B
 	SHLD	.LLo61_3+1
@@ -162,11 +160,9 @@ main:                                   ; @main
 	LHLD	.LLo61_5+1
 	MOV	C, L
 	MOV	B, H
-	POP	H
 	;--- V6C_INX16 ---
 	INX	B
 	;--- V6C_SPILL16 ---
-	PUSH	H
 	MOV	L, C
 	MOV	H, B
 	SHLD	.LLo61_5+1
