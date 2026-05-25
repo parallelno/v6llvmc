@@ -21,39 +21,7 @@ old: clobbers hl, which can lead to spilling or less optimal
 ================================
 possible bug. the svofski line draw program doesnt work when compiled with v6asm
 ================================
+optimization template:
 make an optimization peephole design document and store it to design\future_plans\ folder. add it to design\future_plans\README.md.
-Eleminate a `push rp, pop rp` sequence if:
-- it is inside a basic block
-- rp is dead after sequence
-- no usage of the rp between the push and pop and before the rp death
-- the push pop can have other instructions in beetween
-evidence:
-tests\benchmarks_c\asm\v6llvmc_sieve_O2.s
-source:
-	DAD	B
-	MOV	B, H
-	MOV	C, L
-	POP	H
-	;--- V6C_SPILL16 ---
-	PUSH	H
-	MOV	L, C
-	MOV	H, B
-	SHLD	.LLo61_3+1
-lines: #147-#155
-
-the invalid sequence:
-	POP	H
-	;--- V6C_INX16 ---
-	INX	H
-	INX	H
-	;--- V6C_RELOAD16 ---
-	PUSH	H
-lines #156-#161
-
-a valid sequence with an instruction in beteen
-	POP	H
-	;--- V6C_INX16 ---
-	INX	B
-	;--- V6C_SPILL16 ---
-	PUSH	H
-lines #165 to #169
+...
+================================

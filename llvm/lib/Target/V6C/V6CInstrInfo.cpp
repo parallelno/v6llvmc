@@ -932,6 +932,29 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       return true;
     }
 
+    // BC = BC + DE (or commutative) with DE dead after.
+    // Route through HL via XCHG; DAD B; XCHG; MOV B,D; MOV C,E (36cc, 5B)
+    // instead of the general 8-bit A-chain (40cc, 6B). HL is preserved by
+    // the paired XCHGs. If old HL is undef, mark the XCHG reads accordingly.
+    // Mirror of the DE=DE+BC fast path above.
+    if (DstReg == V6C::BC &&
+        ((LhsReg == V6C::BC && RhsReg == V6C::DE) ||
+         (LhsReg == V6C::DE && RhsReg == V6C::BC)) &&
+        isRegDeadAfter(MBB, MI.getIterator(), V6C::DE, &RI)) {
+      bool HLLive = isRegLiveBefore(MBB, MI.getIterator(), V6C::HL, &RI);
+      MachineInstr *FirstXchg = BuildMI(MBB, MI, DL, get(V6C::XCHG)).getInstr();
+      BuildMI(MBB, MI, DL, get(V6C::DAD)).addReg(V6C::BC);
+      MachineInstr *SecondXchg = BuildMI(MBB, MI, DL, get(V6C::XCHG)).getInstr();
+      if (!HLLive) {
+        markXchgUseUndef(FirstXchg, V6C::HL);
+        markXchgUseUndef(SecondXchg, V6C::DE);
+      }
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::B).addReg(V6C::D);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::C).addReg(V6C::E);
+      MI.eraseFromParent();
+      return true;
+    }
+
     // --- Path A: one operand is HL, DstReg != HL ---
     // Use DAD + copy result out (via XCHG for DE, MOV pair for BC).
     if (DstReg != V6C::HL &&

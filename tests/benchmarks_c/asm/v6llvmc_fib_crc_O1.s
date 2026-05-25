@@ -31,14 +31,11 @@ main:                                   ; @main
 	;--- V6C_SPILL16 ---
 	XCHG
 	SHLD	.LLo61_1+1
-	XCHG
 	;--- V6C_ADD16 ---
-	MOV	A, C
-	ADD	E
-	MOV	C, A
-	MOV	A, B
-	ADC	D
-	MOV	B, A
+	DAD	B
+	XCHG
+	MOV	B, D
+	MOV	C, E
 	LXI	D, 0xff
 	;--- V6C_SPILL16 ---
 	PUSH	H
