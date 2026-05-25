@@ -97,7 +97,11 @@ char V6CStaticStackAlloc::ID = 0;
 ///        - an inline-asm call (the asm string cannot reference C symbols
 ///          dynamically, so it cannot recursively re-enter F);
 ///        - a call where the callee/callsite carries the `nocallback`
-///          attribute (intrinsics or normal functions).
+///          attribute (intrinsics or normal functions);
+///        - a call to a `norecurse` callee. `norecurse` is set by
+///          PostOrderFunctionAttrs only after SCC analysis proves the
+///          callee is not part of any call cycle in the module, so it
+///          cannot transitively reach back into F.
 ///
 /// Combined with the existing checks (no address taken, not reachable from
 /// any interrupt handler), this guarantees F cannot be re-entered while a
@@ -121,6 +125,18 @@ bool V6CStaticStackAlloc::hasNoCallbackEvidence(const Function &F) const {
       if (!Callee)
         return false; // indirect call — unknown target
       if (Callee->hasFnAttribute(Attribute::NoCallback))
+        continue;
+
+      // A `norecurse` callee is strictly stronger evidence than
+      // `nocallback`: LLVM's PostOrderFunctionAttrs only marks a function
+      // `norecurse` after SCC analysis proves it is NOT part of any call
+      // cycle in the module. Therefore calling such a function cannot
+      // transitively re-enter F.
+      //
+      // This also unlocks static-stack allocation for functions that
+      // LLVM cannot itself prove `norecurse` for due to a single inline-
+      // asm callsite (e.g. `main` calling `v6c_set_empty_interrupt()`).
+      if (Callee->hasFnAttribute(Attribute::NoRecurse))
         continue;
 
       // Direct self-recursion would corrupt the static frame.
