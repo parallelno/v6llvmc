@@ -56,4 +56,9 @@ void main() {
         draw_line_old(127, 127, x1, y1, SCR_ADDR_PTR);
     #endif
     }
+
+    // Draw 10 circles at 127, 127 from 100 radius, each smaller by 10.
+    for (int i = 0; i < 10; i++) {
+        draw_circle(127, 127, 100 - i * 10);
+    }
 }

@@ -55,7 +55,7 @@ O54d_alloca_constant_size_push.md
 ✅ O78_V6C_STORE8_IMM_P_redesign.md
 ✅ O79_mvi_alu_reg_to_alu_imm_fold.md
 ✅ O80_cmp8_zero_inr_dcr.md
-O81_select_cc_i8_through_accumulator.md
+✅ O81_select_cc_i8_through_accumulator.md
 ✅ O82_mov_chain_collapse_dead_hi.md
 ✅ O83_pop_push_pair_elimination.md
 ✅ O84_inx_hl_spill_round_trip_fold.md

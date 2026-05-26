@@ -13,18 +13,17 @@ static const uint8_t BIT_MASK[8] = {
     0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
 
 V6C_NOINLINE_ASM
-void draw_pixel(uint8_t x, uint8_t y, uint8_t* plane_addr)
+void draw_pixel(uint8_t x, uint8_t y)
 {
-    register uint8_t addr_x_reg asm("A") = x;
-    register uint8_t addr_y_reg asm("L") = y;
-    register uint8_t addr_reg asm("H") = (((uint16_t)plane_addr) >> 8);
+    register uint8_t _x asm("A") = x;
+    register uint8_t _y asm("L") = y;
     asm (
         "MOV C, A           \n"
         "RRC                \n"
         "RRC                \n"
         "RRC                \n"
         "ANI 0x1F           \n" // a is byte offset within the plane (0-31)
-        "ADD H              \n"
+        "ADI 0x80           \n" // TODO: make it adjustable for different scr_addr_hi, self-modified code
         "MOV H, A           \n"
         "MVI A, 0x07        \n"
         "ANA C              \n" // a is bit offset within the byte (0-7)
@@ -39,10 +38,10 @@ void draw_pixel(uint8_t x, uint8_t y, uint8_t* plane_addr)
         "MOV M, A           \n"
         : /* no outputs */
         /* input constraints */
-        : "r" (addr_reg), "r" (addr_x_reg), "r" (addr_y_reg),
+        : "r" (_x), "r" (_y),
             [B_MASK] "i" (BIT_MASK)
         /* clobbered registers */
-        : "A", "BC", "FLAGS"
+        : "A", "BC", "HL", "FLAGS"
     );
 }
 
@@ -275,7 +274,43 @@ void draw_line(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y
         /* clobbered regs */
         : "A", "BC", "DE", "HL", "FLAGS"
     );
+}
 
+/*
+ * Jesko's method for drawing circles with only integer arithmetic and no multiplication/division.
+ * Reference: https://en.wikipedia.org/wiki/Midpoint_circle_algorithm#cite_note-4
+ * Note: this method is not perfectly accurate, and may produce slightly distorted
+ * circles, especially for smaller radii.
+*/
+V6C_NOINLINE
+void draw_circle(uint8_t cx, uint8_t cy, uint8_t r)
+{
+    uint8_t x = r;
+    uint8_t y = 0;
+    uint8_t t1 = r >> 4;   // small bias trick (Jesko-style tweak)
+
+    while (x >= y)
+    {
+        // 8-way symmetry
+        draw_pixel(cx + x, cy + y);
+        draw_pixel(cx - x, cy + y);
+        draw_pixel(cx + x, cy - y);
+        draw_pixel(cx - x, cy - y);
+        draw_pixel(cx + y, cy + x);
+        draw_pixel(cx - y, cy + x);
+        draw_pixel(cx + y, cy - x);
+        draw_pixel(cx - y, cy - x);
+
+        y++;
+        t1 += y;
+
+        int t2 = t1 - x;
+        if (t2 >= 0)
+        {
+            t1 = t2;
+            x--;
+        }
+    }
 }
 
 #endif /* DRAW_H */

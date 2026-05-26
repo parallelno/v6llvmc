@@ -11,7 +11,7 @@
 define i8 @mask_test(i8 %x) {
 ; CHECK-LABEL: mask_test:
 ; CHECK:      ANI 0xf
-; CHECK-NEXT: JNZ
+; CHECK-NEXT: JZ
 ; CHECK-NOT:  CPI 0
   %m = and i8 %x, 15
   %c = icmp eq i8 %m, 0
@@ -25,7 +25,7 @@ define i8 @mask_test(i8 %x) {
 define i8 @xor_eq(i8 %x, i8 %y) {
 ; CHECK-LABEL: xor_eq:
 ; CHECK:      XRA
-; CHECK:      JZ
+; CHECK:      JNZ
 ; CHECK-NOT:  CPI 0
   %z = xor i8 %x, %y
   %c = icmp eq i8 %z, 0
@@ -40,7 +40,7 @@ define i8 @xor_eq(i8 %x, i8 %y) {
 define i8 @sub_eq(i8 %x) {
 ; CHECK-LABEL: sub_eq:
 ; CHECK:      ADI 0xfb
-; CHECK:      JZ
+; CHECK:      JNZ
 ; CHECK-NOT:  CPI 0
   %d = sub i8 %x, 5
   %c = icmp eq i8 %d, 0
@@ -78,7 +78,7 @@ exit:
 define i8 @inc_test(i8 %x) {
 ; CHECK-LABEL: inc_test:
 ; CHECK:      INR
-; CHECK:      JNZ
+; CHECK:      JZ
 ; CHECK-NOT:  CPI 0
   %i = add i8 %x, 1
   %c = icmp eq i8 %i, 0

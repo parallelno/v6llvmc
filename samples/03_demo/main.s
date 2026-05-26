@@ -206,10 +206,176 @@ draw_line:                              ; -- Begin function draw_line
 	;NO_APP
 	RET
                                         ; -- End function
+	.section	.text.draw_pixel,"ax",@progbits
+draw_pixel:                             ; -- Begin function draw_pixel
+                                        ; @draw_pixel
+; %bb.0:
+	MOV	L, B
+	;APP
+	MOV	C, A
+	RRC
+
+	RRC
+
+	RRC
+
+	ANI	0x1f
+	ADI	0x80
+	MOV	H, A
+	MVI	A, 7
+	ANA	C
+	LXI	B, BIT_MASK
+	ADD	C
+	MOV	C, A
+	ADC	B
+	SUB	C
+	MOV	B, A
+	LDAX	B
+	ORA	M
+	MOV	M, A
+
+	;NO_APP
+	RET
+                                        ; -- End function
+	.section	.text.draw_circle,"ax",@progbits
+draw_circle:                            ; -- Begin function draw_circle
+                                        ; @draw_circle
+; %bb.0:
+	MOV	D, A
+	XRA	A
+	MOV	H, A
+	MVI	E, 0x7f
+	MOV	A, H
+	ORA	A
+	RAR
+	MOV	H, A
+	MOV	A, D
+	RAR
+	MOV	L, A
+	MOV	A, H
+	ORA	A
+	RAR
+	MOV	H, A
+	MOV	A, L
+	RAR
+	MOV	L, A
+	MOV	A, H
+	ORA	A
+	RAR
+	MOV	H, A
+	MOV	A, L
+	RAR
+	MOV	L, A
+	MOV	A, H
+	ORA	A
+	RAR
+	MOV	H, A
+	MOV	A, L
+	RAR
+	MOV	L, A
+                                        ; kill: def $l killed $l killed $hl
+	MOV	A, L
+	STA	.LLo61_3+1
+	MOV	A, D
+	MVI	L, 0
+.LBB20_1:                               ; =>This Inner Loop Header: Depth=1
+	MOV	B, A
+	MOV	A, L
+	STA	.LLo61_4+1
+	MOV	A, B
+	MOV	A, E
+	STA	.LLo61_6+1
+	MOV	A, B
+	MOV	E, A
+	ADI	0x7f
+	MOV	D, A
+	MOV	A, L
+	ADI	0x7f
+	STA	.LLo61_0+1
+	STA	.LLo61_1+1
+	LXI	H, .LLo61_2+1
+	MOV	M, E
+	MOV	A, D
+.LLo61_0:
+	MVI	B, 0
+	CALL	draw_pixel
+	MOV	A, E
+.LLo61_6:
+	MVI	E, 0
+	XRI	0x7f
+	STA	.LLo61_5+1
+.LLo61_1:
+	MVI	B, 0
+	CALL	draw_pixel
+	MOV	A, D
+	MOV	B, E
+	CALL	draw_pixel
+	LDA	.LLo61_5+1
+	MOV	B, E
+	CALL	draw_pixel
+	LDA	.LLo61_0+1
+	MOV	B, D
+	CALL	draw_pixel
+	MOV	A, E
+	MOV	B, D
+	CALL	draw_pixel
+	LDA	.LLo61_0+1
+.LLo61_5:
+	MVI	D, 0
+	MOV	B, D
+	CALL	draw_pixel
+	MOV	A, E
+	MOV	B, D
+	CALL	draw_pixel
+.LLo61_4:
+	MVI	L, 0
+	INR	L
+	MOV	A, L
+	STA	.LLo61_4+1
+.LLo61_3:
+	MVI	A, 0
+	ADD	L
+.LLo61_2:
+	MVI	L, 0
+	MVI	D, 0
+	MOV	H, D
+	STA	.LLo61_3+1
+	MOV	C, A
+	MOV	A, C
+	SUB	L
+	MOV	L, A
+	MOV	A, D
+	SBB	H
+	MOV	H, A
+	MVI	A, 0xff
+	SUB	L
+	MVI	A, 0xff
+	SBB	H
+	JP	.LBB20_3
+; %bb.2:                                ;   in Loop: Header=BB20_1 Depth=1
+	MOV	A, L
+	STA	.LLo61_3+1
+.LBB20_3:                               ;   in Loop: Header=BB20_1 Depth=1
+	MVI	L, 0
+	JP	.LBB20_5
+; %bb.4:                                ;   in Loop: Header=BB20_1 Depth=1
+	MVI	L, 1
+.LBB20_5:                               ;   in Loop: Header=BB20_1 Depth=1
+	LDA	.LLo61_2+1
+	SUB	L
+	DCR	E
+	LXI	H, .LLo61_4+1
+	MOV	L, M
+	CMP	L
+	JNC	.LBB20_1
+; %bb.6:
+	RET
+                                        ; -- End function
 	.section	.text.main,"ax",@progbits
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
 ; %bb.0:
+	PUSH	PSW
 	;APP
 	MVI	A, 0xfb
 	STA	0x38
@@ -224,17 +390,54 @@ main:                                   ; @main
 	CALL	v6c_set_palette
 	CALL	memset
 	MVI	A, 0x64
-.LBB19_1:                               ; =>This Inner Loop Header: Depth=1
-	STA	.LLo61_0+1
+.LBB21_1:                               ; =>This Inner Loop Header: Depth=1
+	LXI	H, 1
+	DAD	SP
+	MOV	M, A
 	CALL	rand
 	MOV	A, L
 	MOV	B, H
 	CALL	draw_line
-.LLo61_0:
-	MVI	A, 0
+	LXI	H, 1
+	DAD	SP
+	MOV	A, M
 	DCR	A
-	JNZ	.LBB19_1
+	JNZ	.LBB21_1
+; %bb.3:
+	MVI	H, 0xa
+	MVI	A, 0x64
+.LBB21_4:                               ; =>This Inner Loop Header: Depth=1
+	PUSH	H
+	LXI	H, 3
+	DAD	SP
+	MOV	M, A
+	POP	H
+	XCHG
+	LXI	H, 0
+	DAD	SP
+	MOV	M, D
+	XCHG
+	PUSH	H
+	LXI	H, 3
+	DAD	SP
+	MOV	A, M
+	POP	H
+	CALL	draw_circle
+	MOV	D, L
+	LXI	H, 0
+	DAD	SP
+	MOV	H, M
+	MOV	L, D
+	PUSH	H
+	LXI	H, 3
+	DAD	SP
+	MOV	A, M
+	POP	H
+	ADI	0xf6
+	DCR	H
+	JNZ	.LBB21_4
 ; %bb.2:
+	POP	PSW
 	RET
                                         ; -- End function
 	.data

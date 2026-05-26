@@ -1,0 +1,201 @@
+O81 — SELECT_CC i8 through accumulator
+=======================================
+
+== C test case ==================================================================
+
+// O81 — SELECT_CC i8 through accumulator: fill-screen double-loop test.
+//
+// fillscreen():
+//   Outer loop counter y (i8, 0..25) claims A at the outer latch (CPI 0x19).
+//   Inner loop: LDAX D, ANI 4, conditional select between 0x00 and 0x4F,
+//   MOV M, result (dest in HL, src in DE).
+//   BEFORE O81: select materialised in C → MVI C, 0 / MOV M, C
+//               (B used as inner loop counter)
+//   AFTER  O81: routes through A → XRA A / MOV M, A  (O55 converts MVI A,0)
+//               (C freed from select result → used as inner loop counter)
+//
+// fillscreen_nonzero():
+//   Both arms non-zero (0xFE vs 0x01) — no XRA A optimization possible,
+//   but O81 still routes through A, freeing C for the inner loop counter.
+
+#include <stdint.h>
+
+void fillscreen(void) {
+    uint8_t *src = (uint8_t *)(uintptr_t)0xF800u;
+    uint8_t *dst = (uint8_t *)(uintptr_t)0x7802u;
+    for (uint8_t y = 0; y < 25; y++) {
+        for (uint8_t x = 0; x < 64; x++) {
+            uint8_t b = *src++;
+            *dst++ = (b & 4) ? (uint8_t)0x4F : (uint8_t)0x00;
+        }
+        dst += 15;
+    }
+}
+
+void fillscreen_nonzero(void) {
+    uint8_t *src = (uint8_t *)(uintptr_t)0xF800u;
+    uint8_t *dst = (uint8_t *)(uintptr_t)0x7802u;
+    for (uint8_t y = 0; y < 25; y++) {
+        for (uint8_t x = 0; x < 64; x++) {
+            uint8_t b = *src++;
+            *dst++ = (b & 4) ? (uint8_t)0xFE : (uint8_t)0x01;
+        }
+        dst += 15;
+    }
+}
+
+int main(void) {
+    fillscreen();
+    fillscreen_nonzero();
+    return 0;
+}
+
+== c8080 — fillscreen inner loop (i8080 equivalent) ============================
+; c8080 uses a static-memory calling convention: all local variables (src, dst,
+; x, y, b) are stored in a static area.  Every pointer dereference and counter
+; update requires LHLD/SHLD pairs.  Shown in i8080 syntax for cycle comparison.
+
+.l_3:                                         ; inner loop header
+        LDA     fillscreen_x         ; 16cc  3B  load x counter
+        CPI     64                   ;  8cc  2B  x < 64?
+        JNC     .l_5                 ; 12cc  3B  exit inner loop when x==64
+; src++:
+        LHLD    fillscreen_src       ; 20cc  3B
+        INX     H                    ;  8cc  1B
+        SHLD    fillscreen_src       ; 20cc  3B  store src+1
+        DCX     H                    ;  8cc  1B  restore HL=src
+        MOV     A, M                 ;  8cc  1B  A = *src
+        STA     fillscreen_b         ; 16cc  3B  b = A
+; dst++:
+        LHLD    fillscreen_dst       ; 20cc  3B
+        INX     H                    ;  8cc  1B
+        SHLD    fillscreen_dst       ; 20cc  3B  store dst+1
+        DCX     H                    ;  8cc  1B  restore HL=dst
+; conditional select:
+        LDA     fillscreen_b         ; 16cc  3B  reload b
+        ANI     4                    ;  8cc  2B
+        JZ      .l_6                 ; 12cc  3B   false arm (b&4==0) → JZ taken
+        MVI     A, 0x4f              ;  8cc  2B   true arm (b&4!=0)
+        JMP     .l_7                 ; 12cc  3B
+.l_6:   XRA     A                   ;  4cc  1B   false arm
+.l_7:   MOV     M, A                ;  8cc  1B
+; x++:
+        LDA     fillscreen_x         ; 16cc  3B
+        INR     A                    ;  8cc  1B
+        STA     fillscreen_x         ; 16cc  3B
+        JMP     .l_3                 ; 12cc  3B  back-edge
+
+; c8080 inner loop per iteration:
+;   false path (b&4==0): 16+8+12+20+8+20+8+8+16+20+8+20+8+16+8+12+4+8+16+8+16+12 = 272cc
+;   true  path (b&4!=0): 272 - 4 + (8+12) = 288cc
+;   body size: 50B
+
+== v6llvmc_old — fillscreen inner loop (BEFORE O81) =============================
+; Outer counter y: STA/LDA at outer latch ─ occupies A across inner loop.
+; Select result materialised in C (B = inner counter).
+
+.LBB15_2:                               ;   Parent Loop BB15_1 Depth=1
+                                        ; =>  This Inner Loop Header: Depth=2
+        LDAX    D                        ;  8cc  1B  A = *src
+        ANI     4                        ;  8cc  2B  test bit 2
+        JNZ     .LBB15_6                 ; 12cc  3B  true arm (b&4!=0) → jump
+; false arm (b&4==0):
+        MVI     C, 0                     ;  8cc  2B  ← materialise 0 in C
+        JMP     .LBB15_7                 ; 12cc  3B  ← JMP over true arm
+.LBB15_6:                               ;   true arm
+        MVI     C, 0x4f                  ;  8cc  2B  materialise 0x4F in C
+.LBB15_7:                               ;   common sink
+        MOV     M, C                     ;  8cc  1B  *dst = select result
+        INX     H                        ;  8cc  1B  dst++
+        INX     D                        ;  8cc  1B  src++
+        DCR     B                        ;  8cc  1B  inner counter--
+        JNZ     .LBB15_2                 ; 12cc  3B  back-edge
+
+; v6llvmc_old inner loop per iteration:
+;   false path (b&4==0, JNZ not-taken): 8+8+12+8+12+8+8+8+8+12 = 92cc
+;   true  path (b&4!=0, JNZ taken):     8+8+12+8+8+8+8+8+12    = 80cc
+;   body size: 20B  (MVI C,0 + JMP + MVI C,0x4F = 7B for select)
+
+== v6llvmc_new01 — fillscreen inner loop (AFTER O81) ============================
+; O81: both MVIr arms are single-use and A is dead at the SELECT_CC site.
+; O81 emits 4-block through-A diamond; O55 converts MVI A, 0 → XRA A.
+; Select result now in A (C freed → used as inner counter instead of B).
+
+.LBB15_2:                               ;   Parent Loop BB15_1 Depth=1
+                                        ; =>  This Inner Loop Header: Depth=2
+        LDAX    D                        ;  8cc  1B  A = *src
+        ANI     4                        ;  8cc  2B  test bit 2
+        JZ      .LBB15_6                 ; 12cc  3B  false arm (b&4==0) → jump
+; true arm (b&4!=0, JZ not-taken = fallthrough):
+        MVI     A, 0x4f                  ;  8cc  2B  materialise 0x4F in A
+        JMP     .LBB15_7                 ; 12cc  3B  jump to common sink
+.LBB15_6:                               ;   false arm
+        XRA     A                        ;  4cc  1B  ← A = 0  (O55: MVI A,0 → XRA A)
+.LBB15_7:                               ;   common sink
+        MOV     M, A                     ;  8cc  1B  *dst = select result
+        INX     H                        ;  8cc  1B  dst++
+        INX     D                        ;  8cc  1B  src++
+        DCR     C                        ;  8cc  1B  inner counter-- (C freed by O81)
+        JNZ     .LBB15_2                 ; 12cc  3B  back-edge
+
+; v6llvmc_new01 inner loop per iteration:
+;   false path (b&4==0, JZ taken):      8+8+12+4+8+8+8+8+12 = 76cc
+;   true  path (b&4!=0, JZ not-taken):  8+8+12+8+12+8+8+8+12 = 84cc
+;   Wait: true path: 8+8+12+8+12+8+8+8+12 = 84cc
+;         (MVI 0x4F = 8cc, JMP = 12cc replaces XRA A = 4cc on false path)
+;   body size: 19B  (MVI A,0x4F + JMP + XRA A = 6B for select)
+;
+; Note: MBP places the true arm (0x4F) as JZ fallthrough and the false arm
+;       (XRA A) as the JZ branch target.  This means the false path incurs
+;       the branch penalty (JZ taken = 12cc) but avoids the JMP (removes 3B/12cc);
+;       the false arm itself is only 1B/4cc (vs. OLD false arm: 2B/8cc + 3B/12cc=20cc).
+;       Net: false path -16cc (-17%), true path +4cc (+5%).
+
+== v6llvmc_new01 — fillscreen_nonzero inner loop (AFTER O81) ====================
+; Both arms non-zero → no XRA A optimization, but result still routes through A.
+; MBP similarly places 0xFE arm as JZ fallthrough, 0x01 arm as JZ branch target.
+
+.LBB16_2:                               ;   This Inner Loop Header: Depth=2
+        LDAX    D                        ;  8cc  1B
+        ANI     4                        ;  8cc  2B
+        JZ      .LBB16_6                 ; 12cc  3B  false arm (0x01)
+        MVI     A, 0xfe                  ;  8cc  2B  true arm
+        JMP     .LBB16_7                 ; 12cc  3B
+.LBB16_6:
+        MVI     A, 1                     ;  8cc  2B  false arm
+.LBB16_7:
+        MOV     M, A                     ;  8cc  1B
+        INX     H                        ;  8cc  1B
+        INX     D                        ;  8cc  1B
+        DCR     C                        ;  8cc  1B  C freed by O81
+        JNZ     .LBB16_2                 ; 12cc  3B
+
+; Both arms require 2B MVI + either JMP or fallthrough — no cycle delta vs old.
+; Register allocation improvement: result in A, C available as inner counter.
+
+== Comparison table =============================================================
+; fillscreen inner loop (64 iterations × 25 outer iterations = 1600 total).
+
+Per inner-loop iteration:
+
+  Compiler          | false path | true path | body size | Notes
+  ------------------|------------|-----------|-----------|---------------------------
+  c8080             |    272 cc  |   288 cc  |    50 B   | all vars in LHLD/SHLD
+  v6llvmc pre-O81   |     92 cc  |    80 cc  |    20 B   | MVI C,0 + JMP (false arm)
+  v6llvmc O81       |     76 cc  |    92 cc  |    19 B   | XRA A (false arm, no JMP)
+
+O81 savings on the false path (b&4==0, background pixel — dominant in screen fill):
+  Select materialisation: MVI C,0 (8cc,2B) + JMP (12cc,3B) → XRA A (4cc,1B)
+  Saving per false-path iteration: -16cc, -4B (select+jmp removed; XRA adds 4cc,1B)
+
+Over 1600 inner iterations, assuming 75 % false-path (background) pixels:
+  False-path iterations:  1200 × (-16cc) = -19200cc
+  True-path iterations:    400 × (+12cc) =  +4800cc  (JMP added on true path)
+  Net savings per fillscreen() call:       -14400cc
+
+  At 2 MHz: -7.2 ms per fillscreen() call.
+
+v6llvmc full inner loop body (fillscreen):
+  pre-O81: 20 instructions, 20 B  (B = inner counter, C = select result)
+  post-O81: 20 instructions, 19 B  (C = inner counter, A = select result)
+  Freed register: C (inner counter) and B (completely free in inner loop body)

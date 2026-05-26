@@ -1455,6 +1455,28 @@ SDValue V6CTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 // EmitInstrWithCustomInserter — expand pseudo-instructions
 //===----------------------------------------------------------------------===//
 
+/// Return true if physical register Reg is dead (no uses before the next def)
+/// starting from the instruction following MI in MBB.
+/// Mirrors isRegDeadAtMI in V6CInstrInfo.cpp. (O81)
+static bool isPhysRegDeadAtMI(unsigned Reg, const MachineInstr &MI,
+                               MachineBasicBlock &MBB,
+                               const TargetRegisterInfo *TRI) {
+  for (auto I = std::next(MI.getIterator()); I != MBB.end(); ++I) {
+    bool usesReg = false, defsReg = false;
+    for (const MachineOperand &MO : I->operands()) {
+      if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg)) continue;
+      if (MO.isUse() && !MO.isUndef()) usesReg = true;
+      if (MO.isDef()) defsReg = true;
+    }
+    if (usesReg) return false;
+    if (defsReg) return true;
+  }
+  for (MachineBasicBlock *Succ : MBB.successors())
+    for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
+      if (Succ->isLiveIn(*AI)) return false;
+  return true;
+}
+
 MachineBasicBlock *
 V6CTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
                                                 MachineBasicBlock *BB) const {
@@ -1482,6 +1504,85 @@ V6CTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
 
     // Create new basic blocks.
     MachineFunction *MF = BB->getParent();
+
+    // O81: if this is an i8 select with both arms being rematerializable
+    // constants and A is dead at the select, route through physreg A using
+    // a 4-block diamond. This allows the O55 peephole (MVI A,0 → XRA A)
+    // to fire on the zero arm, saving 1B / 4cc in HL-destination loops.
+    MachineRegisterInfo &MRI = MF->getRegInfo();
+    const TargetRegisterInfo *TRI =
+        BB->getParent()->getSubtarget().getRegisterInfo();
+
+    auto isImmRemat = [&](Register R) -> MachineInstr * {
+      if (!R.isVirtual()) return nullptr;
+      MachineInstr *Def = MRI.getUniqueVRegDef(R);
+      if (!Def || Def->getParent() != BB) return nullptr;
+      if (Def->getOpcode() != V6C::MVIr) return nullptr;
+      if (!MRI.hasOneNonDBGUse(R)) return nullptr;
+      return Def;
+    };
+
+    if (MI.getOpcode() == V6C::V6C_SELECT_CC) {
+      MachineInstr *TrueDef  = isImmRemat(TrueReg);
+      MachineInstr *FalseDef = isImmRemat(FalseReg);
+      if (TrueDef && FalseDef && isPhysRegDeadAtMI(V6C::A, MI, *BB, TRI)) {
+        int64_t TrueImm  = TrueDef->getOperand(1).getImm();
+        int64_t FalseImm = FalseDef->getOperand(1).getImm();
+
+        MachineBasicBlock *FalseBBNew = MF->CreateMachineBasicBlock();
+        MachineBasicBlock *TrueBBNew  = MF->CreateMachineBasicBlock();
+        MachineBasicBlock *SinkBB     = MF->CreateMachineBasicBlock();
+        MachineFunction::iterator It = ++BB->getIterator();
+        MF->insert(It, FalseBBNew);
+        MF->insert(It, TrueBBNew);
+        MF->insert(It, SinkBB);
+
+        SinkBB->splice(SinkBB->begin(), BB,
+                       std::next(MachineBasicBlock::iterator(MI)), BB->end());
+        SinkBB->transferSuccessorsAndUpdatePHIs(BB);
+
+        // Erase the original MVIr defs from BB (single-use, only the select).
+        TrueDef->eraseFromParent();
+        FalseDef->eraseFromParent();
+
+        // BB: un-inverted branch to TrueBBNew; fall through to FalseBBNew.
+        unsigned JccOpc;
+        switch (CC) {
+        default: llvm_unreachable("Unknown V6C condition code");
+        case V6CCC::COND_NZ: JccOpc = V6C::JNZ; break;
+        case V6CCC::COND_Z:  JccOpc = V6C::JZ;  break;
+        case V6CCC::COND_NC: JccOpc = V6C::JNC; break;
+        case V6CCC::COND_C:  JccOpc = V6C::JC;  break;
+        case V6CCC::COND_PO: JccOpc = V6C::JPO; break;
+        case V6CCC::COND_PE: JccOpc = V6C::JPE; break;
+        case V6CCC::COND_P:  JccOpc = V6C::JP;  break;
+        case V6CCC::COND_M:  JccOpc = V6C::JM;  break;
+        }
+        BuildMI(BB, DL, TII.get(JccOpc)).addMBB(TrueBBNew);
+        BB->addSuccessor(FalseBBNew);
+        BB->addSuccessor(TrueBBNew);
+
+        // FalseBB: materialize false arm into A, then jump to SinkBB.
+        BuildMI(FalseBBNew, DL, TII.get(V6C::MVIr), V6C::A).addImm(FalseImm);
+        BuildMI(FalseBBNew, DL, TII.get(V6C::JMP)).addMBB(SinkBB);
+        FalseBBNew->addSuccessor(SinkBB);
+
+        // TrueBB: materialize true arm into A; fall through to SinkBB.
+        BuildMI(TrueBBNew, DL, TII.get(V6C::MVIr), V6C::A).addImm(TrueImm);
+        TrueBBNew->addSuccessor(SinkBB);
+
+        // SinkBB: COPY physreg A → vreg DstReg (RegisterCoalescer eliminates).
+        SinkBB->addLiveIn(V6C::A);
+        BuildMI(*SinkBB, SinkBB->begin(), DL,
+                TII.get(TargetOpcode::COPY), DstReg)
+            .addReg(V6C::A, RegState::Kill);
+
+        MI.eraseFromParent();
+        return SinkBB;
+      }
+    }
+
+    // General case: 3-block diamond with PHI.
     MachineBasicBlock *TrueBB = MF->CreateMachineBasicBlock();
     MachineBasicBlock *SinkBB = MF->CreateMachineBasicBlock();
 
