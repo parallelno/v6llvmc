@@ -1,5 +1,8 @@
 # O52. Index Induction Variable Rewriting (8-bit Loop Indices)
 
+## Resolution
+"superseded by V6CLoopPointerInduction." The optimization is not needed and implementing it would provide zero measurable benefit on any testable case.
+
 *Inspired by llvm-mos `MOSIndexIV`.*
 *Detailed analysis: [llvm_mos_analysis.md](llvm_mos_analysis.md) §S2.*
 

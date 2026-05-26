@@ -44,8 +44,7 @@ void main() {
     // fill_rect(8, 50, 16, 156);
     // draw_text("HELLO WORLD", 10, 10);
 
-    uint16_t* ttt = (uint16_t*)0x1234;
-
+    // Draw 100 lines from the center of the screen to random points.
     for (int i = 0; i < LINES; i++) {
         uint16_t r1 = rand();
         uint8_t x1 = r1 & 0xFF;

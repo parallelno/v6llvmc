@@ -19,7 +19,8 @@ hl live, de dead:
 new: xchg; lxi h, offset; dad sp; mov reg8, m; xchg; 40cc
 old: clobbers hl, which can lead to spilling or less optimal
 ================================
-possible bug. the svofski line draw program doesnt work when compiled with v6asm
+possible bug. the svofski line draw program doesnt work when compiled with v6asm.
+compare v6asm binary output with what the downloaded line bin from https://svofski.github.io/pretty-8080-assembler/
 ================================
 optimization template:
 make an optimization peephole design document and store it to design\future_plans\ folder. add it to design\future_plans\README.md.
