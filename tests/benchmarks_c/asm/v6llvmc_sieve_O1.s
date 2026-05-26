@@ -111,8 +111,6 @@ main:                                   ; @main
 	DAD	B
 	MOV	B, H
 	MOV	C, L
-	MOV	H, B
-	MOV	L, C
 	;--- V6C_BR_CC16_IMM ---
 	MVI	A, 0x3f
 	SUB	L

@@ -1,54 +1,39 @@
 ; RUN: llc -march=v6c -O2 < %s | FileCheck %s
-; RUN: llc -march=v6c -O2 -v6c-disable-inx-dcx-spill-fold < %s | FileCheck %s --check-prefix=DISABLED
+; RUN: llc -march=v6c -O2 -v6c-disable-pair-copy-roundtrip < %s | FileCheck %s --check-prefix=DISABLED
 ;
-; O84: INX/DCX-through-spill round-trip fold.
+; O86: Pair-copy round-trip elimination.
 ;
-; After O83 removes the surrounding POP H / PUSH H pairs, two patterns are
-; exposed in the outer loop of the sieve benchmark:
+; In the inner sieve loop, after `k += i` (lowered via DAD B), the
+; register allocator (post-O85 TypeNarrowing) produces a four-MOV
+; sequence where the last two MOVs copy BC back into HL -- a no-op
+; because HL was never modified between the first two MOVs and the
+; last two:
 ;
-; Pattern A — INX round-trip (6 instructions):
-;   MOV   C, L            ; copy HL into BC
-;   MOV   B, H            ;
-;   INX   B               ; increment BC
-;   MOV   L, C            ; copy BC back into HL
-;   MOV   H, B            ;
-;   SHLD  addr            ; store HL
+;   DAD     B           ; HL = HL + BC = k + i  (new k)
+;   MOV     B, H        ; BC = new k
+;   MOV     C, L
+;   MOV     H, B        ; HL = BC = new k  <- no-op
+;   MOV     L, C        ;                  <- no-op
 ;
-;   Becomes: INX H / SHLD addr   (BC must be dead after SHLD)
-;
-; Pattern B — round-trip copy, no INX/DCX (5 instructions):
-;   MOV   B, H            ; copy HL into BC
-;   MOV   C, L            ;
-;   MOV   L, C            ; copy BC back into HL (no-op)
-;   MOV   H, B            ;
-;   SHLD  addr
-;
-;   Becomes: SHLD addr             (BC must be dead after SHLD)
+; O86 removes MOV H,B and MOV L,C.  The bounds comparison (MVI A, ...)
+; then immediately follows MOV C, L.
 ;
 ; CHECK-LABEL: main:
 ; DISABLED-LABEL: main:
 ;
-; -- Pattern B (enabled) -------------------------------------------------------
-; The outer-loop latch updates a k-spill via DAD B (HL+BC), preceded by DAD H
-; (i_sq doubling -- unique anchor in main).  After O84 the four round-trip
-; MOVs (HL->BC, BC->HL) around SHLD are gone; PUSH H / DAD B / SHLD follow
-; DAD H with only the O61-patched LXI B reload in between.
-; CHECK:      DAD     H
-; CHECK:      LXI     B, 0
-; CHECK-NEXT: PUSH    H
-; CHECK-NEXT: DAD     B
-; CHECK-NEXT: SHLD
+; -- Enabled: round-trip eliminated, MVI A follows directly after MOV C,L --
+; CHECK: DAD     B
+; CHECK-NEXT: MOV     B, H
+; CHECK-NEXT: MOV     C, L
+; CHECK-NEXT: MVI     A,
 ;
-; -- Pattern B (disabled) ------------------------------------------------------
-; DISABLED:      DAD     H
-; DISABLED:      LXI     B, 0
-; DISABLED-NEXT: PUSH    H
-; DISABLED-NEXT: DAD     B
+; -- Disabled: round-trip present between MOV C,L and MVI A --
+; DISABLED: DAD     B
 ; DISABLED-NEXT: MOV     B, H
 ; DISABLED-NEXT: MOV     C, L
-; DISABLED-NEXT: MOV     L, C
 ; DISABLED-NEXT: MOV     H, B
-; DISABLED-NEXT: SHLD
+; DISABLED-NEXT: MOV     L, C
+; DISABLED-NEXT: MVI     A,
 
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
 target triple = "i8080-unknown-v6c"

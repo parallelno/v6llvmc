@@ -55,6 +55,11 @@ static cl::opt<bool> DisableInxDcxSpillFold(
     cl::desc("Disable INX/DCX-through-spill round-trip fold (O84)"),
     cl::init(false), cl::Hidden);
 
+static cl::opt<bool> DisablePairCopyRoundTrip(
+    "v6c-disable-pair-copy-roundtrip",
+    cl::desc("Disable pair-copy round-trip elimination (O86)"),
+    cl::init(false), cl::Hidden);
+
 /// True if MI is an O61 patched-immediate site: it carries a
 /// pre-instr `.LLo61_N:` label (referenced by SHLD/STA spills) and/or
 /// its imm operand is flagged MO_PATCH_IMM.  Erasing such an MI loses
@@ -100,6 +105,7 @@ private:
   bool collapseMovChain(MachineBasicBlock &MBB);
   bool eliminateDeadPopPush(MachineBasicBlock &MBB);
   bool foldInxDcxSpillRoundTrip(MachineBasicBlock &MBB);
+  bool foldPairCopyRoundTrip(MachineBasicBlock &MBB);
 };
 
 } // end anonymous namespace
@@ -1621,6 +1627,103 @@ bool V6CPeephole::foldInxDcxSpillRoundTrip(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// O86 — Pair-copy round-trip elimination.
+///
+/// Remove the reverse half of a register-pair copy that is immediately
+/// followed by copying the pair back to its source:
+///
+///   MOV A1, B1    ; copy hi byte:  A1 = B1
+///   MOV A2, B2    ; copy lo byte:  A2 = B2
+///   MOV B1, A1    ; round-trip hi: B1 = A1 = old_B1  ← no-op
+///   MOV B2, A2    ; round-trip lo: B2 = A2 = old_B2  ← no-op
+///
+/// The last two MOVs are genuine no-ops: B1 and B2 are unchanged since
+/// steps (1) and (2), so restoring them from A1/A2 has no effect.
+/// Handles all 8080 register-pair combinations (BC, DE, HL) and any
+/// two distinct 8-bit registers acting as a pair.
+///
+/// This fires on the pattern emitted after O85 TypeNarrowing in the sieve
+/// benchmark inner loop:
+///   DAD B ; MOV B,H ; MOV C,L ; MOV H,B ; MOV L,C
+/// → DAD B ; MOV B,H ; MOV C,L   (saves 10 cc / iteration)
+bool V6CPeephole::foldPairCopyRoundTrip(MachineBasicBlock &MBB) {
+  if (DisablePairCopyRoundTrip)
+    return false;
+
+  bool Changed = false;
+
+  // Helper: advance past debug instructions.
+  auto nextNonDbg = [](MachineBasicBlock::iterator It,
+                       MachineBasicBlock::iterator End)
+      -> MachineBasicBlock::iterator {
+    ++It;
+    while (It != End && It->isDebugInstr())
+      ++It;
+    return It;
+  };
+
+  for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
+    // (1): MOV A1, B1
+    if (I->getOpcode() != V6C::MOVrr || isO61PatchedImm(*I)) {
+      ++I;
+      continue;
+    }
+    Register A1 = I->getOperand(0).getReg();
+    Register B1 = I->getOperand(1).getReg();
+    if (A1 == B1) { ++I; continue; } // self-copy; eliminateSelfMov handles it
+
+    // (2): MOV A2, B2
+    auto I2 = nextNonDbg(I, E);
+    if (I2 == E || I2->getOpcode() != V6C::MOVrr || isO61PatchedImm(*I2)) {
+      ++I;
+      continue;
+    }
+    Register A2 = I2->getOperand(0).getReg();
+    Register B2 = I2->getOperand(1).getReg();
+    if (A2 == B2) { ++I; continue; }
+
+    // (3): MOV B1, A1  (reverse of step 1)
+    auto I3 = nextNonDbg(I2, E);
+    if (I3 == E || I3->getOpcode() != V6C::MOVrr || isO61PatchedImm(*I3)) {
+      ++I;
+      continue;
+    }
+    if (I3->getOperand(0).getReg() != B1 ||
+        I3->getOperand(1).getReg() != A1) {
+      ++I;
+      continue;
+    }
+
+    // (4): MOV B2, A2  (reverse of step 2)
+    auto I4 = nextNonDbg(I3, E);
+    if (I4 == E || I4->getOpcode() != V6C::MOVrr || isO61PatchedImm(*I4)) {
+      ++I;
+      continue;
+    }
+    if (I4->getOperand(0).getReg() != B2 ||
+        I4->getOperand(1).getReg() != A2) {
+      ++I;
+      continue;
+    }
+
+    // All four participating registers must be distinct so that no step
+    // clobbers a source needed by a later step in the sequence.
+    if (A1 == A2 || A1 == B2 || A2 == B1 || B1 == B2) {
+      ++I;
+      continue;
+    }
+
+    // Instructions (3) and (4) are no-ops: B1 and B2 were not modified
+    // between steps (1)/(2) and (3)/(4) (the four MOVs are consecutive,
+    // so no intervening def of B1 or B2 can exist).  Remove them.
+    I4->eraseFromParent();
+    I3->eraseFromParent();
+    I = std::next(I2); // continue from the instruction after (2)
+    Changed = true;
+  }
+  return Changed;
+}
+
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
@@ -1632,6 +1735,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
     Changed |= foldShldLhldToPushPop(MBB);
     Changed |= eliminateDeadPopPush(MBB);   // O83: must follow O43
     Changed |= foldInxDcxSpillRoundTrip(MBB); // O84: must follow O83
+    Changed |= foldPairCopyRoundTrip(MBB);   // O86
     Changed |= foldMovAluM(MBB);
     Changed |= foldIncDecMviM(MBB);
     Changed |= eliminateSelfMov(MBB);
