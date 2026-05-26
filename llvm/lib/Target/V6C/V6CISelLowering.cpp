@@ -874,6 +874,10 @@ SDValue V6CTargetLowering::LowerSHL(SDValue Op, SelectionDAG &DAG) const {
   return DAG.getNode(ISD::TRUNCATE, DL, MVT::i8, Shifted);
 }
 
+// Forward declaration: emitRotChain is defined in the O67 section below.
+static SDValue emitRotChain(SelectionDAG &DAG, const SDLoc &DL, SDValue Val,
+                            unsigned RotOpc, unsigned N);
+
 SDValue V6CTargetLowering::LowerSRL(SDValue Op, SelectionDAG &DAG) const {
   if (Op.getValueType() == MVT::i16)
     return LowerSRL_i16(Op, DAG);
@@ -885,16 +889,23 @@ SDValue V6CTargetLowering::LowerSRL(SDValue Op, SelectionDAG &DAG) const {
   if (Op.getValueType() != MVT::i8)
     return SDValue();
 
-  // Constant shift: unroll.
+  // Constant shift: emit pure 8-bit rotate chain + AND mask.
+  // Avoids widening to i16 (BUILD_PAIR + SRL16 sequence).
+  //   ShAmt <= 4: RRC x ShAmt, then ANI (0xFF >> ShAmt).
+  //   ShAmt >  4: RLC x (8-ShAmt) rotates the desired bits into position,
+  //               then same ANI mask clears the rotated-in garbage.
   if (auto *CA = dyn_cast<ConstantSDNode>(Amt)) {
     unsigned ShAmt = CA->getZExtValue() & 7;
     if (ShAmt == 0)
       return Val;
-    // For i8 logical right shift by constant, promote to i16 and shift.
-    SDValue Ext = DAG.getNode(ISD::ZERO_EXTEND, DL, MVT::i16, Val);
-    SDValue ShiftedWide = DAG.getNode(V6CISD::SRL16, DL, MVT::i16, Ext,
-                                      DAG.getTargetConstant(ShAmt, DL, MVT::i8));
-    return DAG.getNode(ISD::TRUNCATE, DL, MVT::i8, ShiftedWide);
+    SDValue Rotated;
+    if (ShAmt <= 4)
+      Rotated = emitRotChain(DAG, DL, Val, V6CISD::ROTR8, ShAmt);
+    else
+      Rotated = emitRotChain(DAG, DL, Val, V6CISD::ROTL8, 8 - ShAmt);
+    unsigned MaskVal = 0xFFu >> ShAmt;
+    return DAG.getNode(ISD::AND, DL, MVT::i8, Rotated,
+                       DAG.getConstant(MaskVal, DL, MVT::i8));
   }
 
   // Variable i8 logical right shift: promote to i16.
