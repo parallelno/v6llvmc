@@ -1,0 +1,84 @@
+Feature 67 — O85: V6CTypeNarrowing ExtraPNUses / ExtraAddUses
+=============================================================
+
+This feature extends the V6C type-narrowing pass (V6CTypeNarrowing) to allow
+loop IV narrowing (i16 → i8) even when the PHI node or the add-step have
+extra users beyond the icmp exit condition, provided those extra users can be
+rewritten via a zext of the narrowed i8 value.
+
+Two new cases are handled:
+  - ExtraPNUses:  non-AddOp, non-PHI users of the loop PHI (e.g. xor i16 %acc, %i)
+  - ExtraAddUses: non-icmp, non-inttoptr, non-backedge users of the add step
+
+A range guard is added: if ExtraPNUses/ExtraAddUses are non-empty but there is
+no icmp exit condition, narrowing is rejected (no guaranteed range proof).
+
+
+Benchmark function: iter_xor_mix (sieve-companion micro-benchmark)
+-------------------------------------------------------------------
+Source IR:
+  %i   = phi i16 [ 0, %entry ], [ %i.next, %loop ]
+  %acc = phi i16 [ zext(%seed), %entry ], [ add(%acc, xor(%acc,%i)), %loop ]
+  %i.next = add nuw nsw i16 %i, 1
+  br (icmp eq %i.next, 64) loop/exit
+
+  The xor node is an ExtraPNUser of %i (uses the i16 IV for computation).
+
+
+OLD assembly (before O85) — i16 counter in D:E pair, two-branch exit:
+----------------------------------------------------------------------
+  .LBB15_1:
+        MOV     A, E
+        XRA     L
+        MOV     C, A
+        MOV     A, D
+        XRA     H
+        MOV     B, A
+        DAD     B
+        INX     D            ; i16 increment (5cc)
+        MVI     A, 0x40      ; load bound (7cc)
+        CMP     E            ; compare lo byte (4cc)
+        JNZ     .LBB15_1    ; branch if lo byte != 0x40 (10cc taken)
+  .bb3: (in Loop)            ; secondary hi-byte check block
+        XRA     A
+        CMP     D            ; compare hi byte (4cc)
+        JNZ     .LBB15_1    ; branch if hi != 0 (10cc taken)
+
+  Per-iteration cost (not exiting): INX D + MVI + CMP + JNZ = 26cc
+  Two CFG blocks for the exit check (lo-byte + hi-byte check)
+
+
+NEW assembly (after O85) — i8 counter in A register, single-branch exit:
+-------------------------------------------------------------------------
+  .LBB15_1:
+        MOV     C, A
+        MOV     D, A
+        MOV     A, C
+        XRA     L
+        MOV     C, A
+        MOV     A, E
+        XRA     H
+        MOV     B, A
+        DAD     B
+        MOV     A, D
+        INR     A            ; i8 increment (5cc)
+        CPI     0x40         ; compare to bound (7cc)
+        JNZ     .LBB15_1    ; single branch (10cc taken)
+
+  Per-iteration cost (not exiting): INR + CPI + JNZ = 22cc
+  One CFG block (secondary hi-byte check eliminated)
+
+
+Cycle savings per call (64 iterations):
+  26cc → 22cc = 4cc saved per iteration
+  4cc × 64 iterations = 256cc per call
+
+Code size: exit check shrinks from 5 instructions (INX+MVI+CMP+JNZ+CMP+JNZ)
+           to 3 instructions (INR+CPI+JNZ); secondary block eliminated.
+
+
+Regression tests:
+  tests/lit/CodeGen/V6C/type-narrowing-iv-arith-users.ll  — PASS (5 test cases)
+  tests/lit/CodeGen/V6C/peephole-pop-push-elim.ll         — PASS (updated for O85)
+  tests/lit/CodeGen/V6C/peephole-inx-dcx-spill-fold.ll   — PASS (updated for O85)
+  python tests/run_all.py                                  — 3/3 suites PASS

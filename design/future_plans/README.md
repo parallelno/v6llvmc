@@ -70,8 +70,8 @@ O66_switch_jump_table_pchl.md
 ✅ O15_conditional_call_optimization.md
 ✅ O05_build_pair_add16_fusion.md
 ✅ O02_sequential_lxi_inx_folding.md
-O64_liveness_aware_i8_spill_lowering.md
-O70_math_header.md
+✅ O64_liveness_aware_i8_spill_lowering.md
+✅ O70_math_header.md
 
 **Phase 4 — Loop & stack (Medium-High complexity, massive payoff)**:
 
@@ -79,7 +79,7 @@ O70_math_header.md
 ✅ O22_tti_cost_hooks.md
 ✅ O10_static_stack_allocation.md
 ✅ O19_inline_arithmetic_expansion.md
-O52_index_iv_rewriting.md
+✅ O85_type_narrowing_iv_arithmetic_users.md
 
 **Phase 5 — Advanced (High complexity)**:
 

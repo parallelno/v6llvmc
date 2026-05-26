@@ -347,10 +347,16 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
   if (Step != -1 && Step != 1)
     return false;
 
-  // PN's only user (besides the backedge from AddOp) must be... well, AddOp.
-  for (User *U : PN->users()) {
-    if (U != AddOp)
+  // Collect extra (non-AddOp) users of PN.  After narrowing, each will be
+  // replaced by zext(i8 NewPN) — safe because the IV stays in [0, 255].
+  // PHI users are rejected: per-edge zext placement is not implemented.
+  SmallVector<Use *, 4> ExtraPNUses;
+  for (Use &U : PN->uses()) {
+    if (U.getUser() == AddOp)
+      continue;
+    if (isa<PHINode>(U.getUser()))
       return false;
+    ExtraPNUses.push_back(&U);
   }
 
   // AddOp's users (apart from feeding back into PN) must be one of:
@@ -368,10 +374,14 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
   SmallVector<ICmpInst *, 2> CmpsDirect;
   SmallVector<ICmpInst *, 2> CmpsViaPtr;
   SmallVector<IntToPtrInst *, 2> IntToPtrs;
-  for (User *U : AddOp->users()) {
-    if (U == PN)
+  // Collect extra (non-icmp, non-inttoptr, non-backedge) users of AddOp.
+  // After narrowing, each will be replaced by zext(i8 NewAdd).
+  // PHI users are rejected for the same reason as above.
+  SmallVector<Use *, 4> ExtraAddUses;
+  for (Use &U : AddOp->uses()) {
+    if (U.getUser() == PN)
       continue;
-    if (auto *Cmp = dyn_cast<ICmpInst>(U)) {
+    if (auto *Cmp = dyn_cast<ICmpInst>(U.getUser())) {
       if (!Cmp->isEquality())
         return false;
       Value *Other = Cmp->getOperand(0) == AddOp ? Cmp->getOperand(1)
@@ -387,7 +397,7 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
       CmpsDirect.push_back(Cmp);
       continue;
     }
-    if (auto *I2P = dyn_cast<IntToPtrInst>(U)) {
+    if (auto *I2P = dyn_cast<IntToPtrInst>(U.getUser())) {
       if (Step != -1)
         return false; // ptr-null exit only meaningful for down-to-zero.
       for (User *UU : I2P->users()) {
@@ -403,8 +413,19 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
       IntToPtrs.push_back(I2P);
       continue;
     }
-    return false;
+    // Any other user: collect for zext rewrite.
+    // Reject PHI users — per-edge zext insertion is not implemented.
+    if (isa<PHINode>(U.getUser()))
+      return false;
+    ExtraAddUses.push_back(&U);
   }
+
+  // If extra IV uses exist but there is no icmp to prove the loop bound,
+  // we cannot verify the range ⊆ [0, 255] without SCEV.  Defer Case A
+  // (exit replaced by pointer comparison by LPI) to a future SCEV pass.
+  if ((!ExtraPNUses.empty() || !ExtraAddUses.empty()) &&
+      CmpsDirect.empty() && CmpsViaPtr.empty())
+    return false;
 
   // All clear — rewrite.
   Type *I8Ty = Type::getInt8Ty(PN->getContext());
@@ -421,6 +442,26 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
       NewPN, ConstantInt::getSigned(I8Ty, Step),
       AddOp->getName() + ".narrow");
   NewPN->addIncoming(NewAdd, LatchBB);
+
+  // Rewrite extra PN users: old i16 IV → zext(i8 NewPN).
+  // Insert the zext right after the header PHIs so it dominates every
+  // loop-body instruction that previously used the i16 IV.
+  if (!ExtraPNUses.empty()) {
+    IRBuilder<> B(PN->getParent()->getFirstNonPHI());
+    Value *Wide = B.CreateZExt(NewPN, PN->getType(),
+                               NewPN->getName() + ".wide");
+    for (Use *U : ExtraPNUses)
+      U->set(Wide);
+  }
+  // Rewrite extra AddOp users: old i16 i.next → zext(i8 NewAdd).
+  // Insert immediately after NewAdd (in the latch block).
+  if (!ExtraAddUses.empty()) {
+    IRBuilder<> B(cast<Instruction>(NewAdd)->getNextNode());
+    Value *Wide = B.CreateZExt(NewAdd, AddOp->getType(),
+                               NewAdd->getName() + ".wide");
+    for (Use *U : ExtraAddUses)
+      U->set(Wide);
+  }
 
   // Rewrite direct icmp users.
   for (ICmpInst *Cmp : CmpsDirect) {
