@@ -1,5 +1,9 @@
 # O59. Frequency-Weighted Spill Slot Allocation
 
+# Resolution
+Not aplicable because we have better solution O61 and more flexible calling
+convention.
+
 *Inspired by llvm-mos `MOSZeroPageAlloc`.*
 *Detailed analysis: [llvm_mos_analysis.md](llvm_mos_analysis.md) §S7.*
 

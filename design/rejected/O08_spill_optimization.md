@@ -1,5 +1,8 @@
 # O8. Spill Optimization (Tier 1/2 Strategy)
 
+## Resolution
+Superseeded by O10 (static stack), O61 (spill-patched reload).
+
 ## Problem
 
 Stack-relative addressing on the 8080 costs **~52cc per spill or reload**

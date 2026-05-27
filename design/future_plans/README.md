@@ -83,12 +83,9 @@ O66_switch_jump_table_pchl.md
 
 **Phase 5 — Advanced (High complexity)**:
 
-O03_narrow_type_arithmetic.md
-O08_spill_optimization.md
-O59_spill_slot_allocation.md
 ✅ O61_spill_in_reload_immediate.md
 O63_split_spill_pseudo_flags.md
-../plan_asm_interop_overhaul.md
+✅ ../plan_asm_interop_overhaul.md
 
 **Deferred**:
 

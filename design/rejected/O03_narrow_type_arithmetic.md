@@ -1,5 +1,8 @@
 # O3. Narrow-Type Arithmetic (i8 Chain Instead of i16)
 
+## Resolution
+Already implemented.
+
 ## Problem
 
 The LLVM IR frontend emits `zext i8 → i16` before every arithmetic
