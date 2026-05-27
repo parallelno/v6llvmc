@@ -18,11 +18,22 @@
 ; O86 removes MOV H,B and MOV L,C.  The bounds comparison (MVI A, ...)
 ; then immediately follows MOV C, L.
 ;
-; -- Enabled: compilation succeeds --
-; CHECK: .text
+; CHECK-LABEL: main:
+; DISABLED-LABEL: main:
 ;
-; -- Disabled: compilation succeeds --
-; DISABLED: .text
+; -- Enabled: round-trip eliminated, MVI A follows directly after MOV C,L --
+; CHECK: DAD     B
+; CHECK-NEXT: MOV     B, H
+; CHECK-NEXT: MOV     C, L
+; CHECK-NEXT: MVI     A,
+;
+; -- Disabled: round-trip present between MOV C,L and MVI A --
+; DISABLED: DAD     B
+; DISABLED-NEXT: MOV     B, H
+; DISABLED-NEXT: MOV     C, L
+; DISABLED-NEXT: MOV     H, B
+; DISABLED-NEXT: MOV     L, C
+; DISABLED-NEXT: MVI     A,
 
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
 target triple = "i8080-unknown-v6c"

@@ -29,21 +29,20 @@
 ; DISABLED-LABEL: main:
 ;
 ; -- Pattern B (enabled) -------------------------------------------------------
-; The outer-loop latch first doubles i (MOV H,D / MOV L,E / DAD D — unique
-; anchor in main), then updates the i_sq spill via .LLo61_12 (LXI B + DAD B).
-; After O84 the four round-trip MOVs (HL->BC, BC->HL) around SHLD are gone.
-; CHECK:      MOV     H, D
-; CHECK-NEXT: MOV     L, E
-; CHECK-NEXT: DAD     D
+; The outer-loop latch updates a k-spill via DAD B (HL+BC), preceded by DAD H
+; (i_sq doubling -- unique anchor in main).  After O84 the four round-trip
+; MOVs (HL->BC, BC->HL) around SHLD are gone; PUSH H / DAD B / SHLD follow
+; DAD H with only the O61-patched LXI B reload in between.
+; CHECK:      DAD     H
 ; CHECK:      LXI     B, 0
+; CHECK-NEXT: PUSH    H
 ; CHECK-NEXT: DAD     B
 ; CHECK-NEXT: SHLD
 ;
 ; -- Pattern B (disabled) ------------------------------------------------------
-; DISABLED:      MOV     H, D
-; DISABLED-NEXT: MOV     L, E
-; DISABLED-NEXT: DAD     D
+; DISABLED:      DAD     H
 ; DISABLED:      LXI     B, 0
+; DISABLED-NEXT: PUSH    H
 ; DISABLED-NEXT: DAD     B
 ; DISABLED-NEXT: MOV     B, H
 ; DISABLED-NEXT: MOV     C, L
