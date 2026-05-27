@@ -16,17 +16,17 @@
 ; DISABLED-LABEL: main:
 ;
 ; -- Case 1 (enabled) ----------------------------------------------------------
-; In the .LLo61_9 slot update (outer-loop i_sq computation), after O83 removes
+; In the .LLo61_10 slot update (outer-loop k-spill DAD), after O83 removes
 ; the POP H / PUSH H pair the remaining MOV B,H/MOV C,L/MOV L,C/MOV H,B round-trip
 ; is Pattern B for O84 and gets fully eliminated too.
-; CHECK:      .LLo61_9:
+; CHECK:      .LLo61_10:
 ; CHECK-NEXT: LXI     B, 0
 ; CHECK-NEXT: PUSH    H
 ; CHECK-NEXT: DAD     B
-; CHECK-NEXT: SHLD    .LLo61_9+1
+; CHECK-NEXT: SHLD    .LLo61_10+1
 ;
 ; -- Case 1 (disabled) ---------------------------------------------------------
-; DISABLED:      .LLo61_9:
+; DISABLED:      .LLo61_10:
 ; DISABLED-NEXT: LXI     B, 0
 ; DISABLED-NEXT: PUSH    H
 ; DISABLED-NEXT: DAD     B
@@ -36,7 +36,7 @@
 ; DISABLED-NEXT: PUSH    H
 ; DISABLED-NEXT: MOV     L, C
 ; DISABLED-NEXT: MOV     H, B
-; DISABLED-NEXT: SHLD    .LLo61_9+1
+; DISABLED-NEXT: SHLD    .LLo61_10+1
 
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
 target triple = "i8080-unknown-v6c"
