@@ -23,9 +23,6 @@ cutting, see [V6CRelease.md](V6CRelease.md).
 | LLVM | `llvm-project/` (pinned `llvmorg-18.1.0`) | Compiler infrastructure (gitignored, build source) |
 | v6emul | `tools/v6emul/` | CLI Vector 06c emulator — execution, register/memory inspection, cycle counting |
 | v6asm | `tools/v6asm/` | CLI 8080 assembler — reference assembly, ASM→ROM conversion |
-| CMake ≥ 3.20 | System | Build system |
-| Ninja | System | Build executor |
-| Python 3 | System | Test runner |
 
 ## Build LLVM with V6C Target
 
@@ -64,7 +61,9 @@ with `-nostartfiles` (see
 `llvm-project/` is a large cloned repo (pinned to `llvmorg-18.1.0`) and is **gitignored**.
 All V6C source code and tests are git-tracked under `llvm/`, `clang/`, and `tests/lit/`, which serve as mirrors.
 
-After every successful build (or any edit to files inside `llvm-project/`), run:
+`build.ps1` calls `sync_llvm_mirror.ps1` automatically at the start of every
+build. Run it manually only when you edit files inside `llvm-project/` directly
+outside a normal build:
 
 ```powershell
 pwsh scripts\sync_llvm_mirror.ps1
