@@ -141,7 +141,7 @@ $RtSrcDir = Join-Path $repoRoot 'compiler-rt\lib\builtins\v6c'
 # routines emitted per-TU. Only crt0 still needs to ship as an object.
 # crt0.o is produced out-of-band by scripts/build_v6c_runtime.ps1 (which
 # build_release.ps1 invokes right after ninja). make_dist.ps1 itself just
-# copies the prebuilt object — building it here would mask a broken or
+# copies the prebuilt object - building it here would mask a broken or
 # missing runtime build step.
 $RtObjects = @('crt0.o')
 
@@ -175,7 +175,7 @@ $SamplesRepo = Join-Path $repoRoot 'samples'
 if (Test-Path $SamplesRepo) {
     Copy-Item -Recurse (Join-Path $SamplesRepo '*') -Destination $StageSamples
 } else {
-    Write-Warning "samples/ directory not found at $SamplesRepo — skipping"
+    Write-Warning "samples/ directory not found at $SamplesRepo - skipping"
 }
 
 # ------------------------------------------------------- share/v6c/docs

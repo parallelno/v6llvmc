@@ -11,8 +11,9 @@
         5. Stage and zip via scripts/make_dist.ps1.
         6. Smoke-test the staged tree via scripts/validate_dist.ps1.
 
-    Must be run from a developer shell with MSVC env activated (or the
-    -InvokeVsDevCmd switch will activate it inline). Requires cmake, ninja,
+    On Windows, activates the MSVC toolchain environment automatically if it
+    is not already active (i.e. not launched from a Developer Shell). On
+    Linux/macOS the system compiler is used directly. Requires cmake, ninja,
     python on PATH.
 
 .PARAMETER Version
@@ -25,19 +26,39 @@
 .PARAMETER SkipBuild
     Skip cmake configure + ninja build (use existing llvm-build/).
 
+.PARAMETER SkipPackage
+    Skip staging, zipping (make_dist.ps1), and the staged-tree smoke test
+    (validate_dist.ps1). Use for local iteration when you only need the
+    built tools in llvm-build/ and don't want a release zip under dist/.
+
 .EXAMPLE
     pwsh scripts/build_release.ps1
     pwsh scripts/build_release.ps1 -Version 2026.04.27 -SkipTests
+    pwsh scripts/build_release.ps1 -SkipPackage
 #>
 [CmdletBinding()]
 param(
     [string]$Version,
     [switch]$SkipTests,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipPackage
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+# On Windows, activate the MSVC toolchain environment if not already active.
+# Use Test-Path instead of $IsWindows so this works on both PS 5.1 and PS Core.
+$vsDevCmd = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat'
+if (-not $env:VCINSTALLDIR -and (Test-Path $vsDevCmd)) {
+    $envDump = cmd /c "`"$vsDevCmd`" -arch=amd64 >nul 2>&1 && set"
+    foreach ($line in $envDump) {
+        if ($line -match '^([^=]+)=(.*)$') {
+            [System.Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
+        }
+    }
+    Write-Host '--- MSVC environment activated ---'
+}
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
@@ -67,7 +88,7 @@ if (-not $SkipBuild) {
     ninja -C $BuildDir `
         clang lld llc `
         llvm-objcopy llvm-readelf llvm-objdump llvm-ar llvm-mc llvm-nm `
-        FileCheck not llvm-lit
+        FileCheck not
     if ($LASTEXITCODE -ne 0) { throw 'ninja build failed' }
 
     # crt0.o is not built by ninja (compiler-rt is not configured for i8080).
@@ -84,13 +105,17 @@ if (-not $SkipTests) {
     if ($LASTEXITCODE -ne 0) { throw 'tests/run_all.py FAILED -- aborting release' }
 }
 
-Write-Host '--- Stage + package ---'
-& (Join-Path $PSScriptRoot 'make_dist.ps1') -Version $Version
+if (-not $SkipPackage) {
+    Write-Host '--- Stage + package ---'
+    & (Join-Path $PSScriptRoot 'make_dist.ps1') -Version $Version
 
-$Stage = Join-Path $repoRoot "dist\v6c-$Version-windows-x64"
+    $Stage = Join-Path $repoRoot "dist\v6c-$Version-windows-x64"
 
-Write-Host '--- Smoke test staged tree ---'
-& (Join-Path $PSScriptRoot 'validate_dist.ps1') -Stage $Stage
+    Write-Host '--- Smoke test staged tree ---'
+    & (Join-Path $PSScriptRoot 'validate_dist.ps1') -Stage $Stage
 
-Write-Host ''
-Write-Host "Release artifact: dist\v6c-$Version-windows-x64.zip"
+    Write-Host ''
+    Write-Host "Release artifact: dist\v6c-$Version-windows-x64.zip"
+} else {
+    Write-Host '--- Skipping stage + package (-SkipPackage) ---'
+}

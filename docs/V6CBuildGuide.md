@@ -29,24 +29,20 @@ cutting, see [V6CRelease.md](V6CRelease.md).
 
 ## Build LLVM with V6C Target
 
+`scripts/build.ps1` is the recommended way to do a full build. It activates the
+MSVC toolchain environment on Windows, configures cmake on first run, syncs the
+mirror, builds all required binaries with ninja, assembles `crt0.o`, runs all
+test suites:
+
 ```powershell
-# From the project root (PowerShell / pwsh on Windows, MSVC dev shell)
-cmake -G Ninja -S llvm-project\llvm -B llvm-build `
-  -DCMAKE_BUILD_TYPE=Release `
-  -DLLVM_TARGETS_TO_BUILD=X86 `
-  -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=V6C `
-  "-DLLVM_ENABLE_PROJECTS=clang;lld"
+pwsh scripts\build.ps1
 
-ninja -C llvm-build clang lld llc opt llvm-objcopy llvm-tblgen
+# Full release build including dist/ zip and smoke test
+pwsh scripts\build_release.ps1
+
+# Build only, skip tests and packaging
+pwsh scripts\build.ps1 -SkipTests
 ```
-
-> Note: in PowerShell the `;` in `clang;lld` is a statement separator, so
-> the value **must be quoted** as shown (`"-DLLVM_ENABLE_PROJECTS=clang;lld"`).
-> In `cmd.exe` use `^` line continuations and no quoting is needed.
-
-The `lld` project provides `ld.lld`, the native ELF linker used by the V6C
-toolchain (replaces the legacy Python `scripts/v6c_link.py`, now stubbed).
-See plan [design/plan_O_LLD_native_linker.md](../design/plan_O_LLD_native_linker.md).
 
 ## Build the V6C Runtime (crt0.o)
 
@@ -60,9 +56,8 @@ pwsh scripts\build_v6c_runtime.ps1
 ```
 
 This assembles `compiler-rt\lib\builtins\v6c\crt0.s` into
-`compiler-rt\lib\builtins\v6c\crt0.o` (placed next to its source). The
-script is a no-op when the `.o` is newer than both the `.s` and
-`clang.exe`. The release orchestrator
+`compiler-rt\lib\builtins\v6c\crt0.o` (placed next to its source).
+The release orchestrator
 [scripts/build_release.ps1](../scripts/build_release.ps1) invokes this
 script automatically immediately after `ninja`; `make_dist.ps1` then
 copies the prebuilt `crt0.o` into the staged install tree (it does **not**
