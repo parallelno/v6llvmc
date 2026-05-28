@@ -350,18 +350,11 @@ bool V6CTypeNarrowing::tryNarrowLoopIV(PHINode *PN) {
   // Collect extra (non-AddOp) users of PN.  After narrowing, each will be
   // replaced by zext(i8 NewPN) — safe because the IV stays in [0, 255].
   // PHI users are rejected: per-edge zext placement is not implemented.
-  // Users outside the loop header or latch (e.g. in a nested inner-loop
-  // body) are also rejected: the resulting zext would be live across the
-  // nested loop, increasing register pressure and hurting RA quality.
-  BasicBlock *HeaderBB = PN->getParent();
   SmallVector<Use *, 4> ExtraPNUses;
   for (Use &U : PN->uses()) {
     if (U.getUser() == AddOp)
       continue;
     if (isa<PHINode>(U.getUser()))
-      return false;
-    BasicBlock *UserBB = cast<Instruction>(U.getUser())->getParent();
-    if (UserBB != HeaderBB && UserBB != LatchBB)
       return false;
     ExtraPNUses.push_back(&U);
   }

@@ -6,7 +6,7 @@
 ; After O83 removes the surrounding POP H / PUSH H pairs, two patterns are
 ; exposed in the outer loop of the sieve benchmark:
 ;
-; Pattern A — INX round-trip (6 instructions):
+; Pattern A ΓÇö INX round-trip (6 instructions):
 ;   MOV   C, L            ; copy HL into BC
 ;   MOV   B, H            ;
 ;   INX   B               ; increment BC
@@ -16,7 +16,7 @@
 ;
 ;   Becomes: INX H / SHLD addr   (BC must be dead after SHLD)
 ;
-; Pattern B — round-trip copy, no INX/DCX (5 instructions):
+; Pattern B ΓÇö round-trip copy, no INX/DCX (5 instructions):
 ;   MOV   B, H            ; copy HL into BC
 ;   MOV   C, L            ;
 ;   MOV   L, C            ; copy BC back into HL (no-op)
