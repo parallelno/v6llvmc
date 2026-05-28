@@ -40,41 +40,24 @@ pwsh scripts\build.ps1
 # Full release build including dist/ zip and smoke test
 pwsh scripts\build_release.ps1
 
-# Build only, skip tests and packaging
+# Build only, skip tests
 pwsh scripts\build.ps1 -SkipTests
 ```
 
 ## Build the V6C Runtime (crt0.o)
 
-`compiler-rt` is **not** configured for the i8080 target, so the LLVM
-ninja build does **not** produce `crt0.o`. After every `ninja` run that
-rebuilds `clang.exe`, assemble the V6C startup object with the just-built
-clang:
+`crt0.o` is assembled automatically by `build.ps1` / `build_release.ps1`
+after every ninja run. For a manual build:
 
 ```powershell
 pwsh scripts\build_v6c_runtime.ps1
 ```
 
-This assembles `compiler-rt\lib\builtins\v6c\crt0.s` into
-`compiler-rt\lib\builtins\v6c\crt0.o` (placed next to its source).
-The release orchestrator
-[scripts/build_release.ps1](../scripts/build_release.ps1) invokes this
-script automatically immediately after `ninja`; `make_dist.ps1` then
-copies the prebuilt `crt0.o` into the staged install tree (it does **not**
-reassemble it).
-
-`crt0.o` is **mandatory** for every link: the clang driver fails with
-`no such file or directory: 'crt0.o (V6C startup) — ...'` if it is
-missing. Freestanding programs that provide their own `_start` can opt
-out with `-nostartfiles` (see
+Assembles `compiler-rt\lib\builtins\v6c\crt0.s` → `crt0.o` next to its
+source; skips if already up to date. `make_dist.ps1` copies the prebuilt
+object into the staged install tree. Freestanding programs can opt out
+with `-nostartfiles` (see
 [V6CClangUsage.md](V6CClangUsage.md#freestanding--nostartfiles-builds)).
-
-Verify the target is registered:
-
-```bash
-llvm-build/bin/llc --version
-# Should list: v6c    - Vector 06c (Intel 8080)
-```
 
 ## Syncing the Mirror
 
@@ -84,7 +67,7 @@ All V6C source code and tests are git-tracked under `llvm/`, `clang/`, and `test
 After every successful build (or any edit to files inside `llvm-project/`), run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\sync_llvm_mirror.ps1
+pwsh scripts\sync_llvm_mirror.ps1
 ```
 
 The script handles three categories:
@@ -101,7 +84,7 @@ After cloning the repo and the LLVM monorepo, run the populate script to copy al
 
 ```powershell
 git clone --depth 1 --branch llvmorg-18.1.0 https://github.com/llvm/llvm-project.git llvm-project
-powershell -ExecutionPolicy Bypass -File scripts\populate_llvm_project.ps1
+pwsh scripts\populate_llvm_project.ps1
 ```
 
 This is the reverse of `sync_llvm_mirror.ps1` — it copies from git-tracked mirrors into `llvm-project/` so it's ready to build.
