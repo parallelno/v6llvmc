@@ -140,7 +140,7 @@ $RtSrcDir = Join-Path $repoRoot 'compiler-rt\lib\builtins\v6c'
 # O80: all integer-math and mem* helpers are now header-only inline-asm
 # routines emitted per-TU. Only crt0 still needs to ship as an object.
 # crt0.o is produced out-of-band by scripts/build_v6c_runtime.ps1 (which
-# build_release.ps1 invokes right after ninja). make_dist.ps1 itself just
+# build.ps1 invokes right after ninja). make_dist.ps1 itself just
 # copies the prebuilt object - building it here would mask a broken or
 # missing runtime build step.
 $RtObjects = @('crt0.o')
@@ -150,7 +150,7 @@ foreach ($o in $RtObjects) {
     if (-not (Test-Path $srcPath)) {
         throw "V6C runtime object '$o' not found at $srcPath. " +
               "Run scripts/build_v6c_runtime.ps1 first " +
-              "(it is invoked automatically by scripts/build_release.ps1)."
+              "(it is invoked automatically by scripts/build.ps1)."
     }
     $dstPath = Join-Path $StageRtDir $o
     Write-Host "Copying runtime $o"

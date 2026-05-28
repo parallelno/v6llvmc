@@ -12,39 +12,27 @@ GitHub Release named after the tag.
 Tags follow `vYYYY.MM.DD` (UTC date of the cut). Patch suffixes
 (`-1`, `-2`) are allowed if the same day produces multiple drops.
 
-## Manual Steps
+## Cutting a Release
+
+`scripts/publish.ps1` automates the full procedure (clean-check, build,
+package, tag, push):
 
 ```powershell
-# 1. Confirm working tree is clean and main is in sync with origin.
-git status
-git pull --ff-only origin main
+# Interactive: opens your git editor for the tag message
+pwsh scripts\publish.ps1
 
-# 2. Sanity-check: full build + tests (no packaging needed).
-pwsh scripts\build.ps1
+# Scripted: pass highlights directly
+pwsh scripts\publish.ps1 -Highlights "Fix sieve regression","Update docs"
 
-# 3. Pick the version (UTC date).
-$version = "v$(Get-Date -Format 'yyyy.MM.dd' -AsUTC)"
+# Dry run: creates the tag locally without pushing
+pwsh scripts\publish.ps1 -Highlights "Fix X" -DryRun
 
-# 4. Create an annotated tag with release notes in the message.
-$msg = @"
-$version
-
-Highlights:
-- <one-line summary of the most user-visible fix>
-- <next bullet>
-
-Backend fixes since previous tag:
-- ...
-
-Benchmarks / docs:
-- ...
-"@
-git tag -a $version -m $msg
-
-# 5. Verify the tag, then push it (this triggers the workflow).
-git tag -n10 $version
-git push origin $version
+# Skip the build step (already known-good)
+pwsh scripts\publish.ps1 -SkipBuild -Highlights "Fix X"
 ```
+
+`-Version` overrides the auto-derived UTC date tag (e.g.
+`-Version v2026.05.27-1` for a same-day patch drop).
 
 ## Verifying the Workflow
 

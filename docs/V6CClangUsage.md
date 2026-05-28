@@ -292,7 +292,7 @@ The driver searches two locations (see
    (populated by `scripts/make_dist.ps1`).
 2. `<clang-bin>/../../compiler-rt/lib/builtins/v6c/crt0.o` — dev tree
    (populated by `scripts/build_v6c_runtime.ps1`, which
-   `scripts/build_release.ps1` invokes automatically after `ninja`).
+   `scripts/build.ps1` invokes automatically after `ninja`).
 
 If the error fires in a dev checkout, run `scripts/build_v6c_runtime.ps1`
 to assemble `crt0.s` → `crt0.o` next to the source. See

@@ -34,16 +34,16 @@ test suites:
 ```powershell
 pwsh scripts\build.ps1
 
-# Full release build including dist/ zip and smoke test
-pwsh scripts\build_release.ps1
-
 # Build only, skip tests
 pwsh scripts\build.ps1 -SkipTests
+
+# Full release: package + tag + push
+pwsh scripts\publish.ps1
 ```
 
 ## Build the V6C Runtime (crt0.o)
 
-`crt0.o` is assembled automatically by `build.ps1` / `build_release.ps1`
+`crt0.o` is assembled automatically by `build.ps1`
 after every ninja run. For a manual build:
 
 ```powershell
@@ -52,9 +52,7 @@ pwsh scripts\build_v6c_runtime.ps1
 
 Assembles `compiler-rt\lib\builtins\v6c\crt0.s` → `crt0.o` next to its
 source; skips if already up to date. `make_dist.ps1` copies the prebuilt
-object into the staged install tree. Freestanding programs can opt out
-with `-nostartfiles` (see
-[V6CClangUsage.md](V6CClangUsage.md#freestanding--nostartfiles-builds)).
+object into the staged install tree.
 
 ## Syncing the Mirror
 
