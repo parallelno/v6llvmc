@@ -493,7 +493,6 @@ main:                                   ; @main
 .Lfunc_begin6:
 	;=== void main(void) ===
 ; %bb.0:
-	PUSH	PSW
 	;APP
 	MVI	A, 0xfb
 	STA	0x38
@@ -512,9 +511,7 @@ main:                                   ; @main
 .LBB21_1:                               ; =>This Inner Loop Header: Depth=1
 	;DEBUG_VALUE: i <- undef
 	;--- V6C_SPILL8 ---
-	LXI	H, 1
-	DAD	SP
-	MOV	M, A
+	STA	.LLo61_7+1
 	CALL	rand
 	;DEBUG_VALUE: r1 <- $hl
 	;DEBUG_VALUE: x1 <- $l
@@ -524,9 +521,8 @@ main:                                   ; @main
 	MOV	B, H
 	CALL	draw_line
 	;--- V6C_RELOAD8 ---
-	LXI	H, 1
-	DAD	SP
-	MOV	A, M
+.LLo61_7:
+	MVI	A, 0
 	DCR	A
 	;--- V6C_BRCOND ---
 	JNZ	.LBB21_1
@@ -536,42 +532,23 @@ main:                                   ; @main
 .LBB21_4:                               ; =>This Inner Loop Header: Depth=1
 	;DEBUG_VALUE: i <- undef
 	;--- V6C_SPILL8 ---
-	PUSH	H
-	LXI	H, 3
-	DAD	SP
-	MOV	M, A
-	POP	H
+	STA	.LLo61_7+1
 	;--- V6C_SPILL8 ---
-	XCHG
-	LXI	H, 0
-	DAD	SP
-	MOV	M, D
-	XCHG
+	MOV	A, H
+	STA	.LLo61_8+1
 	;--- V6C_RELOAD8 ---
-	PUSH	H
-	LXI	H, 3
-	DAD	SP
-	MOV	A, M
-	POP	H
+	LDA	.LLo61_7+1
 	CALL	draw_circle
 	;--- V6C_RELOAD8 ---
-	MOV	D, L
-	LXI	H, 0
-	DAD	SP
-	MOV	H, M
-	MOV	L, D
+.LLo61_8:
+	MVI	H, 0
 	;--- V6C_RELOAD8 ---
-	PUSH	H
-	LXI	H, 3
-	DAD	SP
-	MOV	A, M
-	POP	H
+	LDA	.LLo61_7+1
 	ADI	0xf6
 	DCR	H
 	;--- V6C_BRCOND ---
 	JNZ	.LBB21_4
 ; %bb.2:
-	POP	PSW
 	RET
 .Lfunc_end6:
                                         ; -- End function

@@ -91,23 +91,42 @@ char V6CStaticStackAlloc::ID = 0;
 /// static-stack allocation, even when the callee provably cannot transfer
 /// control back into the caller.
 ///
-/// We fill the gap with a local check: F is safe iff
-///   1. F does not directly call itself, AND
-///   2. every CallBase in F is one of:
-///        - an inline-asm call (the asm string cannot reference C symbols
-///          dynamically, so it cannot recursively re-enter F);
-///        - a call where the callee/callsite carries the `nocallback`
-///          attribute (intrinsics or normal functions);
-///        - a call to a `norecurse` callee. `norecurse` is set by
-///          PostOrderFunctionAttrs only after SCC analysis proves the
-///          callee is not part of any call cycle in the module, so it
-///          cannot transitively reach back into F.
+/// We fill the gap with a local check: F is safe iff every CallBase in F
+/// (and, transitively, in every callee whose body is visible) is one of:
+///   - an inline-asm call (the asm string cannot reference C symbols
+///     dynamically, so it cannot recursively re-enter F);
+///   - a call where the callee/callsite carries the `nocallback`
+///     attribute (intrinsics or normal functions tagged `leaf`);
+///   - a call to a `norecurse` callee. `norecurse` is set by
+///     PostOrderFunctionAttrs only after SCC analysis proves the callee
+///     is not part of any call cycle in the module, so it cannot
+///     transitively re-enter F.
+///   - a call to a callee whose body is visible and which itself
+///     satisfies the same recursive check (with cycle detection).
+///
+/// The last bullet is what lets a C wrapper such as `draw_circle()` be
+/// considered safe when called from `main()`: `draw_circle` has neither
+/// `nocallback` (it isn't marked `leaf`) nor `norecurse` (LLVM's SCC pass
+/// gives up because one of its callees, `draw_pixel`, has an inline-asm
+/// body and is only `nocallback`-tagged, not `norecurse`-tagged). But the
+/// body of `draw_circle` only calls `draw_pixel`, which IS `nocallback`,
+/// so the chain is safe and we can prove it locally by recursing.
+///
+/// Cycles in the call graph (including direct self-recursion) abort the
+/// recursion and reject the function — that's exactly the case static
+/// stack allocation cannot handle.
 ///
 /// Combined with the existing checks (no address taken, not reachable from
 /// any interrupt handler), this guarantees F cannot be re-entered while a
 /// previous activation is still live, which is the only correctness
 /// requirement for static-stack allocation.
-bool V6CStaticStackAlloc::hasNoCallbackEvidence(const Function &F) const {
+static bool
+hasNoCallbackEvidenceImpl(const Function &F,
+                          SmallPtrSetImpl<const Function *> &Visited) {
+  // Cycle in the recursion ⇒ unsafe (covers direct self-recursion too).
+  if (!Visited.insert(&F).second)
+    return false;
+
   for (const BasicBlock &BB : F) {
     for (const Instruction &I : BB) {
       const auto *CB = dyn_cast<CallBase>(&I);
@@ -126,28 +145,27 @@ bool V6CStaticStackAlloc::hasNoCallbackEvidence(const Function &F) const {
         return false; // indirect call — unknown target
       if (Callee->hasFnAttribute(Attribute::NoCallback))
         continue;
-
-      // A `norecurse` callee is strictly stronger evidence than
-      // `nocallback`: LLVM's PostOrderFunctionAttrs only marks a function
-      // `norecurse` after SCC analysis proves it is NOT part of any call
-      // cycle in the module. Therefore calling such a function cannot
-      // transitively re-enter F.
-      //
-      // This also unlocks static-stack allocation for functions that
-      // LLVM cannot itself prove `norecurse` for due to a single inline-
-      // asm callsite (e.g. `main` calling `v6c_set_empty_interrupt()`).
       if (Callee->hasFnAttribute(Attribute::NoRecurse))
         continue;
 
-      // Direct self-recursion would corrupt the static frame.
-      if (Callee == &F)
-        return false;
+      // Transitive check: if the callee's body is visible in this
+      // module, recurse into it. This is what lets a C wrapper that
+      // only calls `nocallback` leaves be considered safe even when
+      // LLVM refuses to propagate any single attribute up.
+      if (!Callee->isDeclaration() &&
+          hasNoCallbackEvidenceImpl(*Callee, Visited))
+        continue;
 
       // Anything else: be conservative.
       return false;
     }
   }
   return true;
+}
+
+bool V6CStaticStackAlloc::hasNoCallbackEvidence(const Function &F) const {
+  SmallPtrSet<const Function *, 8> Visited;
+  return hasNoCallbackEvidenceImpl(F, Visited);
 }
 
 /// BFS from interrupt-attributed functions to find all transitively

@@ -60,9 +60,15 @@ entry:
 ; NOIPRA:       POP PSW
 
 ; NOIPRA-LABEL: test_direct:
-; NOIPRA:       PUSH PSW
-; NOIPRA-NEXT:  XCHG
-; NOIPRA:       CALL action_b
-; NOIPRA:       MOV E, M
-; NOIPRA:       MOV D, M
-; NOIPRA:       POP PSW
+; Without IPRA, %x must still be spilled around action_b's call (its
+; clobbers are unknown to the register allocator before IPRA). But
+; action_b's body is visible and contains no further calls, so the
+; V6CStaticStackAlloc transitive-evidence analysis proves the function
+; non-reentrant and O61 emits a self-modifying-code spill (SHLD imm of
+; a later LXI H) instead of a dynamic-stack PUSH/POP. This is strictly
+; better than the old PUSH PSW form.
+; NOIPRA:       SHLD .LLo61_{{[0-9]+}}+1
+; NOIPRA-NEXT:  CALL action_b
+; NOIPRA:       LXI H, 0
+; NOIPRA-NEXT:  RET
+; NOIPRA-NOT:   PUSH PSW
