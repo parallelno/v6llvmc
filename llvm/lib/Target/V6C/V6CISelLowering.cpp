@@ -239,8 +239,17 @@ const char *V6CTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case V6CISD::Wrapper:   return "V6CISD::Wrapper";
   case V6CISD::BR_CC16:   return "V6CISD::BR_CC16";
   case V6CISD::SEXT:      return "V6CISD::SEXT";
-  case V6CISD::SRL16:     return "V6CISD::SRL16";
-  case V6CISD::SRA16:     return "V6CISD::SRA16";
+  case V6CISD::SHL16_DAD:   return "V6CISD::SHL16_DAD";
+  case V6CISD::SHL16_BYTE:  return "V6CISD::SHL16_BYTE";
+  case V6CISD::SHL16_RAM_HI:return "V6CISD::SHL16_RAM_HI";
+  case V6CISD::SRL16_RAR:   return "V6CISD::SRL16_RAR";
+  case V6CISD::SRL16_24BIT: return "V6CISD::SRL16_24BIT";
+  case V6CISD::SRL16_BYTE:  return "V6CISD::SRL16_BYTE";
+  case V6CISD::SRL16_RAM_LO:return "V6CISD::SRL16_RAM_LO";
+  case V6CISD::SRA16_RAR:   return "V6CISD::SRA16_RAR";
+  case V6CISD::SRA16_24BIT: return "V6CISD::SRA16_24BIT";
+  case V6CISD::SRA16_BYTE:  return "V6CISD::SRA16_BYTE";
+  case V6CISD::SRA16_RAM_LO:return "V6CISD::SRA16_RAM_LO";
   case V6CISD::DAD:       return "V6CISD::DAD";
   case V6CISD::INX16:    return "V6CISD::INX16";
   case V6CISD::DCX16:    return "V6CISD::DCX16";
@@ -933,8 +942,8 @@ SDValue V6CTargetLowering::LowerSRA(SDValue Op, SelectionDAG &DAG) const {
       return Val;
     // For i8 arithmetic right shift by constant, promote to i16 and shift.
     SDValue Ext = DAG.getNode(ISD::SIGN_EXTEND, DL, MVT::i16, Val);
-    SDValue ShiftedWide = DAG.getNode(V6CISD::SRA16, DL, MVT::i16, Ext,
-                                      DAG.getTargetConstant(ShAmt, DL, MVT::i8));
+    SDValue ShiftedWide = DAG.getNode(ISD::SRA, DL, MVT::i16, Ext,
+                                      DAG.getConstant(ShAmt, DL, MVT::i8));
     return DAG.getNode(ISD::TRUNCATE, DL, MVT::i8, ShiftedWide);
   }
 
@@ -1029,7 +1038,7 @@ SDValue V6CTargetLowering::LowerROTR(SDValue Op, SelectionDAG &DAG) const {
 }
 
 //===----------------------------------------------------------------------===//
-// i16 Shift lowering — emit V6C_SHL16/SRL16/SRA16 pseudos for constant amounts
+// i16 Shift lowering — emit strategy-specific V6C shift pseudos for constants
 //===----------------------------------------------------------------------===//
 
 SDValue V6CTargetLowering::LowerSHL_i16(SDValue Op, SelectionDAG &DAG) const {
@@ -1041,24 +1050,14 @@ SDValue V6CTargetLowering::LowerSHL_i16(SDValue Op, SelectionDAG &DAG) const {
     unsigned ShAmt = CA->getZExtValue() & 15;
     if (ShAmt == 0)
       return Val;
-    // Shift by 8+: move lo byte to hi position, zero lo, shift remaining
-    // in i8 domain. Uses BUILD_PAIR to construct the result directly.
-    if (ShAmt >= 8) {
-      // Extract lo byte via TRUNCATE (maps to EXTRACT_SUBREG sub_lo).
-      SDValue Lo = DAG.getNode(ISD::TRUNCATE, DL, MVT::i8, Val);
-      SDValue Zero = DAG.getConstant(0, DL, MVT::i8);
-      // Shift the lo byte left by (ShAmt - 8) in i8 domain via ADD self.
-      SDValue Hi = Lo;
-      for (unsigned i = 0; i < ShAmt - 8; ++i)
-        Hi = DAG.getNode(ISD::ADD, DL, MVT::i8, Hi, Hi);
-      // Build i16: lo=0, hi=shifted_lo
-      return DAG.getNode(ISD::BUILD_PAIR, DL, MVT::i16, Zero, Hi);
-    }
-    // For shift amounts 1-7: unroll as ADD self (shift left by 1) repeated.
-    SDValue Result = Val;
-    for (unsigned i = 0; i < ShAmt; ++i)
-      Result = DAG.getNode(ISD::ADD, DL, MVT::i16, Result, Result);
-    return Result;
+    if (ShAmt <= 7)
+      return DAG.getNode(V6CISD::SHL16_DAD, DL, MVT::i16, Val,
+                         DAG.getTargetConstant(ShAmt, DL, MVT::i8));
+    if (ShAmt == 8)
+      return DAG.getNode(V6CISD::SHL16_BYTE, DL, MVT::i16, Val,
+                         DAG.getTargetConstant(ShAmt, DL, MVT::i8));
+    return DAG.getNode(V6CISD::SHL16_RAM_HI, DL, MVT::i16, Val,
+                       DAG.getTargetConstant(ShAmt, DL, MVT::i8));
   }
 
   // Variable i16 shift left: emit libcall.
@@ -1075,8 +1074,16 @@ SDValue V6CTargetLowering::LowerSRL_i16(SDValue Op, SelectionDAG &DAG) const {
     unsigned ShAmt = CA->getZExtValue() & 15;
     if (ShAmt == 0)
       return Val;
-    // Emit V6CISD::SRL16 → V6C_SRL16 pseudo → expandPostRAPseudo.
-    return DAG.getNode(V6CISD::SRL16, DL, MVT::i16, Val,
+    if (ShAmt <= 2)
+      return DAG.getNode(V6CISD::SRL16_RAR, DL, MVT::i16, Val,
+                         DAG.getTargetConstant(ShAmt, DL, MVT::i8));
+    if (ShAmt <= 7)
+      return DAG.getNode(V6CISD::SRL16_24BIT, DL, MVT::i16, Val,
+                         DAG.getTargetConstant(ShAmt, DL, MVT::i8));
+    if (ShAmt == 8)
+      return DAG.getNode(V6CISD::SRL16_BYTE, DL, MVT::i16, Val,
+                         DAG.getTargetConstant(ShAmt, DL, MVT::i8));
+    return DAG.getNode(V6CISD::SRL16_RAM_LO, DL, MVT::i16, Val,
                        DAG.getTargetConstant(ShAmt, DL, MVT::i8));
   }
 
@@ -1094,8 +1101,16 @@ SDValue V6CTargetLowering::LowerSRA_i16(SDValue Op, SelectionDAG &DAG) const {
     unsigned ShAmt = CA->getZExtValue() & 15;
     if (ShAmt == 0)
       return Val;
-    // Emit V6CISD::SRA16 → V6C_SRA16 pseudo → expandPostRAPseudo.
-    return DAG.getNode(V6CISD::SRA16, DL, MVT::i16, Val,
+    if (ShAmt <= 2)
+      return DAG.getNode(V6CISD::SRA16_RAR, DL, MVT::i16, Val,
+                         DAG.getTargetConstant(ShAmt, DL, MVT::i8));
+    if (ShAmt <= 7)
+      return DAG.getNode(V6CISD::SRA16_24BIT, DL, MVT::i16, Val,
+                         DAG.getTargetConstant(ShAmt, DL, MVT::i8));
+    if (ShAmt == 8)
+      return DAG.getNode(V6CISD::SRA16_BYTE, DL, MVT::i16, Val,
+                         DAG.getTargetConstant(ShAmt, DL, MVT::i8));
+    return DAG.getNode(V6CISD::SRA16_RAM_LO, DL, MVT::i16, Val,
                        DAG.getTargetConstant(ShAmt, DL, MVT::i8));
   }
 

@@ -34,7 +34,7 @@ main:                                   ; @main
 	MOV	H, A
 	SHLD	.LLo61_1+1
 	POP	H
-	;--- V6C_SRL16 ---
+	;--- V6C_SRL16_RAR ---
 	MOV	A, H
 	RAR
 	MOV	B, A
@@ -79,7 +79,7 @@ main:                                   ; @main
 	ORA	E
 	JNZ	.LBB15_1
 ; %bb.5:
-	;--- V6C_SRL16 ---
+	;--- V6C_SRL16_BYTE ---
 	;--- V6C_XOR16 ---
 	MOV	A, H
 	XRA	L

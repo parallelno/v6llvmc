@@ -26,8 +26,17 @@ enum NodeType : unsigned {
   Wrapper,    // GlobalAddress / ExternalSymbol wrapper.
   BR_CC16,    // Fused 16-bit compare + conditional branch.
   SEXT,       // Sign-extend i8 to i16 (pseudo, expands to RLC+SBB).
-  SRL16,      // Logical right shift i16 by constant amount.
-  SRA16,      // Arithmetic right shift i16 by constant amount.
+  SHL16_DAD,      // Logical left shift i16 via repeated DAD H.
+  SHL16_BYTE,     // Logical left shift i16 by 8 via byte-lane move.
+  SHL16_RAM_HI,   // Logical left shift i16 via A-domain byte specialization.
+  SRL16_RAR,      // Logical right shift i16 via per-bit RAR loop.
+  SRL16_24BIT,    // Logical right shift i16 via the 24-bit DAD/ADC trick.
+  SRL16_BYTE,     // Logical right shift i16 by 8 via byte-lane move.
+  SRL16_RAM_LO,   // Logical right shift i16 via rotate-and-mask.
+  SRA16_RAR,      // Arithmetic right shift i16 via per-bit RAR loop.
+  SRA16_24BIT,    // Arithmetic right shift i16 via sign-seeded 24-bit trick.
+  SRA16_BYTE,     // Arithmetic right shift i16 by 8 via byte/sign move.
+  SRA16_RAM_LO,   // Arithmetic right shift i16 via rotate-and-mask.
   DAD,        // 16-bit add constrained to HL (maps to DAD rp).
   INX16,      // 16-bit increment by immediate count (1..3), no flag set.
   DCX16,      // 16-bit decrement by immediate count (1..3), no flag set.
@@ -93,8 +102,8 @@ public:
   EVT getSetCCResultType(const DataLayout &DL, LLVMContext &C,
                          EVT VT) const override;
 
-  /// i8080 has no barrel shifter; multi-bit shifts cost ~4cc per bit (post-RA
-  /// expansion of V6CISD::SRA16/SHL16 into RLC/RAR loops). Suppress
+  /// i8080 has no barrel shifter; multi-bit shifts are still expensive even
+  /// with the strategy-specific post-RA families. Suppress
   /// DAGCombiner folds that rewrite `(x & pow2) ? C : 0` style selects into
   /// shift+and idioms, because the resulting wide shift is dramatically more
   /// expensive than the branch produced by LowerSELECT_CC.

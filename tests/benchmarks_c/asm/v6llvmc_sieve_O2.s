@@ -120,7 +120,7 @@ main:                                   ; @main
 .LBB15_8:                               ;   in Loop: Header=BB15_3 Depth=1
 	;--- V6C_RELOAD16 ---
 	LHLD	.LLo61_1+1
-	;--- V6C_ADD16 ---
+	;--- V6C_SHL16_DAD ---
 	DAD	H
 	;--- V6C_RELOAD16 ---
 .LLo61_5:
@@ -164,7 +164,7 @@ main:                                   ; @main
 	;--- V6C_RELOAD16 ---
 	LHLD	.LLo61_0+1
 	XCHG
-	;--- V6C_SRL16 ---
+	;--- V6C_SRL16_BYTE ---
 	MVI	H, 0
 	;--- V6C_XOR16 ---
 	MOV	A, D

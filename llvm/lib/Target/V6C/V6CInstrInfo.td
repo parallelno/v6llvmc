@@ -122,12 +122,21 @@ def V6Cdecf      : SDNode<"V6CISD::DECF",     SDT_V6CIncDecF, []>;
 def SDT_V6CSext : SDTypeProfile<1, 1, [SDTCisVT<0, i16>, SDTCisVT<1, i8>]>;
 def V6Csext    : SDNode<"V6CISD::SEXT", SDT_V6CSext>;
 
-// SRL16/SRA16: right-shift i16 by constant i8 amount
+// Strategy-specific constant i16 shift SDNodes.
 def SDT_V6CShift16 : SDTypeProfile<1, 2, [SDTCisVT<0, i16>,
                                             SDTCisVT<1, i16>,
                                             SDTCisVT<2, i8>]>;
-def V6Csrl16 : SDNode<"V6CISD::SRL16", SDT_V6CShift16>;
-def V6Csra16 : SDNode<"V6CISD::SRA16", SDT_V6CShift16>;
+def V6Cshl16_dad    : SDNode<"V6CISD::SHL16_DAD", SDT_V6CShift16>;
+def V6Cshl16_byte   : SDNode<"V6CISD::SHL16_BYTE", SDT_V6CShift16>;
+def V6Cshl16_ram_hi : SDNode<"V6CISD::SHL16_RAM_HI", SDT_V6CShift16>;
+def V6Csrl16_rar    : SDNode<"V6CISD::SRL16_RAR", SDT_V6CShift16>;
+def V6Csrl16_24bit  : SDNode<"V6CISD::SRL16_24BIT", SDT_V6CShift16>;
+def V6Csrl16_byte   : SDNode<"V6CISD::SRL16_BYTE", SDT_V6CShift16>;
+def V6Csrl16_ram_lo : SDNode<"V6CISD::SRL16_RAM_LO", SDT_V6CShift16>;
+def V6Csra16_rar    : SDNode<"V6CISD::SRA16_RAR", SDT_V6CShift16>;
+def V6Csra16_24bit  : SDNode<"V6CISD::SRA16_24BIT", SDT_V6CShift16>;
+def V6Csra16_byte   : SDNode<"V6CISD::SRA16_BYTE", SDT_V6CShift16>;
+def V6Csra16_ram_lo : SDNode<"V6CISD::SRA16_RAM_LO", SDT_V6CShift16>;
 
 // DAD: 16-bit add constrained to HL pair (maps to physical DAD rp).
 // SDNPCommutative intentionally absent: the combine canonicalises the
@@ -874,16 +883,51 @@ let Defs = [A, FLAGS] in {
 
 // 16-bit shift pseudos (constant shift amount only).
 // Variable shifts are library calls.
+let Defs = [FLAGS] in
+def V6C_SHL16_DAD : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i8imm:$amt),
+  "# SHL16_DAD $dst, $src, $amt",
+  [(set i16:$dst, (V6Cshl16_dad i16:$src, (i8 timm:$amt)))]>;
+
+def V6C_SHL16_BYTE : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i8imm:$amt),
+  "# SHL16_BYTE $dst, $src, $amt",
+  [(set i16:$dst, (V6Cshl16_byte i16:$src, (i8 timm:$amt)))]>;
+
 let Defs = [A, FLAGS] in {
-  def V6C_SHL16 : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i8imm:$amt),
-      "# SHL16 $dst, $src, $amt", []>;
-  def V6C_SRL16 : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i8imm:$amt),
-      "# SRL16 $dst, $src, $amt",
-      [(set i16:$dst, (V6Csrl16 i16:$src, (i8 timm:$amt)))]>;
-  def V6C_SRA16 : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i8imm:$amt),
-      "# SRA16 $dst, $src, $amt",
-      [(set i16:$dst, (V6Csra16 i16:$src, (i8 timm:$amt)))]>;
+  def V6C_SHL16_RAM_HI : V6CPseudo<(outs GR16:$dst),
+    (ins GR16:$src, i8imm:$amt),
+    "# SHL16_RAM_HI $dst, $src, $amt",
+    [(set i16:$dst, (V6Cshl16_ram_hi i16:$src, (i8 timm:$amt)))]>;
+  def V6C_SRL16_RAR : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i8imm:$amt),
+    "# SRL16_RAR $dst, $src, $amt",
+    [(set i16:$dst, (V6Csrl16_rar i16:$src, (i8 timm:$amt)))]>;
+  def V6C_SRL16_24BIT : V6CPseudo<(outs GR16:$dst),
+    (ins GR16:$src, i8imm:$amt),
+    "# SRL16_24BIT $dst, $src, $amt",
+    [(set i16:$dst, (V6Csrl16_24bit i16:$src, (i8 timm:$amt)))]>;
+  def V6C_SRL16_RAM_LO : V6CPseudo<(outs GR16:$dst),
+    (ins GR16:$src, i8imm:$amt),
+    "# SRL16_RAM_LO $dst, $src, $amt",
+    [(set i16:$dst, (V6Csrl16_ram_lo i16:$src, (i8 timm:$amt)))]>;
+  def V6C_SRA16_RAR : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i8imm:$amt),
+    "# SRA16_RAR $dst, $src, $amt",
+    [(set i16:$dst, (V6Csra16_rar i16:$src, (i8 timm:$amt)))]>;
+  def V6C_SRA16_24BIT : V6CPseudo<(outs GR16:$dst),
+    (ins GR16:$src, i8imm:$amt),
+    "# SRA16_24BIT $dst, $src, $amt",
+    [(set i16:$dst, (V6Csra16_24bit i16:$src, (i8 timm:$amt)))]>;
+  def V6C_SRA16_BYTE : V6CPseudo<(outs GR16:$dst),
+    (ins GR16:$src, i8imm:$amt),
+    "# SRA16_BYTE $dst, $src, $amt",
+    [(set i16:$dst, (V6Csra16_byte i16:$src, (i8 timm:$amt)))]>;
+  def V6C_SRA16_RAM_LO : V6CPseudo<(outs GR16:$dst),
+    (ins GR16:$src, i8imm:$amt),
+    "# SRA16_RAM_LO $dst, $src, $amt",
+    [(set i16:$dst, (V6Csra16_ram_lo i16:$src, (i8 timm:$amt)))]>;
 }
+
+def V6C_SRL16_BYTE : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i8imm:$amt),
+  "# SRL16_BYTE $dst, $src, $amt",
+  [(set i16:$dst, (V6Csrl16_byte i16:$src, (i8 timm:$amt)))]>;
 
 // O68 Phase 2: 16-bit rotate-left by 1.
 // HL-constrained via GR16Ptr: post-RA expansion is the literal

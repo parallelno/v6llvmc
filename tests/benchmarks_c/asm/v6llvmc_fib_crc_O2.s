@@ -60,7 +60,7 @@ main:                                   ; @main
 	MVI	L, 8
 .LBB15_2:                               ;   Parent Loop BB15_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
-	;--- V6C_SRL16 ---
+	;--- V6C_SRL16_RAR ---
 	MOV	A, B
 	ORA	A
 	RAR
@@ -91,7 +91,7 @@ main:                                   ; @main
 ; %bb.6:                                ;   in Loop: Header=BB15_1 Depth=1
 	;--- V6C_RELOAD16 ---
 	LHLD	.LLo61_0+1
-	;--- V6C_SRL16 ---
+	;--- V6C_SRL16_BYTE ---
 	MOV	L, H
 	MVI	H, 0
 	;--- V6C_XOR16 ---
@@ -104,7 +104,7 @@ main:                                   ; @main
 	MVI	C, 8
 .LBB15_7:                               ;   Parent Loop BB15_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
-	;--- V6C_SRL16 ---
+	;--- V6C_SRL16_RAR ---
 	MOV	A, H
 	ORA	A
 	RAR

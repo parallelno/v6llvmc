@@ -36,19 +36,15 @@ define void @srl8_i16(i16 %x, ptr %p) {
 ;===----------------------------------------------------------------------===
 ; SRL i16 by 10
 ;===----------------------------------------------------------------------===
-; Half-width per-bit loop on L only. H must NOT appear in the per-bit body.
+; O86: rotate the surviving source byte twice, then clear the wrapped bits.
 ; CHECK-LABEL: srl10_i16:
 ; CHECK-NEXT: ; %bb.0:
-; CHECK-NEXT:  MOV L, H
+; CHECK-NEXT:  MOV A, H
+; CHECK-NEXT:  RRC
+; CHECK-NEXT:  RRC
+; CHECK-NEXT:  ANI 0x3f
+; CHECK-NEXT:  MOV L, A
 ; CHECK-NEXT:  MVI H, 0
-; CHECK-NEXT:  MOV A, L
-; CHECK-NEXT:  ORA A
-; CHECK-NEXT:  RAR
-; CHECK-NEXT:  MOV L, A
-; CHECK-NEXT:  MOV A, L
-; CHECK-NEXT:  ORA A
-; CHECK-NEXT:  RAR
-; CHECK-NEXT:  MOV L, A
 define void @srl10_i16(i16 %x, ptr %p) {
   %r = lshr i16 %x, 10
   store i16 %r, ptr %p
@@ -81,25 +77,20 @@ define void @ashr8_i16(i16 %x, ptr %p) {
 ;===----------------------------------------------------------------------===
 ; ASHR i16 by 10
 ;===----------------------------------------------------------------------===
-; Byte-aligned sign-extend prologue followed by a HALF-WIDTH arithmetic
-; shift loop on DstLo (= L) only. DstHi (= H, the sign byte) must NOT be
-; rotated in the per-bit body.
+; O86: rotate/mask the kept low-byte bits from H, then OR in the sign-fill.
 ; CHECK-LABEL: ashr10_i16:
 ; CHECK-NEXT: ; %bb.0:
 ; CHECK-NEXT:  MOV A, H
-; CHECK-NEXT:  MOV L, H
+; CHECK-NEXT:  RRC
+; CHECK-NEXT:  RRC
+; CHECK-NEXT:  ANI 0x3f
+; CHECK-NEXT:  MOV L, A
+; CHECK-NEXT:  MOV A, H
 ; CHECK-NEXT:  RLC
 ; CHECK-NEXT:  SBB A
 ; CHECK-NEXT:  MOV H, A
-; CHECK-NEXT:  MOV A, L
-; CHECK-NEXT:  RLC
-; CHECK-NEXT:  MOV A, L
-; CHECK-NEXT:  RAR
-; CHECK-NEXT:  MOV L, A
-; CHECK-NEXT:  MOV A, L
-; CHECK-NEXT:  RLC
-; CHECK-NEXT:  MOV A, L
-; CHECK-NEXT:  RAR
+; CHECK-NEXT:  ANI 0xc0
+; CHECK-NEXT:  ORA L
 ; CHECK-NEXT:  MOV L, A
 define void @ashr10_i16(i16 %x, ptr %p) {
   %r = ashr i16 %x, 10
@@ -123,7 +114,7 @@ define void @shl8_i16(i16 %x, ptr %p) {
 }
 
 ;===----------------------------------------------------------------------===
-; SHL i16 by 10 — sanity check (custom-lowered via BUILD_PAIR in ISel)
+; SHL i16 by 10 — sanity check for the high-byte RAM specialization
 ;===----------------------------------------------------------------------===
 ; CHECK-LABEL: shl10_i16:
 ; CHECK-NEXT: ; %bb.0:

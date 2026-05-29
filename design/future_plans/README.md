@@ -59,6 +59,7 @@ O54d_alloca_constant_size_push.md
 ✅ O82_mov_chain_collapse_dead_hi.md
 ✅ O83_pop_push_pair_elimination.md
 ✅ O84_inx_hl_spill_round_trip_fold.md
+O86_constant_shift_specialization.md
 O66_switch_jump_table_pchl.md
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:
