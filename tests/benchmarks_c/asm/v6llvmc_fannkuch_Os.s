@@ -252,9 +252,7 @@ main:                                   ; @main
 	INX	D
 	;--- V6C_LOAD8_P ---
 	LDAX	D
-	MOV	L, A
 	;--- V6C_STORE8_P ---
-	MOV	A, L
 	STAX	B
 	DCR	H
 	MOV	B, D

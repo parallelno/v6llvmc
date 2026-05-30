@@ -27,11 +27,9 @@
 ; CHECK-NEXT: MOV     C, L
 ; CHECK-NEXT: MVI     A,
 ;
-; -- Disabled: round-trip present between MOV C,L and MVI A --
+; -- Disabled: remaining low-byte round-trip present before MVI A --
 ; DISABLED: DAD     B
-; DISABLED-NEXT: MOV     B, H
 ; DISABLED-NEXT: MOV     C, L
-; DISABLED-NEXT: MOV     H, B
 ; DISABLED-NEXT: MOV     L, C
 ; DISABLED-NEXT: MVI     A,
 

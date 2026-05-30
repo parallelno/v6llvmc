@@ -1,4 +1,7 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
+; RUN: llc -march=v6c --v6c-disable-peephole < %s | FileCheck %s --check-prefix=DISABLED
+
+target triple = "i8080-unknown-v6c"
 
 ; Test V6CPeephole: redundant MOV elimination.
 ; Self-MOV (MOV X, X) should be removed.
@@ -18,4 +21,37 @@ define i8 @test_self_mov(i8 %a) {
 define i8 @test_no_redundant(i8 %a, i8 %b) {
   %r = add i8 %a, %b
   ret i8 %r
+}
+
+; O82 follow-up: round-trip MOV X,Y ; MOV Y,X should be eliminated.
+; This used to end with MOV L, A / MOV A, L.
+; CHECK-LABEL: lshr9_trunc_roundtrip:
+; CHECK-NEXT: ; %bb.0:
+; CHECK-NEXT:  MOV A, H
+; CHECK-NEXT:  RRC
+; CHECK-NEXT:  ANI 0x7f
+; CHECK-NEXT:  RET
+; DISABLED-LABEL: lshr9_trunc_roundtrip:
+; DISABLED:      MOV L, A
+; DISABLED:      MOV A, L
+define i8 @lshr9_trunc_roundtrip(i16 %x) {
+  %shift = lshr i16 %x, 9
+  %trunc = trunc i16 %shift to i8
+  ret i8 %trunc
+}
+
+; CHECK-LABEL: ashr15_trunc_roundtrip:
+; CHECK-NEXT: ; %bb.0:
+; CHECK-NEXT:  MOV A, H
+; CHECK-NEXT:  RLC
+; CHECK-NEXT:  SBB A
+; CHECK-NEXT:  MOV H, A
+; CHECK-NEXT:  RET
+; DISABLED-LABEL: ashr15_trunc_roundtrip:
+; DISABLED:      MOV L, A
+; DISABLED:      MOV A, L
+define i8 @ashr15_trunc_roundtrip(i16 %x) {
+  %shift = ashr i16 %x, 15
+  %trunc = trunc i16 %shift to i8
+  ret i8 %trunc
 }

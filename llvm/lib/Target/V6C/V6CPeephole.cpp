@@ -1344,32 +1344,51 @@ bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
         continue;
       ++Steps;
 
+      bool IsConsumer = J->getOpcode() == V6C::MOVrr &&
+                        TRI->regsOverlap(J->getOperand(1).getReg(), X);
+
       bool ReadsX = false, ClobbersX = false, ClobbersY = false;
       for (const MachineOperand &MO : J->operands()) {
         if (!MO.isReg() || !MO.getReg())
           continue;
+        bool IsConsumerSrc =
+            IsConsumer && MO.isUse() && &MO == &J->getOperand(1);
+        bool IsConsumerDst =
+            IsConsumer && MO.isDef() && &MO == &J->getOperand(0);
         if (TRI->regsOverlap(MO.getReg(), X)) {
-          if (MO.isUse() && !MO.isUndef())
+          if (MO.isUse() && !MO.isUndef() && !IsConsumerSrc)
             ReadsX = true;
           if (MO.isDef())
             ClobbersX = true;
         }
-        if (TRI->regsOverlap(MO.getReg(), Y) && MO.isDef())
+        if (TRI->regsOverlap(MO.getReg(), Y) && MO.isDef() &&
+            !(IsConsumerDst && TRI->regsOverlap(MO.getReg(), Y)))
           ClobbersY = true;
       }
-
-      // Any clobber of X or Y makes the chain unsafe.
-      if (ClobbersX || ClobbersY)
-        break;
 
       // Is J the consumer MOV Z, X (X used as source, dead after)?
       // Check this BEFORE the ReadsX bail-out: the consumer itself reads X
       // as its source operand, which would otherwise terminate the scan.
-      if (J->getOpcode() == V6C::MOVrr &&
-          TRI->regsOverlap(J->getOperand(1).getReg(), X)) {
+      if (IsConsumer) {
+        if (ClobbersX || ClobbersY)
+          break;
         if (isRegDeadAfter(MBB, J, X, TRI)) {
+          auto Resume = std::next(J);
+          if (TRI->regsOverlap(J->getOperand(0).getReg(), Y)) {
+            // Round-trip: MOV X, Y ; ... ; MOV Y, X.
+            // Y already holds the value, so both copies are redundant.
+            ProducerMI.eraseFromParent();
+            J->eraseFromParent();
+            if (MBB.empty())
+              return true;
+            I = (Resume == MBB.begin()) ? Resume : std::prev(Resume);
+            Changed = true;
+            break;
+          }
+
           // Rewrite consumer: MOV Z, X → MOV Z, Y.
           J->getOperand(1).setReg(Y);
+          J->getOperand(1).setIsKill(false);
           // X is dead after consumer and has no intermediate reads,
           // so the producer is a dead write — always safe to erase.
           auto Next = std::next(I);
@@ -1382,6 +1401,11 @@ bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
 
       // X is read by something other than a direct MOV Z, X — stop.
       if (ReadsX)
+        break;
+
+      // Any clobber of X or Y by a non-consumer instruction makes the chain
+      // unsafe.
+      if (ClobbersX || ClobbersY)
         break;
     }
   }

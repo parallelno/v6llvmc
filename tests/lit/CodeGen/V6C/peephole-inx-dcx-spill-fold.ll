@@ -40,14 +40,13 @@
 ; CHECK-NEXT: SHLD
 ;
 ; -- Pattern B (disabled) ------------------------------------------------------
+; With O84 disabled, the low-byte round-trip still remains around the SHLD.
 ; DISABLED:      DAD     H
 ; DISABLED:      LXI     B, 0
 ; DISABLED-NEXT: PUSH    H
 ; DISABLED-NEXT: DAD     B
-; DISABLED-NEXT: MOV     B, H
 ; DISABLED-NEXT: MOV     C, L
 ; DISABLED-NEXT: MOV     L, C
-; DISABLED-NEXT: MOV     H, B
 ; DISABLED-NEXT: SHLD
 
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
