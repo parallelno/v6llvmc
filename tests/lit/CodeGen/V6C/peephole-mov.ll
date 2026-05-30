@@ -72,7 +72,6 @@ define i8 @ashr9_trunc_roundtrip(i16 %x) {
 ; CHECK-NEXT:  SBB A
 ; CHECK-NEXT:  RET
 ; DISABLED-LABEL: ashr15_trunc_roundtrip:
-; DISABLED:      MOV H, A
 ; DISABLED:      MOV L, A
 ; DISABLED:      MOV A, L
 define i8 @ashr15_trunc_roundtrip(i16 %x) {

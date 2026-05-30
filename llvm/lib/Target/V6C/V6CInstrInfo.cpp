@@ -2642,8 +2642,38 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       BuildMI(MBB, MI, DL, get(V6C::RLC), V6C::A).addReg(V6C::A);
       BuildMI(MBB, MI, DL, get(V6C::SBBr), V6C::A)
           .addReg(V6C::A).addReg(V6C::A);
-      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
+      if (!DstHiDead)
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
       BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+      MI.eraseFromParent();
+      return true;
+    }
+
+    if (DstHiDead) {
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(SrcHi);
+      if (TailAmt <= 4) {
+        for (unsigned i = 0; i < TailAmt; ++i)
+          BuildMI(MBB, MI, DL, get(V6C::RRC), V6C::A).addReg(V6C::A);
+      } else {
+        for (unsigned i = 0; i < 8 - TailAmt; ++i)
+          BuildMI(MBB, MI, DL, get(V6C::RLC), V6C::A).addReg(V6C::A);
+      }
+      BuildMI(MBB, MI, DL, get(V6C::ANI), V6C::A)
+          .addReg(V6C::A)
+          .addImm((1u << (8 - TailAmt)) - 1u);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(SrcHi);
+      BuildMI(MBB, MI, DL, get(V6C::RLC), V6C::A).addReg(V6C::A);
+      BuildMI(MBB, MI, DL, get(V6C::SBBr), V6C::A)
+          .addReg(V6C::A).addReg(V6C::A);
+      BuildMI(MBB, MI, DL, get(V6C::ANI), V6C::A)
+          .addReg(V6C::A)
+          .addImm((0xFFu << (8 - TailAmt)) & 0xFFu);
+      BuildMI(MBB, MI, DL, get(V6C::ORAr), V6C::A)
+          .addReg(V6C::A).addReg(DstLo);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+
       MI.eraseFromParent();
       return true;
     }

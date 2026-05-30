@@ -1,4 +1,5 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
+; RUN: llc -march=v6c --v6c-disable-peephole < %s | FileCheck %s --check-prefix=NOPH
 ;
 ; O62 — Efficient i16 shift expansion for constant amount >= 8.
 ; Verifies that V6C_SRL16 / V6C_SRA16 / V6C_SHL16 expansions for byte-
@@ -96,6 +97,89 @@ define void @ashr10_i16(i16 %x, ptr %p) {
   %r = ashr i16 %x, 10
   store i16 %r, ptr %p
   ret void
+}
+
+;===----------------------------------------------------------------------===
+; ASHR i16 by 9/10/15 feeding an i8 return
+;===----------------------------------------------------------------------===
+; These cases are lowered in V6C_SRA16_RAM_LO, not created by the peephole.
+; The no-peephole checks lock down that the expander itself skips the dead
+; DstHi materialization when only the low byte escapes.
+
+; CHECK-LABEL: ashr9_trunc_i16:
+; CHECK-NEXT: ; %bb.0:
+; CHECK-NEXT:  MOV A, H
+; CHECK-NEXT:  RLC
+; CHECK-NEXT:  MOV A, H
+; CHECK-NEXT:  RAR
+; CHECK-NEXT:  RET
+; NOPH-LABEL: ashr9_trunc_i16:
+; NOPH-NEXT: ; %bb.0:
+; NOPH-NEXT:  MOV A, H
+; NOPH-NEXT:  RLC
+; NOPH-NEXT:  MOV A, H
+; NOPH-NEXT:  RAR
+; NOPH-NEXT:  MOV L, A
+; NOPH-NEXT:  MOV A, L
+; NOPH-NEXT:  RET
+define i8 @ashr9_trunc_i16(i16 %x) {
+  %r = ashr i16 %x, 9
+  %t = trunc i16 %r to i8
+  ret i8 %t
+}
+
+; CHECK-LABEL: ashr10_trunc_i16:
+; CHECK-NEXT: ; %bb.0:
+; CHECK-NEXT:  MOV A, H
+; CHECK-NEXT:  RRC
+; CHECK-NEXT:  RRC
+; CHECK-NEXT:  ANI 0x3f
+; CHECK-NEXT:  MOV L, A
+; CHECK-NEXT:  MOV A, H
+; CHECK-NEXT:  RLC
+; CHECK-NEXT:  SBB A
+; CHECK-NEXT:  ANI 0xc0
+; CHECK-NEXT:  ORA L
+; CHECK-NEXT:  RET
+; NOPH-LABEL: ashr10_trunc_i16:
+; NOPH-NEXT: ; %bb.0:
+; NOPH-NEXT:  MOV A, H
+; NOPH-NEXT:  RRC
+; NOPH-NEXT:  RRC
+; NOPH-NEXT:  ANI 0x3f
+; NOPH-NEXT:  MOV L, A
+; NOPH-NEXT:  MOV A, H
+; NOPH-NEXT:  RLC
+; NOPH-NEXT:  SBB A
+; NOPH-NEXT:  ANI 0xc0
+; NOPH-NEXT:  ORA L
+; NOPH-NEXT:  MOV L, A
+; NOPH-NEXT:  MOV A, L
+; NOPH-NEXT:  RET
+define i8 @ashr10_trunc_i16(i16 %x) {
+  %r = ashr i16 %x, 10
+  %t = trunc i16 %r to i8
+  ret i8 %t
+}
+
+; CHECK-LABEL: ashr15_trunc_i16:
+; CHECK-NEXT: ; %bb.0:
+; CHECK-NEXT:  MOV A, H
+; CHECK-NEXT:  RLC
+; CHECK-NEXT:  SBB A
+; CHECK-NEXT:  RET
+; NOPH-LABEL: ashr15_trunc_i16:
+; NOPH-NEXT: ; %bb.0:
+; NOPH-NEXT:  MOV A, H
+; NOPH-NEXT:  RLC
+; NOPH-NEXT:  SBB A
+; NOPH-NEXT:  MOV L, A
+; NOPH-NEXT:  MOV A, L
+; NOPH-NEXT:  RET
+define i8 @ashr15_trunc_i16(i16 %x) {
+  %r = ashr i16 %x, 15
+  %t = trunc i16 %r to i8
+  ret i8 %t
 }
 
 ;===----------------------------------------------------------------------===
