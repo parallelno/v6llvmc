@@ -348,6 +348,64 @@ static void markRegUsesUndef(MachineInstr *MI, Register Reg) {
   }
 }
 
+static bool readsNonCarryFlags(const MachineInstr &MI) {
+  switch (MI.getOpcode()) {
+  case V6C::JZ:
+  case V6C::JNZ:
+  case V6C::JP:
+  case V6C::JM:
+  case V6C::JPE:
+  case V6C::JPO:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static bool definesFlags(const MachineInstr &MI,
+                         const TargetRegisterInfo *TRI) {
+  for (const MachineOperand &MO : MI.operands()) {
+    if (MO.isReg() && MO.isDef() && MO.getReg().isPhysical() &&
+        TRI->regsOverlap(MO.getReg(), V6C::FLAGS))
+      return true;
+  }
+  return false;
+}
+
+static bool definesOnlyCarryFlag(const MachineInstr &MI) {
+  switch (MI.getOpcode()) {
+  case V6C::DAD:
+  case V6C::V6C_DAD:
+  case V6C::V6C_LEA_FI:
+  case V6C::V6C_LOAD8_FI:
+  case V6C::V6C_LOAD16_FI:
+  case V6C::V6C_STORE8_FI:
+  case V6C::V6C_STORE16_FI:
+  case V6C::V6C_SPILL8:
+  case V6C::V6C_RELOAD8:
+  case V6C::V6C_SPILL16:
+  case V6C::V6C_RELOAD16:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static bool hasNonCarryFlagUseBeforeFullFlagDef(
+    MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
+    const TargetRegisterInfo *TRI) {
+  for (auto MI = std::next(I); MI != MBB.end(); ++MI) {
+    if (readsNonCarryFlags(*MI))
+      return true;
+    if (definesFlags(*MI, TRI) && !definesOnlyCarryFlag(*MI))
+      return false;
+  }
+  for (MachineBasicBlock *Succ : MBB.successors())
+    if (Succ->isLiveIn(V6C::FLAGS))
+      return true;
+  return false;
+}
+
 /// Return true if MI is a DCR r or INR r instruction.
 static bool isDcrOrInr(const MachineInstr &MI) {
   return MI.getOpcode() == V6C::DCRr || MI.getOpcode() == V6C::INRr;
@@ -1133,6 +1191,8 @@ bool V6CPeephole::foldMviZeroToXraA(MachineBasicBlock &MBB) {
     // written to MI's imm byte at runtime by an STA spill, and
     // erasing the MI loses the .LLo61_N label.
     if (isO61PatchedImm(MI))
+      continue;
+    if (hasNonCarryFlagUseBeforeFullFlagDef(MBB, MI.getIterator(), TRI))
       continue;
     if (!isRegDeadAfter(MBB, MI.getIterator(), V6C::FLAGS, TRI))
       continue;
