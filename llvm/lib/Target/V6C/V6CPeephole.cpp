@@ -102,6 +102,7 @@ private:
   bool foldMviZeroToXraA(MachineBasicBlock &MBB);
   bool foldMviAluImm(MachineBasicBlock &MBB);
   bool eliminateDeadMVI(MachineBasicBlock &MBB);
+  bool eliminateDeadMov(MachineBasicBlock &MBB);
   bool collapseMovChain(MachineBasicBlock &MBB);
   bool eliminateDeadPopPush(MachineBasicBlock &MBB);
   bool foldInxDcxSpillRoundTrip(MachineBasicBlock &MBB);
@@ -1312,6 +1313,30 @@ bool V6CPeephole::eliminateDeadMVI(MachineBasicBlock &MBB) {
   return Changed;
 }
 
+/// O82 follow-up: erase MOV dst, src when dst is provably dead after the
+/// instruction. MOV writes only dst and does not set FLAGS, so erasing it is
+/// safe when dst is dead. This catches leftover dead high-byte writes such as
+/// `MOV H, A` on i8 return paths where only A is live into RET.
+bool V6CPeephole::eliminateDeadMov(MachineBasicBlock &MBB) {
+  bool Changed = false;
+  const TargetRegisterInfo *TRI =
+      MBB.getParent()->getSubtarget().getRegisterInfo();
+
+  for (MachineInstr &MI : llvm::make_early_inc_range(MBB)) {
+    if (MI.getOpcode() != V6C::MOVrr)
+      continue;
+    Register Dst = MI.getOperand(0).getReg();
+    Register Src = MI.getOperand(1).getReg();
+    if (Dst == Src)
+      continue;
+    if (!isRegDeadAfter(MBB, MI.getIterator(), Dst, TRI))
+      continue;
+    MI.eraseFromParent();
+    Changed = true;
+  }
+  return Changed;
+}
+
 /// O82 Pattern B: collapse MOV X, Y ; [safe instrs] ; MOV Z, X into
 /// MOV Z, Y when X is a dead intermediate (nothing reads X between the
 /// two MOVs and X is dead after the consumer MOV).
@@ -1765,6 +1790,7 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
     Changed |= eliminateSelfMov(MBB);
     Changed |= eliminateRedundantMov(MBB);
     Changed |= eliminateDeadMVI(MBB);   // O82 Pattern A
+    Changed |= eliminateDeadMov(MBB);   // O82 follow-up dead MOV cleanup
     Changed |= collapseMovChain(MBB);   // O82 Pattern B
     Changed |= foldCounterBranch(MBB);
     Changed |= foldXraCmpZeroTest(MBB);

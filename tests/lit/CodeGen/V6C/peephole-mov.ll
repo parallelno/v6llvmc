@@ -40,14 +40,39 @@ define i8 @lshr9_trunc_roundtrip(i16 %x) {
   ret i8 %trunc
 }
 
+; O82/O87 follow-up: ashr i16 by 9 feeding an i8 return should not build the
+; dead sign-byte path at all. With the peephole enabled, the terminal
+; MOV L,A / MOV A,L round-trip also disappears.
+; CHECK-LABEL: ashr9_trunc_roundtrip:
+; CHECK-NEXT: ; %bb.0:
+; CHECK-NEXT:  MOV A, H
+; CHECK-NEXT:  RLC
+; CHECK-NEXT:  MOV A, H
+; CHECK-NEXT:  RAR
+; CHECK-NEXT:  RET
+; DISABLED-LABEL: ashr9_trunc_roundtrip:
+; DISABLED-NEXT: ; %bb.0:
+; DISABLED-NEXT:  MOV A, H
+; DISABLED-NEXT:  RLC
+; DISABLED-NEXT:  MOV A, H
+; DISABLED-NEXT:  RAR
+; DISABLED-NEXT:  MOV L, A
+; DISABLED-NEXT:  MOV A, L
+; DISABLED-NEXT:  RET
+define i8 @ashr9_trunc_roundtrip(i16 %x) {
+  %shift = ashr i16 %x, 9
+  %trunc = trunc i16 %shift to i8
+  ret i8 %trunc
+}
+
 ; CHECK-LABEL: ashr15_trunc_roundtrip:
 ; CHECK-NEXT: ; %bb.0:
 ; CHECK-NEXT:  MOV A, H
 ; CHECK-NEXT:  RLC
 ; CHECK-NEXT:  SBB A
-; CHECK-NEXT:  MOV H, A
 ; CHECK-NEXT:  RET
 ; DISABLED-LABEL: ashr15_trunc_roundtrip:
+; DISABLED:      MOV H, A
 ; DISABLED:      MOV L, A
 ; DISABLED:      MOV A, L
 define i8 @ashr15_trunc_roundtrip(i16 %x) {

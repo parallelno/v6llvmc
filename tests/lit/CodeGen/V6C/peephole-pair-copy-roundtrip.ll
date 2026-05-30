@@ -15,16 +15,15 @@
 ;   MOV     H, B        ; HL = BC = new k  <- no-op
 ;   MOV     L, C        ;                  <- no-op
 ;
-; O86 removes MOV H,B and MOV L,C.  The bounds comparison (MVI A, ...)
-; then immediately follows MOV C, L.
+; O86 removes MOV H,B and MOV L,C. The O82 dead-MOV follow-up then erases the
+; now-dead BC materialization, so the bounds comparison (MVI A, ...) directly
+; follows DAD B.
 ;
 ; CHECK-LABEL: main:
 ; DISABLED-LABEL: main:
 ;
-; -- Enabled: round-trip eliminated, MVI A follows directly after MOV C,L --
+; -- Enabled: all dead pair-copy materialization removed, MVI A follows DAD B --
 ; CHECK: DAD     B
-; CHECK-NEXT: MOV     B, H
-; CHECK-NEXT: MOV     C, L
 ; CHECK-NEXT: MVI     A,
 ;
 ; -- Disabled: remaining low-byte round-trip present before MVI A --

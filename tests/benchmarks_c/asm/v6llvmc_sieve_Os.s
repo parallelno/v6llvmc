@@ -109,8 +109,6 @@ main:                                   ; @main
 	LXI	B, 0
 	;--- V6C_ADD16 ---
 	DAD	B
-	MOV	B, H
-	MOV	C, L
 	;--- V6C_BR_CC16_IMM ---
 	MVI	A, 0x3f
 	SUB	L
@@ -170,7 +168,6 @@ main:                                   ; @main
 	MOV	L, A
 	MOV	A, H
 	XRA	D
-	MOV	H, A
 	MOV	A, L
 	OUT	0xed
 	HLT

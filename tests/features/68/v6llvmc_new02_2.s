@@ -295,8 +295,6 @@ shr_u16_9_trunc:                        ; @shr_u16_9_trunc
 	MOV	A, H
 	RRC
 	ANI	0x7f
-	MOV	L, A
-	MOV	A, L
 	RET
 .Lfunc_end15:
                                         ; -- End function
@@ -312,8 +310,6 @@ shr_u16_15_trunc:                       ; @shr_u16_15_trunc
 	MOV	A, H
 	RLC
 	ANI	1
-	MOV	L, A
-	MOV	A, L
 	RET
 .Lfunc_end16:
                                         ; -- End function
@@ -327,16 +323,9 @@ sar_i16_9_trunc:                        ; @sar_i16_9_trunc
 	;DEBUG_VALUE: sar_i16_9_trunc:x <- $hl
 	;--- V6C_SRA16_RAM_LO ---
 	MOV	A, H
-	MOV	L, H
 	RLC
-	SBB	A
-	MOV	H, A
-	MOV	A, L
-	RLC
-	MOV	A, L
+	MOV	A, H
 	RAR
-	MOV	L, A
-	MOV	A, L
 	RET
 .Lfunc_end17:
                                         ; -- End function
@@ -352,9 +341,6 @@ sar_i16_15_trunc:                       ; @sar_i16_15_trunc
 	MOV	A, H
 	RLC
 	SBB	A
-	MOV	H, A
-	MOV	L, A
-	MOV	A, L
 	RET
 .Lfunc_end18:
                                         ; -- End function

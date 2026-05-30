@@ -526,8 +526,23 @@ static bool isRegDeadAfter(MachineBasicBlock &MBB,
     for (const MachineOperand &MO : I->operands()) {
       if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
         continue;
-      if (MO.isUse() && !MO.isUndef())
-        UsesReg = true;
+      if (MO.isUse() && !MO.isUndef()) {
+        bool IsArtifact = false;
+        if (MO.isImplicit() && MO.isKill() &&
+            TRI->isSubRegister(MO.getReg(), Reg)) {
+          for (const MachineOperand &Sub : I->operands()) {
+            if (!Sub.isReg() || Sub.isImplicit() || !Sub.isUse())
+              continue;
+            if (TRI->isSubRegister(MO.getReg(), Sub.getReg()) &&
+                !TRI->regsOverlap(Sub.getReg(), Reg)) {
+              IsArtifact = true;
+              break;
+            }
+          }
+        }
+        if (!IsArtifact)
+          UsesReg = true;
+      }
       if (MO.isDef())
         DefsReg = true;
     }
@@ -563,8 +578,23 @@ static bool isRegDeadAtMI(unsigned Reg, const MachineInstr &MI,
     for (const MachineOperand &MO : I->operands()) {
       if (!MO.isReg() || !TRI->regsOverlap(MO.getReg(), Reg))
         continue;
-      if (MO.isUse() && !MO.isUndef())
-        usesReg = true;
+      if (MO.isUse() && !MO.isUndef()) {
+        bool IsArtifact = false;
+        if (MO.isImplicit() && MO.isKill() &&
+            TRI->isSubRegister(MO.getReg(), Reg)) {
+          for (const MachineOperand &Sub : I->operands()) {
+            if (!Sub.isReg() || Sub.isImplicit() || !Sub.isUse())
+              continue;
+            if (TRI->isSubRegister(MO.getReg(), Sub.getReg()) &&
+                !TRI->regsOverlap(Sub.getReg(), Reg)) {
+              IsArtifact = true;
+              break;
+            }
+          }
+        }
+        if (!IsArtifact)
+          usesReg = true;
+      }
       if (MO.isDef())
         defsReg = true;
     }
@@ -2577,9 +2607,20 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
     MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
     MCRegister SrcHi = RI.getSubReg(SrcReg, V6C::sub_hi);
+    bool DstHiDead = isRegDeadAfter(MBB, MI.getIterator(), DstHi, &RI);
 
     unsigned TailAmt = ShAmt - 8;
     if (TailAmt == 1) {
+      if (DstHiDead) {
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(SrcHi);
+        BuildMI(MBB, MI, DL, get(V6C::RLC), V6C::A).addReg(V6C::A);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(SrcHi);
+        BuildMI(MBB, MI, DL, get(V6C::RAR), V6C::A).addReg(V6C::A);
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+        MI.eraseFromParent();
+        return true;
+      }
+
       BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(SrcHi);
       if (DstLo != SrcHi)
         BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(SrcHi);

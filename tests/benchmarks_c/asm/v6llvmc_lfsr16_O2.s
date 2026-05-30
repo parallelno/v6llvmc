@@ -86,7 +86,6 @@ main:                                   ; @main
 	MOV	L, A
 	MOV	A, D
 	XRA	H
-	MOV	H, A
 	MOV	A, L
 	OUT	0xed
 	HLT
