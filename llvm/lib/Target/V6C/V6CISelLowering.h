@@ -21,6 +21,7 @@ enum NodeType : unsigned {
   CALL,       // Function call.
   CMP,        // Compare two values, produces FLAGS as SSA-typed i8.
   CMP_ZERO,   // Zero-test a single i16 value, produces FLAGS as i8.
+  CMP_SIGN,   // Sign-test a single i16 value, produces FLAGS as i8.
   BRCOND,     // Conditional branch on FLAGS (FLAGS as last i8 operand).
   SELECT_CC,  // Conditional select on FLAGS (FLAGS as last i8 operand).
   Wrapper,    // GlobalAddress / ExternalSymbol wrapper.

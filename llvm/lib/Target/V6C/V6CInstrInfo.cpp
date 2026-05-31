@@ -1200,6 +1200,27 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     return true;
   }
 
+  case V6C::V6C_CMP16_SIGN: {
+    // Signed compare against zero — XRA A; ADD hi(src) exposes the pair's
+    // sign bit in S while staying cheaper than the generic IMM compare.
+    Register SrcReg = MI.getOperand(0).getReg();
+    MCRegister SrcHi = RI.getSubReg(SrcReg, V6C::sub_hi);
+
+    MachineInstr *XraMI = BuildMI(MBB, MI, DL, get(V6C::XRAr), V6C::A)
+                              .addReg(V6C::A)
+                              .addReg(V6C::A)
+                              .getInstr();
+    if (!isRegLiveBefore(MBB, XraMI->getIterator(), V6C::A, &RI))
+      markRegUsesUndef(XraMI, V6C::A);
+
+    BuildMI(MBB, MI, DL, get(V6C::ADDr), V6C::A)
+        .addReg(V6C::A)
+        .addReg(SrcHi);
+
+    MI.eraseFromParent();
+    return true;
+  }
+
   case V6C::V6C_CMP8_ZERO: {
     // O80: Zero-test for i8 with three liveness-driven shapes.
     //   src = A          → ORA A                  (1B / 4cc)

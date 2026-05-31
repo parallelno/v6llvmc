@@ -234,6 +234,7 @@ const char *V6CTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case V6CISD::CALL:      return "V6CISD::CALL";
   case V6CISD::CMP:       return "V6CISD::CMP";
   case V6CISD::CMP_ZERO:  return "V6CISD::CMP_ZERO";
+  case V6CISD::CMP_SIGN:  return "V6CISD::CMP_SIGN";
   case V6CISD::BRCOND:    return "V6CISD::BRCOND";
   case V6CISD::SELECT_CC: return "V6CISD::SELECT_CC";
   case V6CISD::Wrapper:   return "V6CISD::Wrapper";
@@ -471,6 +472,52 @@ static V6CCC::CondCode getV6CCC(ISD::CondCode CC) {
   }
 }
 
+static bool matchI16SignedZeroTest(ISD::CondCode CC, SDValue LHS, SDValue RHS,
+                                   SDValue &Value, V6CCC::CondCode &V6CC) {
+  if (LHS.getValueType() != MVT::i16)
+    return false;
+
+  auto *CRHS = dyn_cast<ConstantSDNode>(RHS);
+  if (!CRHS)
+    return false;
+
+  int64_t Imm = CRHS->getSExtValue() & 0xFFFF;
+  switch (CC) {
+  case ISD::SETGE:
+    if (Imm == 0) {
+      Value = LHS;
+      V6CC = V6CCC::COND_P;
+      return true;
+    }
+    break;
+  case ISD::SETLT:
+    if (Imm == 0) {
+      Value = LHS;
+      V6CC = V6CCC::COND_M;
+      return true;
+    }
+    break;
+  case ISD::SETGT:
+    if (Imm == 0xFFFF) {
+      Value = LHS;
+      V6CC = V6CCC::COND_P;
+      return true;
+    }
+    break;
+  case ISD::SETLE:
+    if (Imm == 0xFFFF) {
+      Value = LHS;
+      V6CC = V6CCC::COND_M;
+      return true;
+    }
+    break;
+  default:
+    break;
+  }
+
+  return false;
+}
+
 SDValue V6CTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
   SDLoc DL(Op);
   SDValue Chain  = Op.getOperand(0);
@@ -478,6 +525,15 @@ SDValue V6CTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
   SDValue LHS    = Op.getOperand(2);
   SDValue RHS    = Op.getOperand(3);
   SDValue Dest   = Op.getOperand(4);
+
+  SDValue SignSrc;
+  V6CCC::CondCode SignCC;
+  if (matchI16SignedZeroTest(CC, LHS, RHS, SignSrc, SignCC)) {
+    SDValue Flags = DAG.getNode(V6CISD::CMP_SIGN, DL, MVT::i8, SignSrc);
+    SDValue CCVal = DAG.getConstant(SignCC, DL, MVT::i8);
+    return DAG.getNode(V6CISD::BRCOND, DL, MVT::Other,
+                       {Chain, Dest, CCVal, Flags});
+  }
 
   // Handle GT/LE by swapping operands.
   switch (CC) {
@@ -612,6 +668,16 @@ SDValue V6CTargetLowering::LowerSELECT_CC(SDValue Op,
   SDValue TrueVal  = Op.getOperand(2);
   SDValue FalseVal = Op.getOperand(3);
   ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(4))->get();
+
+  SDValue SignSrc;
+  V6CCC::CondCode SignCC;
+  if (matchI16SignedZeroTest(CC, LHS, RHS, SignSrc, SignCC)) {
+    SDValue Flags = DAG.getNode(V6CISD::CMP_SIGN, DL, MVT::i8, SignSrc);
+    SDValue CCVal = DAG.getConstant(SignCC, DL, MVT::i8);
+    SDVTList VTs = DAG.getVTList(Op.getValueType());
+    return DAG.getNode(V6CISD::SELECT_CC, DL, VTs,
+                       {TrueVal, FalseVal, CCVal, Flags});
+  }
 
   // Handle GT/LE by swapping.
   switch (CC) {

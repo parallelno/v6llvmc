@@ -80,6 +80,9 @@ def V6Ccmp      : SDNode<"V6CISD::CMP", SDT_V6CCmp, []>;
 def SDT_V6CCmpZero : SDTypeProfile<1, 1, [SDTCisVT<0, i8>, SDTCisVT<1, i16>]>;
 def V6Ccmpzero : SDNode<"V6CISD::CMP_ZERO", SDT_V6CCmpZero, []>;
 
+// CMP_SIGN: sign-test a single i16 value, produces FLAGS (i8 SSA).
+def V6Ccmpsign : SDNode<"V6CISD::CMP_SIGN", SDT_V6CCmpZero, []>;
+
 def V6Cbrcond   : SDNode<"V6CISD::BRCOND", SDT_V6CBrCond,
                           [SDNPHasChain]>;
 def V6Cselectcc : SDNode<"V6CISD::SELECT_CC", SDT_V6CSelectCC, []>;
@@ -1063,6 +1066,13 @@ let Defs = [FLAGS, A] in
 def V6C_CMP16_ZERO : V6CPseudo<(outs), (ins GR16:$src),
     "# CMP16_ZERO $src",
     [(set FLAGS, (V6Ccmpzero i16:$src))]>;
+
+// Signed compare against zero using only the high byte's sign bit.
+// Expansion: XRA A; ADD hi(src). This is only valid for M/P consumers.
+let Defs = [FLAGS, A] in
+def V6C_CMP16_SIGN : V6CPseudo<(outs), (ins GR16:$src),
+    "# CMP16_SIGN $src",
+    [(set FLAGS, (V6Ccmpsign i16:$src))]>;
 
 // O80: 8-bit zero-test comparison. Mirrors V6C_CMP16_ZERO for i8.
 // Avoids the Acc:$lhs constraint of CPI 0, which forces a MOV A,r
