@@ -276,9 +276,16 @@ void draw_line(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y
     );
 }
 
+static inline uint8_t draw_scale_x_4_3(uint8_t value)
+{
+    return (value >> 1) + (value >> 2) + ((value & 0x03u) != 0);
+}
+
 /*
  * Jesko's method for drawing circles with only integer arithmetic and no multiplication/division.
  * Reference: https://en.wikipedia.org/wiki/Midpoint_circle_algorithm#cite_note-4
+ * The Vector-06C display uses 4:3 pixels, so X offsets are compressed to 3/4
+ * to keep the circle visually round on screen.
  * Note: this method is not perfectly accurate, and may produce slightly distorted
  * circles, especially for smaller radii.
 */
@@ -291,15 +298,18 @@ void draw_circle(uint8_t cx, uint8_t cy, uint8_t r)
 
     while (x >= y)
     {
+        uint8_t sx = draw_scale_x_4_3(x);
+        uint8_t sy = draw_scale_x_4_3(y);
+
         // 8-way symmetry
-        draw_pixel(cx + x, cy + y);
-        draw_pixel(cx - x, cy + y);
-        draw_pixel(cx + x, cy - y);
-        draw_pixel(cx - x, cy - y);
-        draw_pixel(cx + y, cy + x);
-        draw_pixel(cx - y, cy + x);
-        draw_pixel(cx + y, cy - x);
-        draw_pixel(cx - y, cy - x);
+        draw_pixel(cx + sx, cy + y);
+        draw_pixel(cx - sx, cy + y);
+        draw_pixel(cx + sx, cy - y);
+        draw_pixel(cx - sx, cy - y);
+        draw_pixel(cx + sy, cy + x);
+        draw_pixel(cx - sy, cy + x);
+        draw_pixel(cx + sy, cy - x);
+        draw_pixel(cx - sy, cy - x);
 
         y++;
         t1 += y;
