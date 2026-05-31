@@ -1,5 +1,9 @@
 # O63 — Split i8/i16 Spill/Reload Pseudos to Drop False `Defs=[FLAGS]` on Static-Stack Path
 
+## Resolution
+Rejected
+O63 as written is mostly obsolete on the current pipeline, and on the strongest repro I could get it still did not change generated code. If you want to revisit it later, the only plausible remaining target is earlier generic post-RA scheduling behavior, not the late V6C zero-test / redundant-flag passes. I reverted the temporary backend change and rebuilt the baseline compiler afterward; the normal build/test sweep passed again.
+
 **Source:** V6C
 **Savings:** indirect — gives the pre-RA / post-RA scheduler freedom to
             move flag-setters (`CMP`, `XRA`, `INR`, `DCR`, `ADD`, …)

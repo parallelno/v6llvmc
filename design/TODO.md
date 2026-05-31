@@ -15,20 +15,5 @@ optimization template:
 make an optimization peephole design document and store it to design\future_plans\ folder. add it to design\future_plans\README.md.
 ...
 ================================
-samples\03_demo\main.s
-
-	;--- V6C_CMP16_IMM ---
-	MVI	A, 0xff
-	SUB	L
-	MVI	A, 0xff
-	SBB	H
-	JP	.LBB20_3
-
-cheaper is
-	;--- V6C_CMP16_IMM ---
-	MVI	A, CONST_HI
-	cmp reg_hi
-	jnz loop
-	MVI	A, CONST_LO
-	cmp reg_lo
-	jnz loop
+test what is emitted for -x, and -1*x, x*(-1)
+================================
