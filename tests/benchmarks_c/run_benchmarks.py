@@ -52,10 +52,13 @@ class Result:
     checksum: int | None
     flags: str
     error: str | None = None
+    skipped: bool = False
 
     @property
     def ok(self) -> bool:
         return (
+            not self.skipped
+            and
             self.error is None
             and self.checksum == EXPECTED[self.program]
             and self.cycles is not None
@@ -80,6 +83,31 @@ def run_emul(rom: Path, load_addr: int) -> tuple[int | None, int | None]:
     if not (cyc and "HALT" in out):
         return None, None
     return int(cyc.group(1)), (int(val.group(1), 16) if val else None)
+
+
+def make_z88dk_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["ZCCCFG"] = str(ZCC_CFG)
+    env["PATH"] = f"{ZCC_BIN};{env['PATH']}"
+    return env
+
+
+def probe_z88dk() -> str | None:
+    if not ZCC.exists():
+        return f"{ZCC.name} not found"
+    if not ZCC_CFG.is_dir():
+        return "z88dk config directory not found"
+    try:
+        subprocess.run([str(ZCC)], capture_output=True, text=True,
+                       env=make_z88dk_env())
+    except OSError as exc:
+        return f"unable to launch {ZCC.name}: {exc}"
+    return None
+
+
+def skipped_result(compiler: str, prog: str, flags: str, reason: str) -> Result:
+    return Result(compiler, prog, 0, None, None, flags,
+                  error=reason, skipped=True)
 
 
 # ---------------------------------------------------------------------------
@@ -128,9 +156,7 @@ def build_z88dk(prog: str) -> Result:
     bin_path = BUILD / f"z88dk_{prog}.bin"
     for f in (out, com, bin_path):
         f.unlink(missing_ok=True)
-    env = os.environ.copy()
-    env["ZCCCFG"] = str(ZCC_CFG)
-    env["PATH"] = f"{ZCC_BIN};{env['PATH']}"
+    env = make_z88dk_env()
     flags = ["+cpm", "-clib=8080", "-m8080", "-compiler=sccz80",
              "-SO3", "-O3", "-create-app",
              "-pragma-define:CRT_INITIALIZE_BSS=0",
@@ -138,7 +164,11 @@ def build_z88dk(prog: str) -> Result:
              "-pragma-output:noprotectmsdos",
              f"-I{SRC}"]
     cmd = [str(ZCC), *flags, str(SRC / f"{prog}.c"), "-o", str(out)]
-    p = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    except OSError as exc:
+        return skipped_result("z88dk", prog, " ".join(flags[:8]),
+                              f"unable to launch {ZCC.name}: {exc}")
     if not com.exists():
         return Result("z88dk", prog, 0, None, None, " ".join(flags[:8]),
                       error=(p.stdout + p.stderr).strip()[:200])
@@ -146,10 +176,13 @@ def build_z88dk(prog: str) -> Result:
     asm_out = ASM / f"z88dk_{prog}.asm"
     s_tmp = BUILD / f"z88dk_{prog}_s"
     s_tmp.unlink(missing_ok=True)
-    subprocess.run(
-        [str(ZCC), *flags, "-S", str(SRC / f"{prog}.c"), "-o", str(s_tmp)],
-        capture_output=True, text=True, env=env,
-    )
+    try:
+        subprocess.run(
+            [str(ZCC), *flags, "-S", str(SRC / f"{prog}.c"), "-o", str(s_tmp)],
+            capture_output=True, text=True, env=env,
+        )
+    except OSError:
+        pass
     if s_tmp.exists():
         asm_out.write_bytes(s_tmp.read_bytes())
     # Wrap .COM into a flat ROM with BDOS stub: org 0 jumps to 0x0100,
@@ -170,6 +203,8 @@ def build_z88dk(prog: str) -> Result:
 # ---------------------------------------------------------------------------
 
 def fmt_row(r: Result, baseline_cycles: int | None, md: bool = False) -> str:
+    if r.skipped:
+        return f"SKIPPED ({r.error or 'unavailable'})"
     if not r.ok:
         return f"FAIL ({r.error or 'wrong checksum'})"
     sz = r.rom_size
@@ -205,10 +240,20 @@ def main() -> int:
         results[("c8080", prog)] = r
         print(f"  c8080         {prog:8} -> {fmt_row(r, None)}")
 
-    for prog in PROGRAMS:
-        r = build_z88dk(prog)
-        results[("z88dk", prog)] = r
-        print(f"  z88dk         {prog:8} -> {fmt_row(r, None)}")
+    z88dk_issue = probe_z88dk()
+    if z88dk_issue is None:
+        for prog in PROGRAMS:
+            r = build_z88dk(prog)
+            results[("z88dk", prog)] = r
+            print(f"  z88dk         {prog:8} -> {fmt_row(r, None)}")
+    else:
+        print(f"  z88dk         skipped -> {z88dk_issue}")
+        for prog in PROGRAMS:
+            r = skipped_result("z88dk", prog,
+                               "+cpm -clib=8080 -m8080 sccz80 -SO3 -O3",
+                               z88dk_issue)
+            results[("z88dk", prog)] = r
+            print(f"  z88dk         {prog:8} -> {fmt_row(r, None)}")
 
     # Validate correctness invariant.
     print("\nCorrectness invariant: all compilers must agree on checksum.")
@@ -250,9 +295,18 @@ def main() -> int:
     lines.append("")
     checksum_text = ", ".join(
         f"`{prog}`=0x{EXPECTED[prog]:02X}" for prog in PROGRAMS)
-    lines.append("All compilers produced the same checksum byte per program "
-                 f"({checksum_text}), confirming the ROMs are functionally "
-                 "equivalent.")
+    skipped_compilers = sorted({r.compiler for r in results.values() if r.skipped})
+    if skipped_compilers:
+        skipped_text = ", ".join(f"`{compiler}`" for compiler in skipped_compilers)
+        lines.append("All available compilers produced the same checksum byte per program "
+                     f"({checksum_text}), confirming the ROMs are functionally "
+                     "equivalent.")
+        lines.append("")
+        lines.append(f"Skipped comparator(s): {skipped_text} (toolchain unavailable during this run).")
+    else:
+        lines.append("All compilers produced the same checksum byte per program "
+                     f"({checksum_text}), confirming the ROMs are functionally "
+                     "equivalent.")
     lines.append("")
     lines.append("## Compiler invocations")
     lines.append("")
