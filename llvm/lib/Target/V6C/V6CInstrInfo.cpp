@@ -719,6 +719,93 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     return true;
   }
 
+  case V6C::V6C_NEG16: {
+    // Negate a 16-bit pair without first materializing a zero scratch pair.
+    Register DstReg = MI.getOperand(0).getReg();
+    Register SrcReg = MI.getOperand(1).getReg();
+    MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
+    MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
+    MCRegister SrcLo = RI.getSubReg(SrcReg, V6C::sub_lo);
+    MCRegister SrcHi = RI.getSubReg(SrcReg, V6C::sub_hi);
+
+    MachineInstr *XraMI = BuildMI(MBB, MI, DL, get(V6C::XRAr), V6C::A)
+                              .addReg(V6C::A)
+                              .addReg(V6C::A)
+                              .getInstr();
+    if (!isRegLiveBefore(MBB, XraMI->getIterator(), V6C::A, &RI))
+      markRegUsesUndef(XraMI, V6C::A);
+
+    BuildMI(MBB, MI, DL, get(V6C::SUBr), V6C::A)
+        .addReg(V6C::A)
+        .addReg(SrcLo);
+    BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
+    BuildMI(MBB, MI, DL, get(V6C::MVIr), V6C::A).addImm(0);
+    BuildMI(MBB, MI, DL, get(V6C::SBBr), V6C::A)
+        .addReg(V6C::A)
+        .addReg(SrcHi);
+    BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
+
+    MI.eraseFromParent();
+    return true;
+  }
+
+  case V6C::V6C_NEG8: {
+    // Result-only i8 negate. Use CMA; INR A only when the source is already
+    // in A; keep the subtract-based shape for every other case.
+    Register Dst = MI.getOperand(0).getReg();
+    Register Src = MI.getOperand(1).getReg();
+    bool SrcKilled = MI.getOperand(1).isKill();
+
+    // RA may materialize a short-lived copy `MOV Src, A` immediately before
+    // the pseudo when the original value already lives in A. Fold that copy
+    // back into the accumulator-only negate shape.
+    if (Src != V6C::A && SrcKilled) {
+      auto PrevIt = MI.getIterator();
+      while (PrevIt != MBB.begin()) {
+        --PrevIt;
+        if (PrevIt->isDebugInstr() || PrevIt->getOpcode() == V6C::V6C_PSEUDO_COMMENT)
+          continue;
+
+        bool IsCopyFromA = false;
+        if (PrevIt->getOpcode() == V6C::MOVrr) {
+          IsCopyFromA = PrevIt->getOperand(0).getReg() == Src &&
+                        PrevIt->getOperand(1).getReg() == V6C::A;
+        } else if (PrevIt->isCopy()) {
+          IsCopyFromA = PrevIt->getOperand(0).getReg() == Src &&
+                        PrevIt->getOperand(1).getReg() == V6C::A;
+        }
+
+        if (IsCopyFromA) {
+          PrevIt->eraseFromParent();
+          Src = V6C::A;
+        }
+        break;
+      }
+    }
+
+    if (Src == V6C::A) {
+      BuildMI(MBB, MI, DL, get(V6C::CMA), V6C::A).addReg(V6C::A);
+      BuildMI(MBB, MI, DL, get(V6C::INRr), V6C::A).addReg(V6C::A);
+      if (Dst != V6C::A)
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), Dst).addReg(V6C::A);
+    } else {
+      MachineInstr *XraMI = BuildMI(MBB, MI, DL, get(V6C::XRAr), V6C::A)
+                                .addReg(V6C::A)
+                                .addReg(V6C::A)
+                                .getInstr();
+      if (!isRegLiveBefore(MBB, XraMI->getIterator(), V6C::A, &RI))
+        markRegUsesUndef(XraMI, V6C::A);
+      BuildMI(MBB, MI, DL, get(V6C::SUBr), V6C::A)
+          .addReg(V6C::A)
+          .addReg(Src, getKillRegState(SrcKilled));
+      if (Dst != V6C::A)
+        BuildMI(MBB, MI, DL, get(V6C::MOVrr), Dst).addReg(V6C::A);
+    }
+
+    MI.eraseFromParent();
+    return true;
+  }
+
   case V6C::V6C_SEXT: {
     // Sign-extend i8 to i16 via RLC + SBB.
     // RLC rotates A left: bit 7 → carry.

@@ -27,6 +27,7 @@ enum NodeType : unsigned {
   Wrapper,    // GlobalAddress / ExternalSymbol wrapper.
   BR_CC16,    // Fused 16-bit compare + conditional branch.
   SEXT,       // Sign-extend i8 to i16 (pseudo, expands to RLC+SBB).
+  NEG8,       // Result-only i8 negate from canonical sub 0, x.
   SHL16_DAD,      // Logical left shift i16 via repeated DAD H.
   SHL16_BYTE,     // Logical left shift i16 by 8 via byte-lane move.
   SHL16_RAM_HI,   // Logical left shift i16 via A-domain byte specialization.

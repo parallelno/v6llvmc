@@ -1,0 +1,429 @@
+Feature 69 - O87 Negate Specialization
+======================================
+
+Status
+------
+
+O87 is implemented and validated.
+
+The new V6C backend behaviour is:
+- i16 canonical negate now lowers to `V6C_NEG16`, removing the artificial zero pair before RA.
+- result-only i8 negate now lowers to `V6C_NEG8` only when the operand already arrives in `A`.
+- non-`A` and memory-source i8 negates stay on the subtract path, so `neg_i8_global_unary` keeps the better `SUB M` shape.
+
+All cycle counts below include the terminating `RET`. The core sequence win the user asked about is still the same:
+- i16 negate body: 52cc -> 36cc excluding `RET`
+- i8 accumulator negate body: 16cc -> 12cc excluding `RET`
+
+
+C Test Case Code
+----------------
+
+`v6llvmc.c` / `c8080.c`
+
+```c
+typedef signed char s8;
+typedef signed short s16;
+
+volatile s16 g_i16 = (s16)0x8123;
+volatile s8 g_i8 = (s8)0x93;
+volatile s16 out_i16;
+volatile s8 out_i8;
+
+s16 neg_i16_unary(s16 x) { return -x; }
+/* c8080 accepts this spelling more reliably than casts in expressions. */
+s16 neg_i16_mul_left(s16 x) { return (s16)(-1) * x; }
+s16 neg_i16_mul_right(s16 x) { return x * (s16)(-1); }
+
+s8 neg_i8_unary(s8 x) { return -x; }
+
+s16 neg_i16_global_unary(void) { return -g_i16; }
+s8 neg_i8_global_unary(void) { return -g_i8; }
+
+int main(int argc, char **argv) {
+  (void)argc;
+  (void)argv;
+
+  out_i16 = neg_i16_unary(g_i16);
+  out_i16 = neg_i16_mul_left(g_i16);
+  out_i16 = neg_i16_mul_right(g_i16);
+  out_i16 = neg_i16_global_unary();
+
+  out_i8 = neg_i8_unary(g_i8);
+  out_i8 = neg_i8_global_unary();
+  return 0;
+}
+```
+
+
+c8080 ASM Converted To i8080 (main + dependent functions)
+---------------------------------------------------------
+
+The source `c8080.asm` is Z80-flavoured. The bodies below are the relevant
+functions converted to i8080 mnemonics for comparison.
+
+```asm
+main:
+    SHLD __a_2_main
+    LHLD g_i16
+    CALL neg_i16_unary
+    SHLD out_i16
+    LHLD g_i16
+    CALL neg_i16_mul_left
+    SHLD out_i16
+    LHLD g_i16
+    CALL neg_i16_mul_right
+    SHLD out_i16
+    CALL neg_i16_global_unary
+    SHLD out_i16
+    LDA g_i8
+    CALL neg_i8_unary
+    STA out_i8
+    CALL neg_i8_global_unary
+    STA out_i8
+    LXI H, 0
+    RET
+
+neg_i16_unary:
+    SHLD __a_1_neg_i16_unary
+    JMP __o_minus_16
+
+neg_i16_mul_left:
+    SHLD __a_1_neg_i16_mul_left
+    LXI D, 0xffff
+    JMP __o_mul_i16
+
+neg_i16_mul_right:
+    SHLD __a_1_neg_i16_mul_right
+    LXI D, 0xffff
+    JMP __o_mul_i16
+
+neg_i8_unary:
+    STA __a_1_neg_i8_unary
+    CMA
+    INR A
+    RET
+
+neg_i16_global_unary:
+    LHLD g_i16
+    JMP __o_minus_16
+
+neg_i8_global_unary:
+    LDA g_i8
+    CMA
+    INR A
+    RET
+
+__o_minus_16:
+    XRA A
+    SUB L
+    MOV L, A
+    MVI A, 0
+    SBB H
+    MOV H, A
+    RET
+
+__o_mul_i16:
+    MOV A, H
+    ADD A
+    JNC __o_mul_i16_1
+    CALL __o_minus_16
+    MOV A, D
+    ADD A
+    JNC __o_mul_i16_2
+    XCHG
+    CALL __o_minus_16
+    XCHG
+    JMP __o_mul_u16
+
+__o_mul_i16_1:
+    MOV A, D
+    ADD A
+    JNC __o_mul_u16
+    XCHG
+    CALL __o_minus_16
+    XCHG
+
+__o_mul_i16_2:
+    CALL __o_mul_u16
+    JMP __o_minus_16
+
+__o_mul_u16:
+    MOV B, H
+    MOV C, L
+    LXI H, 0
+    MVI A, 17
+__o_mul_u16_l1:
+    DCR A
+    RZ
+    DAD H
+    XCHG
+    DAD H
+    XCHG
+    JNC __o_mul_u16_l1
+    DAD B
+    JMP __o_mul_u16_l1
+```
+
+
+c8080 Stats
+-----------
+
+Public-function rows below are effective totals. For `neg_i16_unary` and
+`neg_i16_global_unary`, that means wrapper plus `__o_minus_16`. For
+`neg_i16_mul_left/right`, that means wrapper plus `__o_mul_i16`, `__o_mul_u16`,
+and `__o_minus_16` as reached by the fixed `* -1` path.
+
+| Function | Bytes | Worst cycles | Notes |
+|----------|------:|-------------:|-------|
+| `main` | 55 | 376 | body only; excludes the two pre-label setup instructions |
+| `neg_i16_unary` | 14 | 80 | wrapper + `__o_minus_16` |
+| `neg_i16_mul_left` | 76 | 1300 | wrapper + fixed `__o_mul_i16`/`__o_mul_u16`/`__o_minus_16` path |
+| `neg_i16_mul_right` | 76 | 1300 | same as `neg_i16_mul_left` |
+| `neg_i8_unary` | 6 | 40 | direct `CMA; INR A` plus arg spill |
+| `neg_i16_global_unary` | 14 | 80 | `LHLD` + `__o_minus_16` |
+| `neg_i8_global_unary` | 6 | 40 | `LDA` + `CMA; INR A` |
+| `__o_minus_16` | 8 | 48 | shared 16-bit negate helper |
+| `__o_mul_i16` | 38 | 1256 | fixed `DE=0xffff` path, excludes wrapper |
+| `__o_mul_u16` | 21 | 1044 | fixed `DE=1` path reached from `__o_mul_i16` |
+
+
+v6llvmc OLD ASM (relevant functions)
+------------------------------------
+
+`v6llvmc_old.asm`
+
+```asm
+neg_i16_unary:
+    LXI D, 0
+    MOV A, E
+    SUB L
+    MOV L, A
+    MOV A, D
+    SBB H
+    MOV H, A
+    RET
+
+neg_i16_mul_left:
+    LXI D, 0
+    MOV A, E
+    SUB L
+    MOV L, A
+    MOV A, D
+    SBB H
+    MOV H, A
+    RET
+
+neg_i16_mul_right:
+    LXI D, 0
+    MOV A, E
+    SUB L
+    MOV L, A
+    MOV A, D
+    SBB H
+    MOV H, A
+    RET
+
+neg_i8_unary:
+    MOV L, A
+    XRA A
+    SUB L
+    RET
+
+neg_i16_global_unary:
+    LHLD g_i16
+    LXI D, 0
+    MOV A, E
+    SUB L
+    MOV L, A
+    MOV A, D
+    SBB H
+    MOV H, A
+    RET
+
+neg_i8_global_unary:
+    LXI H, g_i8
+    XRA A
+    SUB M
+    RET
+
+main:
+    LHLD g_i16
+    XCHG
+    LXI H, 0
+    MOV A, L
+    SUB E
+    MOV E, A
+    MOV A, H
+    SBB D
+    MOV D, A
+    XCHG
+    SHLD out_i16
+    LHLD g_i16
+    XCHG
+    MOV A, L
+    SUB E
+    MOV E, A
+    MOV A, H
+    SBB D
+    MOV D, A
+    XCHG
+    SHLD out_i16
+    LHLD g_i16
+    XCHG
+    MOV A, L
+    SUB E
+    MOV E, A
+    MOV A, H
+    SBB D
+    MOV D, A
+    XCHG
+    SHLD out_i16
+    LHLD g_i16
+    XCHG
+    MOV A, L
+    SUB E
+    MOV L, A
+    MOV A, H
+    SBB D
+    MOV H, A
+    SHLD out_i16
+    LXI H, g_i8
+    XRA A
+    SUB M
+    STA out_i8
+    XRA A
+    SUB M
+    STA out_i8
+    LXI H, 0
+    RET
+```
+
+
+v6llvmc NEW ASM (relevant functions)
+------------------------------------
+
+`v6llvmc_new01.asm`
+
+```asm
+neg_i16_unary:
+    XRA A
+    SUB L
+    MOV L, A
+    MVI A, 0
+    SBB H
+    MOV H, A
+    RET
+
+neg_i16_mul_left:
+    XRA A
+    SUB L
+    MOV L, A
+    MVI A, 0
+    SBB H
+    MOV H, A
+    RET
+
+neg_i16_mul_right:
+    XRA A
+    SUB L
+    MOV L, A
+    MVI A, 0
+    SBB H
+    MOV H, A
+    RET
+
+neg_i8_unary:
+    CMA
+    INR A
+    RET
+
+neg_i16_global_unary:
+    LHLD g_i16
+    XRA A
+    SUB L
+    MOV L, A
+    MVI A, 0
+    SBB H
+    MOV H, A
+    RET
+
+neg_i8_global_unary:
+    LXI H, g_i8
+    XRA A
+    SUB M
+    RET
+
+main:
+    LHLD g_i16
+    XRA A
+    SUB L
+    MOV L, A
+    MVI A, 0
+    SBB H
+    MOV H, A
+    SHLD out_i16
+    LHLD g_i16
+    XRA A
+    SUB L
+    MOV L, A
+    MVI A, 0
+    SBB H
+    MOV H, A
+    SHLD out_i16
+    LHLD g_i16
+    XRA A
+    SUB L
+    MOV L, A
+    MVI A, 0
+    SBB H
+    MOV H, A
+    SHLD out_i16
+    LHLD g_i16
+    XRA A
+    SUB L
+    MOV L, A
+    MVI A, 0
+    SBB H
+    MOV H, A
+    SHLD out_i16
+    LXI H, g_i8
+    XRA A
+    SUB M
+    STA out_i8
+    XRA A
+    SUB M
+    STA out_i8
+    LXI H, 0
+    RET
+```
+
+
+Comparison Table
+----------------
+
+Public negate functions:
+
+| Function              | c8080       | v6llvmc old| v6llvmc new| New vs old |
+|-----------------------|-------------|------------|-----------|-------------|
+| `neg_i16_unary`       | 14B / 80cc  | 10B / 64cc | 8B / 48cc | -2B / -16cc |
+| `neg_i16_mul_left`    | 76B / 1300cc| 10B / 64cc | 8B / 48cc | -2B / -16cc |
+| `neg_i16_mul_right`   | 76B / 1300cc| 10B / 64cc | 8B / 48cc | -2B / -16cc |
+| `neg_i8_unary`        | 6B / 40cc   | 4B / 28cc  | 3B / 24cc | -1B / -4cc  |
+| `neg_i16_global_unary`| 14B / 80cc  | 13B / 84cc | 11B / 68cc| -2B / -16cc |
+| `neg_i8_global_unary` | 6B / 40cc   | 6B / 36cc  | 6B / 36cc | no change   |
+
+`main` body only:
+
+| Function | c8080 | v6llvmc old | v6llvmc new | New vs old |
+|----------|-------:|------------:|------------:|-----------:|
+| `main` | 55B / 376cc | 75B / 452cc | 69B / 396cc | -6B / -56cc |
+
+
+Summary
+-------
+
+- The i16 negate specialization lands exactly where intended: all three local i16 spellings and the global i16 load case drop the zero-pair materialization and save 2 bytes / 16 cycles per function including `RET`.
+- The i8 accumulator case also lands as intended: `neg_i8_unary` shrinks from `MOV L,A; XRA A; SUB L` to `CMA; INR A`, saving 1 byte / 4 cycles including `RET`.
+- The memory-source byte case is intentionally unchanged. `neg_i8_global_unary` stays on `LXI H, g_i8; XRA A; SUB M`, which is better than forcing `LDA g_i8; CMA; INR A`.
+- `main` improves by 6 bytes / 56 cycles because the four inlined i16 negates all use the shorter `V6C_NEG16` expansion.

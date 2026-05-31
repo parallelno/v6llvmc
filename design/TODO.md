@@ -15,5 +15,3 @@ optimization template:
 make an optimization peephole design document and store it to design\future_plans\ folder. add it to design\future_plans\README.md.
 ...
 ================================
-test what is emitted for -x, and -1*x, x*(-1)
-================================

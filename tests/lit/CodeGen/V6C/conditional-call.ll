@@ -87,10 +87,10 @@ tail:
   ret i8 %r
 }
 
-; Test 5: signed LT 0 -> CP (sign-test lowering)
+; Test 5: signed LT 0 -> CM (sign-test lowering)
 define i8 @cb_slt(i16 %x) {
 ; CHECK-LABEL: cb_slt:
-; CHECK:       CP	notify
+; CHECK:       CM	notify
 ; CHECK-NOT:   CALL	notify
 entry:
   %cmp = icmp slt i16 %x, 0
@@ -106,10 +106,10 @@ tail:
   ret i8 %r
 }
 
-; Test 6: signed GE 0 -> CM
+; Test 6: signed GE 0 -> CP
 define i8 @cb_sge(i16 %x) {
 ; CHECK-LABEL: cb_sge:
-; CHECK:       CM	notify
+; CHECK:       CP	notify
 ; CHECK-NOT:   CALL	notify
 entry:
   %cmp = icmp sge i16 %x, 0

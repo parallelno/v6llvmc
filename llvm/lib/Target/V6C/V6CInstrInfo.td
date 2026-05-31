@@ -125,6 +125,10 @@ def V6Cdecf      : SDNode<"V6CISD::DECF",     SDT_V6CIncDecF, []>;
 def SDT_V6CSext : SDTypeProfile<1, 1, [SDTCisVT<0, i16>, SDTCisVT<1, i8>]>;
 def V6Csext    : SDNode<"V6CISD::SEXT", SDT_V6CSext>;
 
+// NEG8: result-only i8 negate from canonical sub 0, x.
+def SDT_V6CNeg8 : SDTypeProfile<1, 1, [SDTCisVT<0, i8>, SDTCisVT<1, i8>]>;
+def V6Cneg8     : SDNode<"V6CISD::NEG8", SDT_V6CNeg8>;
+
 // Strategy-specific constant i16 shift SDNodes.
 def SDT_V6CShift16 : SDTypeProfile<1, 2, [SDTCisVT<0, i16>,
                                             SDTCisVT<1, i16>,
@@ -870,6 +874,10 @@ let Defs = [A, FLAGS] in {
   def V6C_ADD16 : V6CPseudo<(outs GR16:$dst), (ins GR16:$lhs, GR16:$rhs),
       "# ADD16 $dst, $lhs, $rhs",
       [(set i16:$dst, (add i16:$lhs, i16:$rhs))]>;
+  let AddedComplexity = 10 in
+  def V6C_NEG16 : V6CPseudo<(outs GR16:$dst), (ins GR16:$src),
+    "# NEG16 $dst, $src",
+    [(set i16:$dst, (sub (i16 0), i16:$src))]>;
   def V6C_SUB16 : V6CPseudo<(outs GR16:$dst), (ins GR16:$lhs, GR16:$rhs),
       "# SUB16 $dst, $lhs, $rhs",
       [(set i16:$dst, (sub i16:$lhs, i16:$rhs))]>;
@@ -883,6 +891,11 @@ let Defs = [A, FLAGS] in {
       "# XOR16 $dst, $lhs, $rhs",
       [(set i16:$dst, (xor i16:$lhs, i16:$rhs))]>;
 }
+
+let Defs = [A, FLAGS], AddedComplexity = 10 in
+def V6C_NEG8 : V6CPseudo<(outs GR8:$dst), (ins GR8:$src),
+    "# NEG8 $dst, $src",
+    [(set i8:$dst, (V6Cneg8 i8:$src))]>;
 
 // 16-bit shift pseudos (constant shift amount only).
 // Variable shifts are library calls.

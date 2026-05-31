@@ -423,21 +423,17 @@ draw_circle:                            ; -- Begin function draw_circle
 	STA	.LLo61_3+1
 	;--- V6C_BUILD_PAIR ---
 	MOV	B, C
-	MOV	C, A
 	;--- V6C_SUB16 ---
-	MOV	A, C
 	SUB	L
 	MOV	L, A
 	MOV	A, B
 	SBB	H
 	MOV	H, A
 	;DEBUG_VALUE: t2 <- $hl
-	;--- V6C_CMP16_IMM ---
-	MVI	A, 0xff
-	SUB	L
-	MVI	A, 0xff
-	SBB	H
-	JP	.LBB20_3
+	;--- V6C_CMP16_SIGN ---
+	XRA	A
+	ADD	H
+	JM	.LBB20_3
 ; %bb.2:                                ;   in Loop: Header=BB20_1 Depth=1
 	;DEBUG_VALUE: t2 <- $hl
 	;DEBUG_VALUE: draw_circle:y <- [$sp+0]
@@ -453,7 +449,7 @@ draw_circle:                            ; -- Begin function draw_circle
 	;DEBUG_VALUE: draw_circle:cy <- 127
 	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
 	MVI	L, 0
-	JP	.LBB20_5
+	JM	.LBB20_5
 ; %bb.4:                                ;   in Loop: Header=BB20_1 Depth=1
 	;DEBUG_VALUE: draw_circle:y <- [$sp+0]
 	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
@@ -515,7 +511,7 @@ main:                                   ; @main
 	CALL	rand
 	;DEBUG_VALUE: r1 <- $hl
 	;DEBUG_VALUE: x1 <- $l
-	;--- V6C_SRL16 ---
+	;--- V6C_SRL16_BYTE ---
 	;DEBUG_VALUE: y1 <- $e
 	MOV	A, L
 	MOV	B, H

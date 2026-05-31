@@ -240,6 +240,7 @@ const char *V6CTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case V6CISD::Wrapper:   return "V6CISD::Wrapper";
   case V6CISD::BR_CC16:   return "V6CISD::BR_CC16";
   case V6CISD::SEXT:      return "V6CISD::SEXT";
+  case V6CISD::NEG8:      return "V6CISD::NEG8";
   case V6CISD::SHL16_DAD:   return "V6CISD::SHL16_DAD";
   case V6CISD::SHL16_BYTE:  return "V6CISD::SHL16_BYTE";
   case V6CISD::SHL16_RAM_HI:return "V6CISD::SHL16_RAM_HI";
@@ -425,10 +426,19 @@ SDValue V6CTargetLowering::LowerOperation(SDValue Op,
   case ISD::SIGN_EXTEND:    return LowerSIGN_EXTEND(Op, DAG);
   case ISD::ANY_EXTEND:     return LowerANY_EXTEND(Op, DAG);
   case ISD::ADD:
-  case ISD::SUB:
   case ISD::AND:
   case ISD::OR:
   case ISD::XOR:            return LowerArithF(Op, DAG);
+  case ISD::SUB:
+    if (Op.getValueType() == MVT::i8) {
+      if (auto *CLHS = dyn_cast<ConstantSDNode>(Op.getOperand(0))) {
+        if ((CLHS->getZExtValue() & 0xFF) == 0 &&
+            isCopyFromArgReg(Op.getOperand(1), V6C::A, DAG))
+          return DAG.getNode(V6CISD::NEG8, SDLoc(Op), MVT::i8,
+                             Op.getOperand(1));
+      }
+    }
+    return LowerArithF(Op, DAG);
   }
 }
 
