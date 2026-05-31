@@ -16,8 +16,8 @@
         lib/clang/<llvm-ver>/lib/v6c/{crt0,mulhi3,mulsi3,udivhi3,
                                        divhi3,shift,memory}.o
         lib/clang/<llvm-ver>/lib/v6c/include/   (placeholder)
-        share/v6c/samples/                # curated .c samples
-        share/v6c/docs/                   # docs/ tree
+                samples/                          # curated .c samples
+                docs/                             # docs/ tree
         LICENSE
         README.md
 
@@ -167,8 +167,8 @@ if (Test-Path $RtIncSrcDir) {
     Write-Warning "V6C runtime include dir not found at $RtIncSrcDir"
 }
 
-# ---------------------------------------------------- share/v6c/samples
-$StageSamples = Join-Path $Stage 'share\v6c\samples'
+# -------------------------------------------------------------- samples/
+$StageSamples = Join-Path $Stage 'samples'
 New-Item -ItemType Directory -Force -Path $StageSamples | Out-Null
 
 $SamplesRepo = Join-Path $repoRoot 'samples'
@@ -178,8 +178,8 @@ if (Test-Path $SamplesRepo) {
     Write-Warning "samples/ directory not found at $SamplesRepo - skipping"
 }
 
-# ------------------------------------------------------- share/v6c/docs
-$StageDocs = Join-Path $Stage 'share\v6c\docs'
+# ---------------------------------------------------------------- docs/
+$StageDocs = Join-Path $Stage 'docs'
 New-Item -ItemType Directory -Force -Path $StageDocs | Out-Null
 Copy-Item -Recurse (Join-Path $repoRoot 'docs\*') -Destination $StageDocs
 

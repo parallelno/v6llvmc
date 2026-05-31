@@ -11,36 +11,52 @@ An LLVM compiler backend and Clang frontend targeting the **Vector 06c** home co
 - CMake ≥ 3.20, Ninja, MSVC 2022+ (or GCC 11+ / Clang 14+)
 - Python 3.8+
 
-### Build
+### Using the Packaged Release
 
-```bash
-cmake -G Ninja -S llvm-project\llvm -B llvm-build ^
-  -DCMAKE_BUILD_TYPE=Release ^
-  -DLLVM_TARGETS_TO_BUILD=X86 ^
-  -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=V6C ^
-  -DLLVM_ENABLE_PROJECTS=clang
+```powershell
+# Build the bundled hello-world sample from the release root
+.\bin\clang.exe -target i8080-unknown-v6c -O2 .\samples\01_hello\main.c -o hello.rom
 
-ninja -C llvm-build clang llc
+# Run it in the bundled emulator
+.\bin\v6emul.exe --rom hello.rom --load-addr 0x0100 --halt-exit --dump-cpu
 ```
 
-### Compile a C Program
+### Build from Source
 
-```bash
+On Windows, the recommended build entry point is:
+
+```powershell
+pwsh scripts\build.ps1
+```
+
+For a faster build-only iteration loop:
+
+```powershell
+pwsh scripts\build.ps1 -SkipTests
+```
+
+For manual and non-Windows setup details, see `docs/V6CBuildGuide.md` in the
+repository or `docs/V6CBuildGuide.md`.
+
+### Compile a C Program from a Source Checkout
+
+```powershell
 # C → assembly
-llvm-build/bin/clang -target i8080-unknown-v6c -S hello.c -o hello.s
+.\llvm-build\bin\clang.exe -target i8080-unknown-v6c -S hello.c -o hello.s
 
 # C → flat binary (ROM) — clang drives ld.lld + llvm-objcopy automatically
-llvm-build/bin/clang -target i8080-unknown-v6c -O2 hello.c -o hello.rom
+.\llvm-build\bin\clang.exe -target i8080-unknown-v6c -O2 hello.c -o hello.rom
 
 # Run in emulator
-tools/v6emul/v6emul.exe --rom hello.rom --load-addr 0x0100 --halt-exit --dump-cpu
+.\tools\v6emul\v6emul.exe --rom hello.rom --load-addr 0x0100 --halt-exit --dump-cpu
 ```
 
 ### Run Tests
 
-```bash
-python tests/run_all.py          # Full suite (golden + lit)
-python tests/run_golden_tests.py # Emulator trust baseline (15 tests)
+```powershell
+python tests\run_all.py                 # Full suite (golden + lit + benchmarks)
+python tests\run_all.py --no-benchmarks # Faster dev loop
+python tests\run_golden_tests.py        # Emulator trust baseline (16 tests)
 ```
 
 ## Supported C Subset
@@ -67,8 +83,9 @@ python tests/run_golden_tests.py # Emulator trust baseline (15 tests)
 | `llvm-project/` | LLVM monorepo (pinned `llvmorg-18.1.0`, gitignored) |
 | `llvm/` | Git-tracked mirror of V6C backend + modified upstream files |
 | `clang/` | Git-tracked mirror of Clang V6C integration |
-| `compiler-rt/` | Runtime library (crt0, multiply, divide, shift, memory) |
-| `scripts/` | Mirror sync, linker, ELF→binary converter |
+| `compiler-rt/` | Runtime library, headers, and crt0 |
+| `scripts/` | Build, release, mirror sync, linker, and ELF→binary tooling |
+| `samples/` | Sample programs and demo projects |
 | `tools/v6asm/` | Reference 8080 assembler |
 | `tools/v6emul/` | Vector 06c emulator |
 | `tests/` | Golden, lit (mirror), integration, runtime, and benchmark tests |
@@ -77,7 +94,9 @@ python tests/run_golden_tests.py # Emulator trust baseline (15 tests)
 
 ## Documentation
 
-See [docs/README.md](docs/README.md) for the full documentation index, including:
+Repository documentation lives under [docs/README.md](docs/README.md).
+
+Key entry points:
 
 - [Build Guide](docs/V6CBuildGuide.md) — detailed build instructions, mirror sync, binary emission
 - [Architecture](docs/V6CArchitecture.md) — CPU, data layout, memory map, runtime library
@@ -86,15 +105,23 @@ See [docs/README.md](docs/README.md) for the full documentation index, including
 - [Instruction Timings](docs/V6CInstructionTimings.md) — cycle costs for all 8080 instructions
 - [Benchmarks](docs/benchmarks.md) — head-to-head vs c8080 and z88dk on shared C programs
 
+## Samples
+
+Sample programs live in `samples/`.
+
+- `01_hello/` — minimal compile-and-run example
+- `02_bsort/` — small benchmark-style C program
+- `03_demo/` — larger drawing/demo program with helper headers and build files
+
 ## Benchmarks
 
 V6C is benchmarked head-to-head against [c8080](https://github.com/Aleksey-F-Morozov/c8080)
-and [z88dk](https://github.com/z88dk/z88dk) (sccz80 backend) on three pure-C
-programs (`bsort`, `sieve`, `fib_crc`). v6llvmc -O2 wins 2 of 3 on cycle count.
+and [z88dk](https://github.com/z88dk/z88dk) (sccz80 backend) on five pure-C
+programs (`bsort`, `sieve`, `fib_crc`, `fannkuch`, `lfsr16`).
 
-* Reproduce: `python tests/benchmarks_c/run_benchmarks.py`
-* Latest results: [docs/benchmarks.md](docs/benchmarks.md)
-* Source + how-to add new compilers/programs: [tests/benchmarks_c/](tests/benchmarks_c/README.md)
+- Reproduce: `python tests/benchmarks_c/run_benchmarks.py`
+- Latest results: [docs/benchmarks.md](docs/benchmarks.md)
+- Source + how-to add new compilers/programs: [tests/benchmarks_c/](tests/benchmarks_c/README.md)
 
 ## License
 

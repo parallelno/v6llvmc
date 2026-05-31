@@ -29,6 +29,18 @@ foreach ($p in @($Clang, $Emul)) {
     if (-not (Test-Path $p)) { throw "Missing in stage: $p" }
 }
 
+$StageDocs    = Join-Path $Stage 'docs'
+$StageSamples = Join-Path $Stage 'samples'
+foreach ($p in @($StageDocs, $StageSamples)) {
+    if (-not (Test-Path $p)) { throw "Missing in stage: $p" }
+}
+
+$StageDocsIndex = Join-Path $StageDocs 'README.md'
+$StageSampleMain = Join-Path $StageSamples '01_hello\main.c'
+foreach ($p in @($StageDocsIndex, $StageSampleMain)) {
+    if (-not (Test-Path $p)) { throw "Missing expected staged content: $p" }
+}
+
 $Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("v6c-dist-smoke-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
 try {
@@ -115,6 +127,8 @@ int main(void) {
     }
     if ($sout -notmatch 'HALT') { throw '<string.h> smoke: emulator did not reach HALT' }
     Write-Host "<string.h> smoke test PASSED."
+
+    Write-Host "Release docs/ and samples/ verified at stage root."
 
     # O81 Test B: <stdlib.h> from installed layout — no -isystem flag.
     # Verifies min() macro is present and abort()/exit() compile.
