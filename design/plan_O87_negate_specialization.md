@@ -42,12 +42,12 @@ expand it to:
 XRA A
 SUB src_lo
 MOV dst_lo, A
-MVI A, 0
-SBB src_hi
+SBB A
+SUB src_hi
 MOV dst_hi, A
 ```
 
-This costs 36cc and avoids creating the zero pair.
+This costs 32cc and avoids creating the zero pair.
 
 For result-only i8 negate when the source is already in `A`, select a dedicated
 negate pseudo and expand it to:
@@ -196,7 +196,7 @@ Run `pwsh scripts\sync_llvm_mirror.ps1` after verification is complete.
 ### Example 1 — i16 negate
 
 `-x`, `-1*x`, and `x*(-1)` on `int` should stop materializing a zero pair and
-should shrink from 52cc/9B to 36cc/7B.
+should shrink from 52cc/9B to 32cc/6B.
 
 ### Example 2 — i8 negate in accumulator
 

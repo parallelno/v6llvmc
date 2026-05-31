@@ -114,17 +114,22 @@ For any source pair and any destination pair:
 XRA A
 SUB src_lo
 MOV dst_lo, A
-MVI A, 0
-SBB src_hi
+SBB A
+SUB src_hi
 MOV dst_hi, A
 ```
 
-Cost: `4 + 4 + 8 + 8 + 4 + 8 = 36cc`, `7B`.
+Cost: `4 + 4 + 8 + 4 + 4 + 8 = 32cc`, `6B`.
+
+`SBB A` computes `A − A − CY = 0 − CY`, giving `0x00` when there is no
+borrow and `0xFF` when there is. The subsequent `SUB src_hi` then yields
+`0 − src_hi − borrow`, which is the correct high byte of the two's-complement
+negate in both cases.
 
 Savings vs current emission:
 
-- `-16cc` per fire
-- `-2B` per fire
+- `-20cc` per fire
+- `-3B` per fire
 - eliminates one full GR16 live range (the zero pair)
 
 This is the main win.
@@ -155,7 +160,7 @@ INX H
 Cost: `8 + 4 + 8 + 8 + 4 + 8 + 8 = 48cc`, `7B`.
 
 This is better than the current 52cc subtract-from-zero expansion, but still
-strictly worse than the proposed 36cc `SUB`/`SBB` shape. So it is not the best
+strictly worse than the proposed 32cc `SBB A`/`SUB` shape. So it is not the best
 backend lowering for this case.
 
 ## 2. i8: dedicated result-only `NEG8` pseudo, but only for safe shapes
@@ -281,7 +286,7 @@ temporaries in the first place.
 
 ### Direct benefit
 
-- i16 negate: `-16cc`, `-2B`, and one fewer live GR16 pair.
+- i16 negate: `-20cc`, `-3B`, and one fewer live GR16 pair.
 - i8 negate, `src == A`: typically `-4cc`, `-1B`, and one fewer scratch GR8.
 
 ### Indirect benefit
@@ -340,7 +345,7 @@ Coverage should include:
 Checks should assert:
 
 - no `LXI ?, 0` for the i16 negate path
-- `V6C_NEG16` annotated expansion uses the 36cc `XRA/SUB/MVI/SBB` shape
+- `V6C_NEG16` annotated expansion uses the 32cc `XRA/SUB/SBB A/SUB` shape
 - `CMA; INR A` appears for the accumulator i8 negate case
 - memory-source i8 negate remains on the `SUB M` shape
 

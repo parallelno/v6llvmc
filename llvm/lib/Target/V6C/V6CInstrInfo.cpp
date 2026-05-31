@@ -739,8 +739,10 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
         .addReg(V6C::A)
         .addReg(SrcLo);
     BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
-    BuildMI(MBB, MI, DL, get(V6C::MVIr), V6C::A).addImm(0);
     BuildMI(MBB, MI, DL, get(V6C::SBBr), V6C::A)
+        .addReg(V6C::A)
+        .addReg(V6C::A);
+    BuildMI(MBB, MI, DL, get(V6C::SUBr), V6C::A)
         .addReg(V6C::A)
         .addReg(SrcHi);
     BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);

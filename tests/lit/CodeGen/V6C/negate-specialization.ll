@@ -10,8 +10,8 @@ target triple = "i8080-unknown-v6c"
 ; CHECK-NEXT:  XRA A
 ; CHECK-NEXT:  SUB L
 ; CHECK-NEXT:  MOV L, A
-; CHECK-NEXT:  MVI A, 0
-; CHECK-NEXT:  SBB H
+; CHECK-NEXT:  SBB A
+; CHECK-NEXT:  SUB H
 ; CHECK-NEXT:  MOV H, A
 define dso_local i16 @neg16(i16 noundef %x) local_unnamed_addr {
   %n = sub i16 0, %x
