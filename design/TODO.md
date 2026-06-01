@@ -15,6 +15,8 @@ optimization template:
 make an optimization peephole design document and store it to design\future_plans\ folder. add it to design\future_plans\README.md.
 ...
 ================================
+Test design\future_plans\O91_cmp8_zero_after_alu_flag_elision.md
+it should optimize the case below.
 tests\features\71\result.txt
 xor16_cmp_zero:         ; lo-byte XRA + CMP8_ZERO shape 2
     MOV  A, E          ;  8cc, 1B

@@ -1,0 +1,51 @@
+Feature 73: O91 — CMP8_ZERO elision after flag-setting ALU op
+
+Optimization: When V6C_CMP8_ZERO (shape 2: XRA A + CMP R) follows an ALU op
+that already set Z, and R holds A's value via MOV R,A, the entire triple
+MOV R,A + XRA A + CMP R is redundant and eliminated.
+
+Savings per site: -16 cycles, -3 bytes (worst path).
+
+Affected patterns (from O89 dead hi-byte elision):
+  xor16_cmp_zero: MOV A,E; XRA L;   [MOV L,A; XRA A; CMP L] eliminated
+  and16_cmp_zero: MOV A,L; ANA E;   [MOV L,A; XRA A; CMP L] eliminated
+  or16_cmp_zero:  MOV A,E; ORA L;   [MOV L,A; XRA A; CMP L] eliminated
+
+Controls unchanged (not regressed):
+  xor16_to_i8:   MOV A,E; XRA L; RET
+  xor16_full:    MOV A,E; XRA L; MOV L,A; MOV A,D; XRA H; MOV H,A; RET
+
+Before O91 (xor16_cmp_zero):
+  MOV  A, E      ;  8cc  1B
+  XRA  L         ;  4cc  1B  <- Z valid here
+  MOV  L, A      ;  8cc  1B  <- ELIMINATED
+  XRA  A         ;  4cc  1B  <- ELIMINATED
+  CMP  L         ;  4cc  1B  <- ELIMINATED
+  JZ   .LBB15_2  ; 12cc  3B
+  XRA  A         ;  4cc  1B
+  RET            ; 12cc  1B
+.LBB15_2:
+  INR  A         ;  8cc  1B
+  RET            ; 12cc  1B
+Worst path: 60cc, 11B
+
+After O91:
+  MOV  A, E
+  XRA  L
+  JZ   .LBB15_2
+  XRA  A
+  RET
+.LBB15_2:
+  INR  A
+  RET
+Worst path: 44cc, 8B  (saved 16cc, 3B)
+
+Implementation: V6CRedundantFlagElim.cpp extended with:
+  - SmallSet<Register,4> AValueRegs  (registers holding A's last ALU result)
+  - DenseMap<Register, MachineInstr*> AValueSrc  (MOV R,A bridge instruction)
+  - getMOVrADest(): detect MOV R,A copies
+  - isXraA(): detect XRA A
+  - isBridgeDead(): confirm R is dead after CMP R
+  - New elimination rule: ZFlagValid && XRA A && next=CMP R && R in AValueRegs
+
+New lit test: llvm-project/llvm/test/CodeGen/V6C/cmp8-zero-redundant-after-alu.ll
