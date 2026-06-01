@@ -37,3 +37,47 @@ this compiles wrongly when draw_pixel is not inlined.
         uint8_t y = 127 + sin8(x);
         draw_pixel(x, y);
     }
+================================
+	LXI	B, 0xb400
+	;--- V6C_SPILL16 ---
+	...
+	;--- V6C_RELOAD16 ---
+	...
+	;--- V6C_XOR16 ---
+	MOV	A, L
+	XRA	C
+	MOV	C, A
+	MOV	A, H
+	XRA	B
+	MOV	B, A
+    ; takes 52 cc
+XOR16/AND18/OR16/CMD16 and others can fuse a emmidiate constant and and produce
+the code like this
+	;--- V6C_XOR16_IMM ---
+	MVI	A, IMM_LO
+	XRA	REG_LO
+	MOV	REG_LO, A
+	MVI A, IMM_HI
+	XRA	REG_HI
+	MOV	REG_HI, A
+    ; takes 40 cc
+
+Benefits: it takes less cpu time and the MOST IMPORTANT it doesn't clobber an
+extra reg pair because it doesn't require a spare reg pair!
+============================
+	;--- V6C_RELOAD16 ---
+	LHLD	.LLo61_0+1
+	MOV	C, L
+	POP	H
+	MOV	A, C
+	ANI	1
+	JNZ	.LBB15_2
+
+can be optimizaed into
+	;--- V6C_RELOAD16 ---
+	LHLD	.LLo61_0+1
+	MOV	A, L
+	POP	H
+	ANI	1
+	JNZ	.LBB15_2
+    ; minus 8 cc

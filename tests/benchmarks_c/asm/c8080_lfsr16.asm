@@ -85,7 +85,7 @@ l_0:
 	ld de, 61440
 	add hl, de
 	jp c, l_2
-; 30         u8 lsb = (u8)(((u8)(lfsr)) & 1);
+; 30         u8 lsb = (u8)(lfsr & 1);
 	ld a, (main_lfsr)
 	and 1
 	ld (main_lsb), a

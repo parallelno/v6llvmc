@@ -61,6 +61,12 @@ private:
   /// Check if all users of V can work with i8 instead of i16.
   bool allUsersNarrowable(Value *V, Type *NarrowTy);
 
+  /// Return true when every user of V is `icmp eq/ne V, 0`.
+  /// Used to relax the PHI sibling guard: if the AND result is consumed only
+  /// by a flag check, no register is allocated for it and the register-
+  /// pressure argument does not apply.
+  bool allUsersAreZeroTests(Value *V);
+
   /// Narrow `(and i16 x, C)` where C < 256 to `zext(and i8 (trunc x), C)`.
   /// Since C's high byte is zero the result is identical, and ANI is far
   /// cheaper than V6C_AND16 (2 insns vs 6).
@@ -171,6 +177,21 @@ bool V6CTypeNarrowing::tryNarrowZext(ZExtInst *ZExt) {
   return !ToErase.empty();
 }
 
+bool V6CTypeNarrowing::allUsersAreZeroTests(Value *V) {
+  if (V->use_empty())
+    return false;
+  for (User *U : V->users()) {
+    auto *ICmp = dyn_cast<ICmpInst>(U);
+    if (!ICmp || !ICmp->isEquality())
+      return false;
+    Value *Other = ICmp->getOperand(0) == V ? ICmp->getOperand(1)
+                                            : ICmp->getOperand(0);
+    if (!match(Other, m_Zero()))
+      return false;
+  }
+  return true;
+}
+
 bool V6CTypeNarrowing::tryNarrowAndConst(BinaryOperator *And) {
   if (!And->getType()->isIntegerTy(16))
     return false;
@@ -212,13 +233,20 @@ bool V6CTypeNarrowing::tryNarrowAndConst(BinaryOperator *And) {
   // NOTE: tryNarrowLoopIV must run BEFORE this pass so that small-range
   // loop counters (e.g. k < 8) are already narrowed to i8 and do not
   // artificially inflate the sibling count (see: fib_crc vs lfsr16).
+  //
+  // Exception: if ALL users of the AND result are zero-tests (icmp eq/ne
+  // with 0), the narrowed result is consumed only by a flag check — ANI sets
+  // the Z flag directly — so no register is ever allocated for it.  The
+  // register-pressure argument does not apply and the guard can be skipped.
   if (auto *PN = dyn_cast<PHINode>(X)) {
-    BasicBlock *Header = PN->getParent();
-    for (PHINode &Sibling : Header->phis()) {
-      if (&Sibling == PN)
-        continue;
-      if (Sibling.getType()->isIntegerTy(16))
-        return false;
+    if (!allUsersAreZeroTests(And)) {
+      BasicBlock *Header = PN->getParent();
+      for (PHINode &Sibling : Header->phis()) {
+        if (&Sibling == PN)
+          continue;
+        if (Sibling.getType()->isIntegerTy(16))
+          return false;
+      }
     }
   }
 
