@@ -73,6 +73,9 @@ The script handles three categories:
 2. **Lit tests** (`llvm-project/{llvm,clang}/test/.../V6C/` → `tests/lit/`) — full directory mirror excluding `Output/`.
 3. **Modified upstream LLVM files** (e.g. `Triple.h`, `Triple.cpp`) — individual file copies via `xcopy`.
 
+> **Warning — `tests/lit/` is a read-only mirror.**
+> `robocopy /MIR` overwrites the entire destination tree on every sync. Any file written directly to `tests/lit/` that does not exist in `llvm-project/` will be deleted on the next build. Always author new files in `llvm-project/` first.
+
 When a new milestone modifies additional upstream files, add `xcopy` lines to `scripts\sync_llvm_mirror.ps1`.
 
 ## Populating llvm-project/ (New Contributors)
@@ -99,7 +102,22 @@ python tests/run_golden_tests.py
 python tests/run_golden_tests.py -v
 ```
 
-Lit tests are authored in `llvm-project/` (source of truth) and mirrored to `tests/lit/` by `sync_llvm_mirror.ps1`.
+### Authoring Lit Tests
+
+`tests/lit/` is a **read-only mirror** — it is completely overwritten by `sync_llvm_mirror.ps1` on every build. Always create new lit tests in `llvm-project/` (the source of truth):
+
+| Test category | Source of truth (write here) | Mirror (do not write here) |
+|---|---|---|
+| CodeGen | `llvm-project/llvm/test/CodeGen/V6C/` | `tests/lit/CodeGen/V6C/` |
+| MC | `llvm-project/llvm/test/MC/V6C/` | `tests/lit/MC/V6C/` |
+| Linker | `llvm-project/llvm/test/Linker/V6C/` | `tests/lit/Linker/V6C/` |
+| Clang CodeGen | `llvm-project/clang/test/CodeGen/V6C/` | `tests/lit/Clang/V6C/` |
+
+After adding a test in `llvm-project/`, the mirror updates automatically on the next `build.ps1` run. To sync immediately without a full build:
+
+```powershell
+pwsh scripts\sync_llvm_mirror.ps1
+```
 
 ## Using llc for Assembly Output
 
