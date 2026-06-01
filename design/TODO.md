@@ -14,24 +14,6 @@ compare v6asm binary output with what the downloaded line bin from https://svofs
 optimization template:
 make an optimization peephole design document and store it to design\future_plans\ folder. add it to design\future_plans\README.md.
 ...
-================================
-Test design\future_plans\O91_cmp8_zero_after_alu_flag_elision.md
-it should optimize the case below.
-tests\features\71\result.txt
-xor16_cmp_zero:         ; lo-byte XRA + CMP8_ZERO shape 2
-    MOV  A, E          ;  8cc, 1B
-    XRA  L             ;  4cc, 1B
-    MOV  L, A          ;  8cc, 1B
-    XRA  A             ;  4cc, 1B  — CMP8_ZERO shape 2
-    CMP  L             ;  4cc, 1B
-    JZ   .zero         ;  8/12cc, 3B
-    XRA  A             ;  4cc, 1B
-    RET                ; 12cc, 1B
-.zero:
-    INR  A             ;  8cc, 1B
-    RET                ; 12cc, 1B  — worst 60cc, 11B ✓
-
-Optimization. DO bot emit CMP8_ZERO if the flag Z was set by the previous operation.
 =================================
 this compiles wrongly when draw_pixel is not inlined.
     // Draw a sin wave across the screen.
@@ -54,8 +36,8 @@ tests\benchmarks_c\asm\v6llvmc_lfsr16_O2.s
 	XRA	B
 	MOV	B, A
     ; takes 52 cc
-XOR16/AND18/OR16/CMD16 and others can fuse a emmidiate constant and and produce
-the code like this
+Introduce V6C_XOR16_IMM/ (same for AND16/OR16/CMD16) that takes an emmidiate
+constant and produces the code like this
 	;--- V6C_XOR16_IMM ---
 	MVI	A, IMM_LO
 	XRA	REG_LO
@@ -65,5 +47,43 @@ the code like this
 	MOV	REG_HI, A
     ; takes 40 cc
 
-Benefits: it takes less cpu time and the MOST IMPORTANT it doesn't clobber an
-extra reg pair because it doesn't require a spare reg pair!
+Benefits: it takes less cpu time and the MOST IMPORTANT benefit it doesn't
+clobber an extra reg pair (BL in the example above) because it doesn't require
+a spare reg pair!
+
+Note: AND, OR, XRA are all produce valid results if the arguments are swapped:
+A & B == B & A, but CMP doesn't. So you need to carefully design it optimization
+case.
+======================
+tests\benchmarks_c\asm\v6llvmc_fannkuch_O2.s
+	MVI	A, 7
+	STA	__v6c_a.main
+	LDA	__v6c_a.main
+	MOV	E, A
+	;--- V6C_CMP8_ZERO ---
+	ORA	A
+	;--- V6C_BRCOND ---
+	JZ	.LBB15_3
+; %bb.1:
+	MVI	D, 0
+	LXI	H, perm1
+.LBB15_2:                               ; =>This Inner Loop Header: Depth=1
+	;--- V6C_STORE8_P ---
+	MOV	M, D
+	INR	D
+	MOV	A, E
+	CMP	D
+	;--- V6C_INX16 ---
+	INX	H
+	;--- V6C_BRCOND ---
+	JNZ	.LBB15_2
+.LBB15_3:
+
+1. when a zero elements check is outside the loop and it is a header of the loop,
+we must not emit it when the loop iterations provable >0 because it is redundant.
+2.
+	STA	__v6c_a.main
+	LDA	__v6c_a.main
+is redundant when there is no consummers for it.
+3. Why it didn't keep the value 7 in the A. Why it neede using E for that?
+4.
