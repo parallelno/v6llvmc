@@ -29,7 +29,7 @@ xor16_cmp_zero:         ; lo-byte XRA + CMP8_ZERO shape 2
     INR  A             ;  8cc, 1B
     RET                ; 12cc, 1B  — worst 60cc, 11B ✓
 
-Optimization. DO bot emit CMP8_ZERO is the flag Z was set by the previous operation.
+Optimization. DO bot emit CMP8_ZERO if the flag Z was set by the previous operation.
 =================================
 this compiles wrongly when draw_pixel is not inlined.
     // Draw a sin wave across the screen.
@@ -38,6 +38,7 @@ this compiles wrongly when draw_pixel is not inlined.
         draw_pixel(x, y);
     }
 ================================
+tests\benchmarks_c\asm\v6llvmc_lfsr16_O2.s
 	LXI	B, 0xb400
 	;--- V6C_SPILL16 ---
 	...
@@ -64,20 +65,3 @@ the code like this
 
 Benefits: it takes less cpu time and the MOST IMPORTANT it doesn't clobber an
 extra reg pair because it doesn't require a spare reg pair!
-============================
-	;--- V6C_RELOAD16 ---
-	LHLD	.LLo61_0+1
-	MOV	C, L
-	POP	H
-	MOV	A, C
-	ANI	1
-	JNZ	.LBB15_2
-
-can be optimizaed into
-	;--- V6C_RELOAD16 ---
-	LHLD	.LLo61_0+1
-	MOV	A, L
-	POP	H
-	ANI	1
-	JNZ	.LBB15_2
-    ; minus 8 cc

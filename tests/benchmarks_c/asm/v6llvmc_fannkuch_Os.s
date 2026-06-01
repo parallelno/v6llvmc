@@ -108,10 +108,9 @@ main:                                   ; @main
 	MOV	B, A
 	MOV	A, H
 	STA	.LLo61_3+1
-	MOV	A, B
+	MOV	D, B
 	LXI	B, perm
 	;--- V6C_SPILL8 ---
-	MOV	D, A
 	MVI	A, 1
 	STA	.LLo61_1+1
 	MOV	H, D

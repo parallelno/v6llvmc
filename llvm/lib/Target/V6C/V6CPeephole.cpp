@@ -1423,6 +1423,12 @@ bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
 
     // Walk forward looking for a consumer MOV Z, X.
     unsigned Steps = 0;
+    // YClobbered: Y was written by some intermediate (non-consumer)
+    // instruction.  When set the classic "rewrite consumer" transform is
+    // invalid (Y's value at the consumer position differs from the value
+    // read by the producer), but the "rewrite producer" variant may still
+    // apply (see below).
+    bool YClobbered = false;
     auto J = std::next(I);
     for (; J != E && Steps < kChainWindow; ++J) {
       if (J->isDebugInstr())
@@ -1455,12 +1461,13 @@ bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
       // Check this BEFORE the ReadsX bail-out: the consumer itself reads X
       // as its source operand, which would otherwise terminate the scan.
       if (IsConsumer) {
-        if (ClobbersX || ClobbersY)
+        if (ClobbersX)
           break;
         if (isRegDeadAfter(MBB, J, X, TRI)) {
           auto Resume = std::next(J);
-          if (TRI->regsOverlap(J->getOperand(0).getReg(), Y)) {
-            // Round-trip: MOV X, Y ; ... ; MOV Y, X.
+          Register Z = J->getOperand(0).getReg();
+          if (!YClobbered && TRI->regsOverlap(Z, Y)) {
+            // Round-trip: MOV X, Y ; ... ; MOV Y, X (Y unmodified).
             // Y already holds the value, so both copies are redundant.
             ProducerMI.eraseFromParent();
             J->eraseFromParent();
@@ -1471,15 +1478,47 @@ bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
             break;
           }
 
-          // Rewrite consumer: MOV Z, X → MOV Z, Y.
-          J->getOperand(1).setReg(Y);
-          J->getOperand(1).setIsKill(false);
-          // X is dead after consumer and has no intermediate reads,
-          // so the producer is a dead write — always safe to erase.
-          auto Next = std::next(I);
-          ProducerMI.eraseFromParent();
-          I = std::prev(Next);
-          Changed = true;
+          if (!YClobbered) {
+            // Classic transform: rewrite consumer MOV Z, X → MOV Z, Y,
+            // then erase the producer (now a dead write).
+            J->getOperand(1).setReg(Y);
+            J->getOperand(1).setIsKill(false);
+            auto Next = std::next(I);
+            ProducerMI.eraseFromParent();
+            I = std::prev(Next);
+            Changed = true;
+          } else {
+            // Y was clobbered between producer and consumer, so we cannot
+            // replace X with Y at the consumer's position.  Alternative:
+            // rewrite the producer MOV X, Y → MOV Z, Y (read Y before it
+            // gets clobbered) and erase the consumer.  Valid only when Z
+            // is not read or written by any instruction strictly between
+            // producer and consumer (otherwise we create a premature def
+            // of Z that could be observed by those instructions).
+            bool ZUsedBetween = false;
+            for (auto K = std::next(I); K != J; ++K) {
+              if (K->isDebugInstr())
+                continue;
+              for (const MachineOperand &MO : K->operands()) {
+                if (!MO.isReg() || !MO.getReg())
+                  continue;
+                if (TRI->regsOverlap(MO.getReg(), Z)) {
+                  ZUsedBetween = true;
+                  break;
+                }
+              }
+              if (ZUsedBetween)
+                break;
+            }
+            if (!ZUsedBetween) {
+              // Rewrite producer: MOV X, Y → MOV Z, Y; erase consumer.
+              // I still points to the (now rewritten) producer; the outer
+              // ++I will advance past it correctly.
+              ProducerMI.getOperand(0).setReg(Z);
+              J->eraseFromParent();
+              Changed = true;
+            }
+          }
         }
         break;
       }
@@ -1488,10 +1527,13 @@ bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
       if (ReadsX)
         break;
 
-      // Any clobber of X or Y by a non-consumer instruction makes the chain
-      // unsafe.
-      if (ClobbersX || ClobbersY)
+      // A clobber of X by a non-consumer terminates the scan regardless.
+      // A clobber of Y is tracked (YClobbered) but does not terminate the
+      // scan: the "rewrite-producer" variant can still apply.
+      if (ClobbersX)
         break;
+      if (ClobbersY)
+        YClobbered = true;
     }
   }
 

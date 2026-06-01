@@ -29,18 +29,16 @@ main:                                   ; @main
 	MOV	A, B
 	ORA	A
 	RAR
-	MOV	B, A
+	MOV	H, A
 	MOV	A, C
 	RAR
 	;--- V6C_SPILL16 ---
 	MOV	L, A
-	MOV	H, B
 	SHLD	.LLo61_1+1
 	;--- V6C_RELOAD16 ---
 	LHLD	.LLo61_0+1
-	MOV	C, L
+	MOV	A, L
 	POP	H
-	MOV	A, C
 	ANI	1
 	JNZ	.LBB15_2
 ; %bb.3:                                ;   in Loop: Header=BB15_1 Depth=1

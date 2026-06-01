@@ -86,11 +86,10 @@ main:                                   ; @main
 	;--- V6C_SUB16 ---
 	MOV	A, C
 	SUB	L
-	MOV	C, A
+	MOV	L, A
 	MOV	A, B
 	SBB	H
 	;--- V6C_SPILL16 ---
-	MOV	L, C
 	MOV	H, A
 	SHLD	.LLo61_0+1
 	;--- V6C_STORE8_IMM_P ---
