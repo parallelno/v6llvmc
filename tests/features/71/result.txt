@@ -1,0 +1,317 @@
+Feature 71 — O89 Dead High-Byte Elision in V6C_AND16 / V6C_OR16 / V6C_XOR16
+============================================================================
+
+Status
+------
+
+O89 is implemented and validated.
+
+When the result of a 16-bit bitwise op is immediately truncated to u8
+(DstHi is dead), `expandPostRAPseudo` now skips the hi-byte ALU+MOV block
+entirely.  AccumulatorPlanning then removes the `MOV DstLo,A / MOV A,DstLo`
+round-trip for the return/pass-through cases, collapsing the full 6-instruction
+sequence to just 3 instructions: `MOV A, r; OP r; RET`.
+
+The fix is a single `bool HiDead = isRegDeadAfter(...)` guard wrapping the
+three hi-byte `BuildMI` calls in `V6CInstrInfo::expandPostRAPseudo`.
+
+
+C Test Case Code
+----------------
+
+`v6llvmc.c` / `c8080.c`
+
+```c
+typedef unsigned char  u8;
+typedef unsigned short u16;
+
+/* 1. XOR i16 → truncate to i8 */
+u8 xor16_to_i8(u16 a, u16 b) { return (u8)(a ^ b); }
+
+/* 2. OR i16 → truncate to i8 */
+u8 or16_to_i8(u16 a, u16 b)  { return (u8)(a | b); }
+
+/* 3. AND i16 → truncate to i8 */
+u8 and16_to_i8(u16 a, u16 b) { return (u8)(a & b); }
+
+/* 4. XOR lo and hi bytes (bench_finish checksum pattern) */
+u8 xor_bytes(u16 a) { return (u8)((u8)a ^ (u8)(a >> 8)); }
+
+/* 5. XOR i16 → compare to zero */
+u8 xor16_cmp_zero(u16 a, u16 b) { return (u8)(a ^ b) == 0; }
+
+/* 6. AND i16 → compare to zero */
+u8 and16_cmp_zero(u16 a, u16 b) { return (u8)(a & b) == 0; }
+
+/* 7. OR i16 → compare to zero */
+u8 or16_cmp_zero(u16 a, u16 b)  { return (u8)(a | b) == 0; }
+
+/* 8. XOR i16 — full result used: control case, must NOT be affected */
+u16 xor16_full(u16 a, u16 b) { return a ^ b; }
+```
+
+
+c8080 ASM Converted To i8080 (main + dependent functions)
+---------------------------------------------------------
+
+c8080 uses a static-stack calling convention; all arguments are spilled to
+a fixed memory region before a function is entered.  Cycles are approximate
+Vector 06c timings.
+
+```asm
+xor16_to_i8:                        ; arg0 via __a_1_…, arg1 in HL
+    SHLD __a_2_xor16_to_i8          ; 20cc, 3B — store arg1
+    LDA  __a_1_xor16_to_i8          ; 16cc, 3B — load arg0 lo
+    MOV  D, A                       ;  8cc, 1B
+    LDA  __a_2_xor16_to_i8          ; 16cc, 3B — load arg1 lo
+    XRA  D                          ;  4cc, 1B
+    RET                             ; 12cc, 1B  — total 76cc, 12B
+
+or16_to_i8:                         ; same structure with ORA D
+    SHLD __a_2_or16_to_i8           ; 20cc, 3B
+    LDA  __a_1_or16_to_i8           ; 16cc, 3B
+    MOV  D, A                       ;  8cc, 1B
+    LDA  __a_2_or16_to_i8           ; 16cc, 3B
+    ORA  D                          ;  4cc, 1B
+    RET                             ; 12cc, 1B  — total 76cc, 12B
+
+and16_to_i8:                        ; same structure with ANA D
+    SHLD __a_2_and16_to_i8          ; 20cc, 3B
+    LDA  __a_1_and16_to_i8          ; 16cc, 3B
+    MOV  D, A                       ;  8cc, 1B
+    LDA  __a_2_and16_to_i8          ; 16cc, 3B
+    ANA  D                          ;  4cc, 1B
+    RET                             ; 12cc, 1B  — total 76cc, 12B
+
+xor_bytes:                          ; arg0 in HL
+    SHLD __a_1_xor_bytes            ; 20cc, 3B — store arg0
+    LDA  __a_1_xor_bytes            ; 16cc, 3B — A = lo byte
+    MOV  D, H                       ;  8cc, 1B — D = hi byte (HL unchanged)
+    XRA  D                          ;  4cc, 1B
+    RET                             ; 12cc, 1B  — total 60cc, 9B
+
+xor16_cmp_zero:
+    SHLD __a_2_xor16_cmp_zero       ; 20cc, 3B
+    LDA  __a_1_xor16_cmp_zero       ; 16cc, 3B
+    MOV  D, A                       ;  8cc, 1B
+    LDA  __a_2_xor16_cmp_zero       ; 16cc, 3B
+    XRA  D                          ;  4cc, 1B
+    JNZ  l_nonzero                  ;  8/12cc, 3B
+    MVI  A, 1                       ;  8cc, 2B
+    RET                             ; 12cc, 1B
+l_nonzero:
+    XRA  A                          ;  4cc, 1B
+    RET                             ; 12cc, 1B  — total 92cc (both paths), 19B
+
+and16_cmp_zero:                     ; same as xor16_cmp_zero with ANA D → 92cc, 19B
+or16_cmp_zero:                      ; same with ORA D → 92cc, 19B
+
+xor16_full:
+    SHLD __a_2_xor16_full           ; 20cc, 3B
+    LHLD __a_1_xor16_full           ; 20cc, 3B
+    XCHG                            ;  4cc, 1B
+    LHLD __a_2_xor16_full           ; 20cc, 3B
+    MOV  A, H                       ;  8cc, 1B  ; __o_xor_16 inline
+    XRA  D                          ;  4cc, 1B
+    MOV  H, A                       ;  8cc, 1B
+    MOV  A, L                       ;  8cc, 1B
+    XRA  E                          ;  4cc, 1B
+    MOV  L, A                       ;  8cc, 1B
+    ORA  H                          ;  4cc, 1B  ; set Z flag
+    RET                             ; 12cc, 1B  — total 120cc, 18B
+```
+
+
+c8080 Stats (approximate, Vector 06c timings)
+---------------------------------------------
+
+| Function           | Bytes | Worst cycles | Notes                             |
+|--------------------|------:|-------------:|-----------------------------------|
+| `xor16_to_i8`      |    12 |           76 | 4× memory ops (static-stack ABI)  |
+| `or16_to_i8`       |    12 |           76 | same                              |
+| `and16_to_i8`      |    12 |           76 | same                              |
+| `xor_bytes`        |     9 |           60 | 2× memory ops                     |
+| `xor16_cmp_zero`   |    19 |           92 | both JNZ paths equal              |
+| `and16_cmp_zero`   |    19 |           92 | both paths equal                  |
+| `or16_cmp_zero`    |    19 |           92 | both paths equal                  |
+| `xor16_full`       |    18 |          120 | spill/reload + inline __o_xor_16  |
+
+
+v6llvmc OLD ASM (relevant functions)
+-------------------------------------
+
+`v6llvmc_old.asm` (before O89):
+
+```asm
+xor16_to_i8:
+    MOV  A, E          ;  8cc, 1B
+    XRA  L             ;  4cc, 1B  — lo XOR
+    MOV  L, A          ;  8cc, 1B
+    MOV  A, D          ;  8cc, 1B  ← hi-byte setup (DstHi dead!)
+    XRA  H             ;  4cc, 1B  ← hi-byte XOR  (DstHi dead!)
+    MOV  A, L          ;  8cc, 1B  ← reload lo (AccPlan reload)
+    RET                ; 12cc, 1B  — total 52cc, 7B
+
+or16_to_i8:             ; same with ORA: 52cc, 7B
+and16_to_i8:            ; same with ANA: 52cc, 7B
+
+xor_bytes:
+    MOV  A, H          ;  8cc, 1B
+    XRA  L             ;  4cc, 1B  — lo XOR
+    MOV  L, A          ;  8cc, 1B
+    XRA  A             ;  4cc, 1B  ← hi-byte setup (zero; DstHi dead!)
+    XRA  H             ;  4cc, 1B  ← hi-byte XOR  (DstHi dead!)
+    MOV  A, L          ;  8cc, 1B  ← reload lo
+    RET                ; 12cc, 1B  — total 48cc, 7B
+
+xor16_cmp_zero:
+    MOV  A, E          ;  8cc, 1B
+    XRA  L             ;  4cc, 1B
+    MOV  L, A          ;  8cc, 1B
+    MOV  A, D          ;  8cc, 1B  ← hi-byte setup (DstHi dead!)
+    XRA  H             ;  4cc, 1B  ← hi-byte XOR  (DstHi dead!)
+    XRA  A             ;  4cc, 1B  — CMP8_ZERO shape 2
+    CMP  L             ;  4cc, 1B
+    JZ   .zero         ;  8/12cc, 3B
+    XRA  A             ;  4cc, 1B
+    RET                ; 12cc, 1B
+.zero:
+    INR  A             ;  8cc, 1B
+    RET                ; 12cc, 1B  — worst 72cc, 13B
+
+and16_cmp_zero:         ; same with ANA: worst 72cc, 13B
+or16_cmp_zero:          ; same with ORA: worst 72cc, 13B
+
+xor16_full:             ; control — DstHi LIVE, both XRA emitted
+    MOV  A, E          ;  8cc, 1B
+    XRA  L             ;  4cc, 1B
+    MOV  L, A          ;  8cc, 1B
+    MOV  A, D          ;  8cc, 1B
+    XRA  H             ;  4cc, 1B
+    MOV  H, A          ;  8cc, 1B
+    RET                ; 12cc, 1B  — total 52cc, 7B
+```
+
+
+v6llvmc NEW ASM (after O89)
+----------------------------
+
+`v6llvmc_new01.asm`:
+
+```asm
+xor16_to_i8:
+    MOV  A, E          ;  8cc, 1B
+    XRA  L             ;  4cc, 1B  — lo XOR only
+    RET                ; 12cc, 1B  — total 24cc, 3B ✓
+
+or16_to_i8:             ; 24cc, 3B ✓
+    MOV  A, E
+    ORA  L
+    RET
+
+and16_to_i8:            ; 24cc, 3B ✓
+    MOV  A, E
+    ANA  L
+    RET
+
+xor_bytes:              ; 24cc, 3B ✓
+    MOV  A, H
+    XRA  L
+    RET
+
+xor16_cmp_zero:         ; lo-byte XRA + CMP8_ZERO shape 2
+    MOV  A, E          ;  8cc, 1B
+    XRA  L             ;  4cc, 1B
+    MOV  L, A          ;  8cc, 1B
+    XRA  A             ;  4cc, 1B  — CMP8_ZERO shape 2
+    CMP  L             ;  4cc, 1B
+    JZ   .zero         ;  8/12cc, 3B
+    XRA  A             ;  4cc, 1B
+    RET                ; 12cc, 1B
+.zero:
+    INR  A             ;  8cc, 1B
+    RET                ; 12cc, 1B  — worst 60cc, 11B ✓
+
+and16_cmp_zero:         ; worst 60cc, 11B ✓
+    MOV  A, L
+    ANA  E
+    MOV  L, A
+    XRA  A
+    CMP  L
+    JZ   .zero
+    XRA  A
+    RET
+.zero:
+    INR  A
+    RET
+
+or16_cmp_zero:          ; worst 60cc, 11B ✓
+    MOV  A, E
+    ORA  L
+    MOV  L, A
+    XRA  A
+    CMP  L
+    JZ   .zero
+    XRA  A
+    RET
+.zero:
+    INR  A
+    RET
+
+xor16_full:             ; control — unchanged (DstHi live)
+    MOV  A, E          ;  8cc, 1B
+    XRA  L             ;  4cc, 1B
+    MOV  L, A          ;  8cc, 1B
+    MOV  A, D          ;  8cc, 1B
+    XRA  H             ;  4cc, 1B
+    MOV  H, A          ;  8cc, 1B
+    RET                ; 12cc, 1B  — total 52cc, 7B (no change)
+```
+
+
+Comparison Table
+----------------
+
+| Function           | Compiler       | Bytes | Worst cc | vs v6llvmc old       |
+|--------------------|----------------|------:|---------:|----------------------|
+| `xor16_to_i8`      | c8080          |    12 |       76 | —                    |
+| `xor16_to_i8`      | v6llvmc (old)  |     7 |       52 | baseline             |
+| `xor16_to_i8`      | v6llvmc (new)  |     3 |       24 | **−4B, −28cc**       |
+| `or16_to_i8`       | c8080          |    12 |       76 | —                    |
+| `or16_to_i8`       | v6llvmc (old)  |     7 |       52 | baseline             |
+| `or16_to_i8`       | v6llvmc (new)  |     3 |       24 | **−4B, −28cc**       |
+| `and16_to_i8`      | c8080          |    12 |       76 | —                    |
+| `and16_to_i8`      | v6llvmc (old)  |     7 |       52 | baseline             |
+| `and16_to_i8`      | v6llvmc (new)  |     3 |       24 | **−4B, −28cc**       |
+| `xor_bytes`        | c8080          |     9 |       60 | —                    |
+| `xor_bytes`        | v6llvmc (old)  |     7 |       48 | baseline             |
+| `xor_bytes`        | v6llvmc (new)  |     3 |       24 | **−4B, −24cc**       |
+| `xor16_cmp_zero`   | c8080          |    19 |       92 | —                    |
+| `xor16_cmp_zero`   | v6llvmc (old)  |    13 |       72 | baseline             |
+| `xor16_cmp_zero`   | v6llvmc (new)  |    11 |       60 | **−2B, −12cc**       |
+| `and16_cmp_zero`   | c8080          |    19 |       92 | —                    |
+| `and16_cmp_zero`   | v6llvmc (old)  |    13 |       72 | baseline             |
+| `and16_cmp_zero`   | v6llvmc (new)  |    11 |       60 | **−2B, −12cc**       |
+| `or16_cmp_zero`    | c8080          |    19 |       92 | —                    |
+| `or16_cmp_zero`    | v6llvmc (old)  |    13 |       72 | baseline             |
+| `or16_cmp_zero`    | v6llvmc (new)  |    11 |       60 | **−2B, −12cc**       |
+| `xor16_full`       | c8080          |    18 |      120 | —                    |
+| `xor16_full`       | v6llvmc (old)  |     7 |       52 | baseline             |
+| `xor16_full`       | v6llvmc (new)  |     7 |       52 | no change (correct)  |
+
+For the simple truncation cases (`xor16_to_i8`, `or16_to_i8`, `and16_to_i8`,
+`xor_bytes`), O89 combined with AccumulatorPlanning removes all redundant work,
+cutting code from 7 instructions to 3 instructions: a 54% size reduction and a
+54% cycle reduction per call.  v6llvmc's register-based ABI already gave it a
+large lead over c8080; O89 extends that lead to a 3× speed advantage on these
+idioms.
+
+The compare-to-zero forms (`*_cmp_zero`) see a smaller but still meaningful
+gain (−2B, −12cc) because AccumulatorPlanning cannot eliminate the `MOV L, A`
+store: CMP8_ZERO shape 1 (`ORA A`) requires the source in the A register
+itself, but the source is the DstLo register (L).  CMP8_ZERO shape 2
+(`XRA A; CMP L`) is used instead, which still needs to store the result before
+clearing A.
+
+The control case (`xor16_full`) is correctly unchanged — DstHi is live, so the
+guard does not fire.

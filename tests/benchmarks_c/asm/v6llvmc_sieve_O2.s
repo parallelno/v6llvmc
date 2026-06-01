@@ -163,10 +163,6 @@ main:                                   ; @main
 	;--- V6C_XOR16 ---
 	MOV	A, D
 	XRA	E
-	MOV	L, A
-	XRA	A
-	XRA	D
-	MOV	A, L
 	OUT	0xed
 	HLT
                                         ; -- End function

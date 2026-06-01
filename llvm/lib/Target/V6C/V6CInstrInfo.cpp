@@ -1264,14 +1264,19 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     MCRegister RhsLo = RI.getSubReg(RhsReg, V6C::sub_lo);
     MCRegister RhsHi = RI.getSubReg(RhsReg, V6C::sub_hi);
 
+    // O89: skip hi-byte computation when DstHi is dead (e.g. (u8)(a OP b)).
+    bool HiDead = isRegDeadAfter(MBB, MI.getIterator(), DstHi, &RI);
+
     BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(LhsLo);
     BuildMI(MBB, MI, DL, get(OpOpc), V6C::A)
         .addReg(V6C::A).addReg(RhsLo);
     BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstLo).addReg(V6C::A);
-    BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(LhsHi);
-    BuildMI(MBB, MI, DL, get(OpOpc), V6C::A)
-        .addReg(V6C::A).addReg(RhsHi);
-    BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
+    if (!HiDead) {
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), V6C::A).addReg(LhsHi);
+      BuildMI(MBB, MI, DL, get(OpOpc), V6C::A)
+          .addReg(V6C::A).addReg(RhsHi);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), DstHi).addReg(V6C::A);
+    }
 
     MI.eraseFromParent();
     return true;

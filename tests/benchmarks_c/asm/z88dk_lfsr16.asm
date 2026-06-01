@@ -3,7 +3,7 @@
 ;
 ;	Reconstructed for z80 Module Assembler
 ;
-;	Module compile time: Sun May 31 18:22:08 2026
+;	Module compile time: Sun May 31 22:36:39 2026
 
 
 	C_LINE	0,"C:\Work\Programming\v6llvmc\tests\benchmarks_c\src\lfsr16.c"
@@ -68,10 +68,10 @@
 	sbc	16
 	jp	nc,i_3	;
 	call	l_gint4sp	;
-	ld	a,l
-	and	1
-	ld	l,a
 	ld	h,0
+	ld	a,1
+	and	l
+	ld	l,a
 	dec	sp
 	ld	a,l
 	pop	hl
