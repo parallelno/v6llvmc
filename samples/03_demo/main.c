@@ -19,6 +19,7 @@
 #include <v6c_inter.h>
 #include <v6c_consts.h>
 #include <v6c_draw.h>
+#include <v6c_math.h>
 
 #include "include/font.h"
 #include "include/draw.h"
@@ -59,5 +60,11 @@ void main() {
     // Draw 10 circles at 127, 127 from 100 radius, each smaller by 10.
     for (int i = 0; i < 10; i++) {
         draw_circle(127, 127, 100 - i * 10);
+    }
+
+    // Draw a sin wave across the screen.
+    for (int x = 0; x < 256; x++) {
+        uint8_t y = 127 + sin8(x);
+        draw_pixel(x, y);
     }
 }

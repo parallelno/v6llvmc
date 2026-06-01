@@ -40,9 +40,8 @@ main:                                   ; @main
 	SHLD	.LLo61_3+1
 	;--- V6C_SPILL8 ---
 	STA	.LLo61_6+1
-	MVI	L, 0
 	;--- V6C_BUILD_PAIR ---
-	MOV	D, L
+	MVI	D, 0
 	MOV	E, A
 	LXI	H, flags
 	;--- V6C_SPILL16 ---
@@ -161,12 +160,11 @@ main:                                   ; @main
 	LHLD	.LLo61_0+1
 	XCHG
 	;--- V6C_SRL16_BYTE ---
-	MVI	H, 0
 	;--- V6C_XOR16 ---
 	MOV	A, D
 	XRA	E
 	MOV	L, A
-	MOV	A, H
+	XRA	A
 	XRA	D
 	MOV	A, L
 	OUT	0xed

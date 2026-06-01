@@ -110,10 +110,9 @@ main:                                   ; @main
 	STA	.LLo61_3+1
 	MOV	A, B
 	LXI	B, perm
-	MVI	L, 1
 	;--- V6C_SPILL8 ---
 	MOV	D, A
-	MOV	A, L
+	MVI	A, 1
 	STA	.LLo61_1+1
 	MOV	H, D
 .LBB15_12:                              ;   Parent Loop BB15_4 Depth=1

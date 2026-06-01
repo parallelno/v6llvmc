@@ -302,7 +302,7 @@ draw_circle:                            ; -- Begin function draw_circle
 .Lfunc_begin5:
 	;=== void draw_circle(char r) ===
 	;  r = A
-	;  [folded: cx=127, cy=127]
+	;  [folded: value=127, cy=127]
 ; %bb.0:
 	;DEBUG_VALUE: draw_circle:r <- $a
 	;DEBUG_VALUE: draw_circle:x <- $a
@@ -320,107 +320,192 @@ draw_circle:                            ; -- Begin function draw_circle
 	ANI	0xf
 	;DEBUG_VALUE: draw_circle:t1 <- $a
 	;--- V6C_SPILL8 ---
-	STA	.LLo61_3+1
+	STA	.LLo61_4+1
 	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
-	MVI	H, 0
+	MOV	A, L
+	;DEBUG_VALUE: draw_circle:x <- $a
+	;DEBUG_VALUE: draw_circle:r <- $a
+	MVI	D, 0
 .LBB20_1:                               ; =>This Inner Loop Header: Depth=1
 	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
-	;DEBUG_VALUE: draw_circle:x <- $l
 	;DEBUG_VALUE: draw_circle:cx <- 127
 	;DEBUG_VALUE: draw_circle:cy <- 127
-	;DEBUG_VALUE: draw_circle:x <- $l
-	;DEBUG_VALUE: draw_circle:y <- $h
+	;DEBUG_VALUE: draw_circle:x <- $a
+	;DEBUG_VALUE: draw_circle:x <- $a
+	;DEBUG_VALUE: draw_circle:y <- $d
 	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
+	MOV	L, A
+	;DEBUG_VALUE: draw_circle:x <- $l
+	RRC
+	MOV	C, A
+	ANI	0x7f
+	MOV	H, A
+	MOV	A, C
+	RRC
+	ANI	0x3f
+	;DEBUG_VALUE: draw_scale_x_4_3:value <- $l
+	ADD	H
+	MOV	H, A
 	;--- V6C_SPILL8 ---
-	MOV	A, H
-	STA	.LLo61_4+1
-	;--- V6C_SPILL8 ---
-	MOV	A, E
-	STA	.LLo61_6+1
-	MOV	E, L
-	;DEBUG_VALUE: draw_circle:x <- $e
-	MOV	A, E
-	ADI	0x7f
-	MOV	D, A
-	MOV	A, H
-	ADI	0x7f
-	;--- V6C_SPILL8 ---
+	MOV	A, L
 	STA	.LLo61_0+1
+	;DEBUG_VALUE: draw_scale_x_4_3:value <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:x <- [$sp+0]
+	MOV	A, L
+	ANI	3
+	MVI	L, 0
+	JZ	.LBB20_3
+; %bb.2:                                ;   in Loop: Header=BB20_1 Depth=1
+	;DEBUG_VALUE: draw_circle:x <- [$sp+0]
+	;DEBUG_VALUE: draw_scale_x_4_3:value <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:y <- $d
+	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:cx <- 127
+	;DEBUG_VALUE: draw_circle:cy <- 127
+	MVI	L, 1
+.LBB20_3:                               ;   in Loop: Header=BB20_1 Depth=1
+	;DEBUG_VALUE: draw_circle:x <- [$sp+0]
+	;DEBUG_VALUE: draw_scale_x_4_3:value <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:y <- $d
+	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:cx <- 127
+	;DEBUG_VALUE: draw_circle:cy <- 127
+	MOV	A, H
+	ADD	L
+	;DEBUG_VALUE: sx <- $a
+	;--- V6C_SPILL8 ---
 	STA	.LLo61_1+1
+	;DEBUG_VALUE: sx <- [$sp+0]
+	ADI	0x7f
+	MOV	L, A
+	;--- V6C_SPILL8 ---
+	MOV	A, L
+	STA	.LLo61_2+1
+	MOV	A, D
+	ADI	0x7f
+	;--- V6C_SPILL8 ---
+	MOV	B, A
+	MOV	A, D
+	STA	.LLo61_3+1
+	MOV	D, B
+	MOV	A, L
+	MOV	B, D
+	CALL	draw_pixel
+	;--- V6C_RELOAD8 ---
+.LLo61_1:
+	MVI	A, 0
+	;DEBUG_VALUE: sx <- $a
+	XRI	0x7f
+	;--- V6C_SPILL8 ---
+	STA	.LLo61_1+1
+	;--- V6C_RELOAD8 ---
+	LDA	.LLo61_1+1
+	MOV	B, D
+	CALL	draw_pixel
+	;--- V6C_RELOAD8 ---
+	LDA	.LLo61_2+1
+	MOV	B, E
+	CALL	draw_pixel
+	;--- V6C_RELOAD8 ---
+	LDA	.LLo61_1+1
 	;--- V6C_SPILL8 ---
 	LXI	H, .LLo61_2+1
 	MOV	M, E
-	;DEBUG_VALUE: draw_circle:y <- [$sp+0]
-	MOV	A, D
-	;--- V6C_RELOAD8 ---
-.LLo61_0:
-	MVI	B, 0
-	CALL	draw_pixel
-	MOV	A, E
-	;DEBUG_VALUE: draw_circle:x <- [$sp+0]
-	;--- V6C_RELOAD8 ---
-.LLo61_6:
-	MVI	E, 0
-	XRI	0x7f
-	;--- V6C_SPILL8 ---
-	STA	.LLo61_5+1
-	;--- V6C_RELOAD8 ---
-.LLo61_1:
-	MVI	B, 0
-	CALL	draw_pixel
-	MOV	A, D
 	MOV	B, E
 	CALL	draw_pixel
-	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_5+1
-	MOV	B, E
-	CALL	draw_pixel
-	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_0+1
-	MOV	B, D
-	CALL	draw_pixel
-	MOV	A, E
-	MOV	B, D
-	CALL	draw_pixel
-	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_0+1
-	;--- V6C_RELOAD8 ---
-.LLo61_5:
-	MVI	D, 0
-	MOV	B, D
-	CALL	draw_pixel
-	MOV	A, E
-	MOV	B, D
-	CALL	draw_pixel
-	;--- V6C_RELOAD8 ---
-.LLo61_4:
-	MVI	L, 0
-	;DEBUG_VALUE: draw_circle:y <- $l
-	INR	L
-	;DEBUG_VALUE: draw_circle:t1 <- [DW_OP_LLVM_arg 0, DW_OP_deref, DW_OP_LLVM_arg 1, DW_OP_plus, DW_OP_stack_value] $sp, $l
-	;DEBUG_VALUE: draw_circle:y <- $l
 	;--- V6C_RELOAD8 ---
 .LLo61_3:
+	MVI	H, 0
+	MOV	A, H
+	RRC
+	MOV	E, A
+	ANI	0x7f
+	MOV	L, A
+	MOV	A, E
+	RRC
+	ANI	0x3f
+	;DEBUG_VALUE: draw_scale_x_4_3:value <- $h
+	ADD	L
+	MOV	L, A
+	;DEBUG_VALUE: draw_scale_x_4_3:value <- [$sp+0]
+	MOV	A, H
+	ANI	3
+	MVI	H, 0
+	JZ	.LBB20_5
+; %bb.4:                                ;   in Loop: Header=BB20_1 Depth=1
+	;DEBUG_VALUE: draw_scale_x_4_3:value <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:x <- [$sp+0]
+	;DEBUG_VALUE: draw_scale_x_4_3:value <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:cx <- 127
+	;DEBUG_VALUE: draw_circle:cy <- 127
+	MVI	H, 1
+.LBB20_5:                               ;   in Loop: Header=BB20_1 Depth=1
+	;DEBUG_VALUE: draw_scale_x_4_3:value <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:x <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:cx <- 127
+	;DEBUG_VALUE: draw_circle:cy <- 127
+	MOV	A, L
+	ADD	H
+	;DEBUG_VALUE: sy <- $a
+	MOV	E, A
+	;DEBUG_VALUE: sy <- $e
+	ADI	0x7f
+	;--- V6C_SPILL8 ---
+	STA	.LLo61_1+1
+	;--- V6C_RELOAD8 ---
+	LDA	.LLo61_0+1
+	ADI	0x7f
+	MOV	D, A
+	;--- V6C_RELOAD8 ---
+	LDA	.LLo61_1+1
+	MOV	B, D
+	CALL	draw_pixel
+	MOV	A, E
+	;DEBUG_VALUE: sy <- $a
+	XRI	0x7f
+	MOV	E, A
+	MOV	B, D
+	CALL	draw_pixel
+	;--- V6C_RELOAD8 ---
+	LDA	.LLo61_0+1
+	;--- V6C_RELOAD8 ---
+	LDA	.LLo61_0+1
+	XRI	0x7f
+	MOV	D, A
+	;--- V6C_RELOAD8 ---
+	LDA	.LLo61_1+1
+	MOV	B, D
+	CALL	draw_pixel
+	MOV	A, E
+	MOV	B, D
+	CALL	draw_pixel
+	;--- V6C_RELOAD8 ---
+	LXI	H, .LLo61_3+1
+	MOV	L, M
+	INR	L
+	;DEBUG_VALUE: draw_circle:t1 <- [DW_OP_LLVM_arg 0, DW_OP_LLVM_arg 1, DW_OP_deref, DW_OP_plus, DW_OP_stack_value] $l, $sp
+	;DEBUG_VALUE: draw_circle:y <- $l
+	;--- V6C_RELOAD8 ---
+.LLo61_4:
 	MVI	A, 0
-	;DEBUG_VALUE: draw_circle:t1 <- [DW_OP_LLVM_arg 0, DW_OP_LLVM_arg 1, DW_OP_plus, DW_OP_stack_value] $a, $l
+	;DEBUG_VALUE: draw_circle:t1 <- [DW_OP_LLVM_arg 0, DW_OP_LLVM_arg 1, DW_OP_plus, DW_OP_stack_value] $l, $a
 	;--- V6C_SPILL8 ---
 	MOV	B, A
 	MOV	A, L
-	STA	.LLo61_4+1
+	STA	.LLo61_3+1
 	MOV	A, B
-	;DEBUG_VALUE: draw_circle:t1 <- [DW_OP_LLVM_arg 0, DW_OP_LLVM_arg 1, DW_OP_deref, DW_OP_plus, DW_OP_stack_value] $a, $sp
-	;DEBUG_VALUE: draw_circle:y <- [$sp+0]
 	ADD	L
-	;--- V6C_RELOAD8 ---
-.LLo61_2:
-	MVI	L, 0
-	;DEBUG_VALUE: draw_circle:x <- [$sp+0]
-	;DEBUG_VALUE: draw_circle:x <- $l
+	;DEBUG_VALUE: draw_circle:y <- [$sp+0]
 	MVI	C, 0
+	;--- V6C_RELOAD8 ---
+.LLo61_0:
+	MVI	L, 0
 	;--- V6C_BUILD_PAIR ---
 	MOV	H, C
 	;--- V6C_SPILL8 ---
-	STA	.LLo61_3+1
+	STA	.LLo61_4+1
 	;--- V6C_BUILD_PAIR ---
 	MOV	B, C
 	;--- V6C_SUB16 ---
@@ -433,60 +518,85 @@ draw_circle:                            ; -- Begin function draw_circle
 	;--- V6C_CMP16_SIGN ---
 	XRA	A
 	ADD	H
-	JM	.LBB20_3
-; %bb.2:                                ;   in Loop: Header=BB20_1 Depth=1
+	JM	.LBB20_7
+; %bb.6:                                ;   in Loop: Header=BB20_1 Depth=1
 	;DEBUG_VALUE: t2 <- $hl
 	;DEBUG_VALUE: draw_circle:y <- [$sp+0]
+	;DEBUG_VALUE: draw_scale_x_4_3:value <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:x <- [$sp+0]
 	;DEBUG_VALUE: draw_circle:cx <- 127
 	;DEBUG_VALUE: draw_circle:cy <- 127
 	MOV	A, L
 	;--- V6C_SPILL8 ---
-	STA	.LLo61_3+1
-.LBB20_3:                               ;   in Loop: Header=BB20_1 Depth=1
+	STA	.LLo61_4+1
+.LBB20_7:                               ;   in Loop: Header=BB20_1 Depth=1
 	;DEBUG_VALUE: t2 <- $hl
 	;DEBUG_VALUE: draw_circle:y <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:x <- [$sp+0]
 	;DEBUG_VALUE: draw_circle:cx <- 127
 	;DEBUG_VALUE: draw_circle:cy <- 127
 	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
 	MVI	L, 0
-	JM	.LBB20_5
-; %bb.4:                                ;   in Loop: Header=BB20_1 Depth=1
+	;--- V6C_RELOAD8 ---
+.LLo61_2:
+	MVI	E, 0
+	JM	.LBB20_9
+; %bb.8:                                ;   in Loop: Header=BB20_1 Depth=1
 	;DEBUG_VALUE: draw_circle:y <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:x <- [$sp+0]
 	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
 	;DEBUG_VALUE: draw_circle:cx <- 127
 	;DEBUG_VALUE: draw_circle:cy <- 127
 	MVI	L, 1
-.LBB20_5:                               ;   in Loop: Header=BB20_1 Depth=1
+.LBB20_9:                               ;   in Loop: Header=BB20_1 Depth=1
 	;DEBUG_VALUE: draw_circle:y <- [$sp+0]
+	;DEBUG_VALUE: draw_circle:x <- [$sp+0]
 	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
 	;DEBUG_VALUE: draw_circle:cx <- 127
 	;DEBUG_VALUE: draw_circle:cy <- 127
 	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_2+1
+	LDA	.LLo61_0+1
 	SUB	L
 	;DEBUG_VALUE: draw_circle:x <- $a
 	DCR	E
 	;--- V6C_RELOAD8 ---
-	LXI	H, .LLo61_4+1
-	MOV	H, M
-	MOV	L, A
-	;DEBUG_VALUE: draw_circle:x <- $l
-	CMP	H
+	LXI	H, .LLo61_3+1
+	MOV	D, M
+	CMP	D
 	;--- V6C_BRCOND ---
 	JNC	.LBB20_1
-; %bb.6:
+; %bb.10:
 	;DEBUG_VALUE: draw_circle:y <- [$sp+0]
 	;DEBUG_VALUE: draw_circle:t1 <- [$sp+0]
-	;DEBUG_VALUE: draw_circle:x <- $l
 	;DEBUG_VALUE: draw_circle:cx <- 127
 	;DEBUG_VALUE: draw_circle:cy <- 127
+	;DEBUG_VALUE: draw_circle:x <- $a
 	RET
 .Lfunc_end5:
+                                        ; -- End function
+	.section	.text.sin8,"ax",@progbits
+sin8:                                   ; -- Begin function sin8
+                                        ; @sin8
+.Lfunc_begin6:
+	;=== char sin8(char angle) ===
+	;  angle = A
+; %bb.0:
+	;DEBUG_VALUE: sin8:angle <- $a
+	;--- V6C_BUILD_PAIR ---
+	MVI	H, 0
+	MOV	L, A
+	LXI	D, sin_lut
+	;--- V6C_DAD ---
+	DAD	D
+	;--- V6C_LOAD8_P ---
+	MOV	A, M
+	RET
+.Lfunc_end6:
                                         ; -- End function
 	.section	.text.main,"ax",@progbits
 	.globl	main                            ; -- Begin function main
 main:                                   ; @main
-.Lfunc_begin6:
+.Lfunc_begin7:
 	;=== void main(void) ===
 ; %bb.0:
 	;APP
@@ -504,10 +614,10 @@ main:                                   ; @main
 	CALL	memset
 	MVI	A, 0x64
 	;DEBUG_VALUE: i <- 0
-.LBB21_1:                               ; =>This Inner Loop Header: Depth=1
+.LBB22_1:                               ; =>This Inner Loop Header: Depth=1
 	;DEBUG_VALUE: i <- undef
 	;--- V6C_SPILL8 ---
-	STA	.LLo61_7+1
+	STA	.LLo61_6+1
 	CALL	rand
 	;DEBUG_VALUE: r1 <- $hl
 	;DEBUG_VALUE: x1 <- $l
@@ -517,36 +627,64 @@ main:                                   ; @main
 	MOV	B, H
 	CALL	draw_line
 	;--- V6C_RELOAD8 ---
-.LLo61_7:
+.LLo61_6:
 	MVI	A, 0
 	DCR	A
 	;--- V6C_BRCOND ---
-	JNZ	.LBB21_1
-; %bb.3:
+	JNZ	.LBB22_1
+; %bb.2:
 	MVI	H, 0xa
 	MVI	A, 0x64
-.LBB21_4:                               ; =>This Inner Loop Header: Depth=1
+.LBB22_3:                               ; =>This Inner Loop Header: Depth=1
 	;DEBUG_VALUE: i <- undef
 	;--- V6C_SPILL8 ---
-	STA	.LLo61_7+1
+	STA	.LLo61_6+1
 	;--- V6C_SPILL8 ---
 	MOV	A, H
-	STA	.LLo61_8+1
+	STA	.LLo61_7+1
 	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_7+1
+	LDA	.LLo61_6+1
 	CALL	draw_circle
 	;--- V6C_RELOAD8 ---
-.LLo61_8:
+.LLo61_7:
 	MVI	H, 0
 	;--- V6C_RELOAD8 ---
-	LDA	.LLo61_7+1
+	LDA	.LLo61_6+1
 	ADI	0xf6
 	DCR	H
 	;--- V6C_BRCOND ---
-	JNZ	.LBB21_4
-; %bb.2:
+	JNZ	.LBB22_3
+; %bb.5:
+	LXI	H, 0x100
+	MOV	E, L
+.LBB22_6:                               ; =>This Inner Loop Header: Depth=1
+	;DEBUG_VALUE: x <- [DW_OP_consts 256, DW_OP_minus, DW_OP_consts 18446744073709551615, DW_OP_div, DW_OP_stack_value] $hl
+	;--- V6C_SPILL16 ---
+	SHLD	.LLo61_5+1
+	MOV	A, E
+	;DEBUG_VALUE: x <- [DW_OP_deref_size 0, DW_OP_consts 256, DW_OP_minus, DW_OP_consts 18446744073709551615, DW_OP_div, DW_OP_stack_value] $sp
+	CALL	sin8
+	ADI	0x7f
+	;DEBUG_VALUE: y <- $a
+	MOV	B, A
+	;DEBUG_VALUE: y <- $b
+	MOV	A, E
+	CALL	draw_pixel
+	;--- V6C_RELOAD16 ---
+.LLo61_5:
+	LXI	H, 0
+	;DEBUG_VALUE: x <- [DW_OP_consts 256, DW_OP_minus, DW_OP_consts 18446744073709551615, DW_OP_div, DW_OP_stack_value] $hl
+	INR	E
+	;DEBUG_VALUE: x <- [DW_OP_consts 256, DW_OP_minus, DW_OP_consts 18446744073709551615, DW_OP_div, DW_OP_consts 1, DW_OP_plus, DW_OP_stack_value] $hl
+	;--- V6C_DCX16 ---
+	DCX	H
+	;--- V6C_BR_CC16_IMM ---
+	MOV	A, H
+	ORA	L
+	JNZ	.LBB22_6
+; %bb.4:
 	RET
-.Lfunc_end6:
+.Lfunc_end7:
                                         ; -- End function
 	.data
 	.globl	__v6c_rand_state                ; @__v6c_rand_state
@@ -560,8 +698,13 @@ palette:                                ; @palette
 BIT_MASK:                               ; @BIT_MASK
 	.ascii	"\200@ \020\b\004\002\001"
 
+sin_lut:                                ; @sin_lut
+	.ascii	"\000\003\006\t\f\020\023\026\031\034\037\"%(+.1369<?ADGILNQSUXZ\\^`bdfhjkmnpqstuvxyzz{|}}~~~\177\177\177\177\177\177\177~~~}}|{zzyxvutsqpnmkjhfdb`^\\ZXUSQNLIGDA?<9631.+(%\"\037\034\031\026\023\020\f\t\006\003\000\375\372\367\364\360\355\352\347\344\341\336\333\330\325\322\317\315\312\307\304\301\277\274\271\267\264\262\257\255\253\250\246\244\242\240\236\234\232\230\226\225\223\222\220\217\215\214\213\212\210\207\206\206\205\204\203\203\202\202\202\201\201\201\201\201\201\201\202\202\202\203\203\204\205\206\206\207\210\212\213\214\215\217\220\222\223\225\226\230\232\234\236\240\242\244\246\250\253\255\257\262\264\267\271\274\277\301\304\307\312\315\317\322\325\330\333\336\341\344\347\352\355\360\364\367\372\375"
+
 	.local	__v6c_ss.draw_circle            ; @__v6c_ss.draw_circle
-	.comm	__v6c_ss.draw_circle,3,1
+	.comm	__v6c_ss.draw_circle,4,1
+	.local	__v6c_ss.main                   ; @__v6c_ss.main
+	.comm	__v6c_ss.main,2,1
 	.addrsig
 	.addrsig_sym __mulqi3
 	.addrsig_sym __v6c_mulqihi3

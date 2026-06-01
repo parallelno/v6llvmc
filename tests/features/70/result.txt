@@ -1,0 +1,150 @@
+Feature 70 — O88 MVI-through-MOV Collapse
+==========================================
+
+Status
+------
+
+O88 is implemented and validated.
+
+The new V6C peephole folds:
+    MVI X, Imm
+    MOV Z, X          (sole consumer, X dead after)
+  →
+    MVI Z, Imm
+
+The primary trigger is `zext i8 → i16` when V6C_BUILD_PAIR expands and
+materialises the zero hi-half into an intermediate register before the
+final destination is known.  Each folded instance saves 8cc and 1 byte.
+
+
+C Test Case Code
+----------------
+
+`v6llvmc.c` / `c8080.c`
+
+```c
+typedef unsigned char u8;
+typedef unsigned short u16;
+typedef signed char s8;
+
+extern const s8 sin_lut[256];   /* v6llvmc.c uses extern; c8080.c defines it locally */
+
+/* lookup_zext: angle zero-extended to u16 before pointer arithmetic */
+s8 lookup_zext(u8 angle) {
+    return sin_lut[angle];
+}
+
+/* zext_add: (u16)a + b where a is a u8 */
+u16 zext_add(u8 a, u16 b) {
+    return (u16)a + b;
+}
+
+int main(int argc, char **argv) {
+    volatile s8  r1 = lookup_zext(42);
+    volatile u16 r2 = zext_add(10, 100);
+    (void)r1; (void)r2;
+    return 0;
+}
+```
+
+
+c8080 ASM Converted To i8080 (main + dependent functions)
+---------------------------------------------------------
+
+c8080 uses static-stack allocation for function arguments; its calling
+convention differs from v6llvmc's register-based ABI, so absolute cycle
+counts are not directly comparable.  The table below uses approximate
+Vector 06c timings for orientation only.
+
+```asm
+lookup_zext:
+    STA  __a_1_lookup_zext     ; 16cc, 3B  — spill angle arg
+    LXI  D, sin_lut            ; 12cc, 3B
+    LHLD __a_1_lookup_zext     ; 20cc, 3B  — reload as u16 (H garbage)
+    MVI  H, 0                  ;  8cc, 2B  — zero hi
+    DAD  D                     ; 12cc, 1B
+    MOV  A, M                  ;  8cc, 1B
+    RET                        ; 12cc, 1B  — total ~88cc, 14B
+
+zext_add:
+    SHLD __a_2_zext_add        ; 20cc, 3B  — spill b (HL) to static
+    LHLD __a_1_zext_add        ; 20cc, 3B  — load a (u8, in L; H garbage)
+    MVI  H, 0                  ;  8cc, 2B  — zero hi
+    XCHG                       ;  4cc, 1B  — DE = (u16)a
+    LHLD __a_2_zext_add        ; 20cc, 3B  — restore b
+    DAD  D                     ; 12cc, 1B
+    RET                        ; 12cc, 1B  — total ~96cc, 14B
+```
+
+
+c8080 Stats (approximate, Vector 06c timings)
+---------------------------------------------
+
+| Function      | Bytes | Worst cycles | Notes                        |
+|---------------|------:|-------------:|------------------------------|
+| `lookup_zext` |    14 |          ~88 | includes RET; spills via STA |
+| `zext_add`    |    14 |          ~96 | includes RET; spills via SHLD|
+
+
+v6llvmc OLD ASM (relevant functions)
+------------------------------------
+
+`v6llvmc_old.asm` (before O88):
+
+```asm
+lookup_zext:
+    MVI  L, 0              ;  8cc, 2B
+    MOV  H, L              ;  8cc, 1B  ← dead: copies zero to H
+    MOV  L, A              ;  8cc, 1B
+    LXI  D, sin_lut        ; 12cc, 3B
+    DAD  D                 ; 12cc, 1B
+    MOV  A, M              ;  8cc, 1B
+    RET                    ; 12cc, 1B  — total 68cc, 10B
+
+zext_add:
+    MVI  E, 0              ;  8cc, 2B
+    MOV  D, E              ;  8cc, 1B  ← dead: copies zero to D
+    MOV  E, A              ;  8cc, 1B
+    DAD  D                 ; 12cc, 1B
+    RET                    ; 12cc, 1B  — total 48cc, 7B
+```
+
+
+v6llvmc NEW ASM (after O88)
+----------------------------
+
+`v6llvmc_new01.asm`:
+
+```asm
+lookup_zext:
+    MVI  H, 0              ;  8cc, 2B  ← zero written directly to hi dest
+    MOV  L, A              ;  8cc, 1B
+    LXI  D, sin_lut        ; 12cc, 3B
+    DAD  D                 ; 12cc, 1B
+    MOV  A, M              ;  8cc, 1B
+    RET                    ; 12cc, 1B  — total 60cc, 9B
+
+zext_add:
+    MVI  D, 0              ;  8cc, 2B  ← zero written directly to hi dest
+    MOV  E, A              ;  8cc, 1B
+    DAD  D                 ; 12cc, 1B
+    RET                    ; 12cc, 1B  — total 40cc, 6B
+```
+
+
+Comparison Table
+----------------
+
+| Function      | Compiler      | Bytes | Cycles | vs v6llvmc old |
+|---------------|---------------|------:|-------:|----------------|
+| `lookup_zext` | c8080         |    14 |    ~88 | —              |
+| `lookup_zext` | v6llvmc (old) |    10 |     68 | baseline       |
+| `lookup_zext` | v6llvmc (new) |     9 |     60 | −1B, −8cc      |
+| `zext_add`    | c8080         |    14 |    ~96 | —              |
+| `zext_add`    | v6llvmc (old) |     7 |     48 | baseline       |
+| `zext_add`    | v6llvmc (new) |     6 |     40 | −1B, −8cc      |
+
+v6llvmc already beats c8080 decisively on both functions even before O88
+(register ABI eliminates all the static-stack spill overhead).  O88 then
+removes the final redundant intermediate copy introduced by the
+BUILD_PAIR expansion, saving 8cc and 1B per call.

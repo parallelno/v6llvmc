@@ -1494,6 +1494,67 @@ bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
         break;
     }
   }
+
+  // O88: MVIr-producer variant.
+  // Pattern: MVI X, Imm  ; [window, no read/clobber of X] ; MOV Z, X
+  //          where X is dead after the MOV.
+  // Transform: emit MVI Z, Imm before the MOV, then erase MOV and MVI X.
+  for (auto I = MBB.begin(), E = MBB.end(); I != E; ++I) {
+    MachineInstr &ProducerMI = *I;
+    if (ProducerMI.getOpcode() != V6C::MVIr)
+      continue;
+    if (isO61PatchedImm(ProducerMI))
+      continue;
+
+    Register X   = ProducerMI.getOperand(0).getReg();
+    int64_t  Imm = ProducerMI.getOperand(1).getImm();
+
+    unsigned Steps = 0;
+    for (auto J = std::next(I); J != E && Steps < kChainWindow; ++J) {
+      if (J->isDebugInstr())
+        continue;
+      ++Steps;
+
+      bool IsConsumer = J->getOpcode() == V6C::MOVrr &&
+                        TRI->regsOverlap(J->getOperand(1).getReg(), X);
+
+      bool ReadsX = false, ClobbersX = false;
+      for (const MachineOperand &MO : J->operands()) {
+        if (!MO.isReg() || !MO.getReg())
+          continue;
+        if (!TRI->regsOverlap(MO.getReg(), X))
+          continue;
+        // Don't count the consumer's own source operand as a foreign read.
+        if (MO.isUse() && !MO.isUndef() &&
+            !(IsConsumer && &MO == &J->getOperand(1)))
+          ReadsX = true;
+        if (MO.isDef())
+          ClobbersX = true;
+      }
+
+      if (IsConsumer) {
+        // Only fold when X is the sole consumer (dead after) and not
+        // simultaneously redefined by this instruction.
+        if (!ClobbersX && isRegDeadAfter(MBB, J, X, TRI)) {
+          Register Z = J->getOperand(0).getReg();
+          const TargetInstrInfo &TII =
+              *MBB.getParent()->getSubtarget().getInstrInfo();
+          BuildMI(MBB, J, J->getDebugLoc(), TII.get(V6C::MVIr), Z)
+              .addImm(Imm);
+          auto Next = std::next(I);
+          J->eraseFromParent();
+          ProducerMI.eraseFromParent();
+          I = std::prev(Next);
+          Changed = true;
+        }
+        break; // stop scan after first consumer regardless of fold
+      }
+
+      if (ReadsX || ClobbersX)
+        break;
+    }
+  }
+
   return Changed;
 }
 
