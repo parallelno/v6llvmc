@@ -54,10 +54,13 @@ exit:
 
 ; --------------------------------------------------------------------------
 ; Test 2: and i16 PHI, C — but result is also used outside the zero-test
-; (stored / returned as i16). Guard must remain: should NOT emit ANI.
+; (stored / returned as i16). Guard must remain: should NOT narrow to ANI.
+; After O93 the i16 op no longer needs an LXI scratch pair — it lowers via the
+; V6C_AND16_IMM constant-in-A expansion (ANA), preserving the high byte.
 ;
 ; CHECK-LABEL: and_live_result_no_narrow:
-; CHECK:       LXI
+; CHECK-NOT:   ANI
+; CHECK:       ANA
 ; --------------------------------------------------------------------------
 define i16 @and_live_result_no_narrow(i16 %x) {
   %res = and i16 %x, 7
@@ -65,11 +68,12 @@ define i16 @and_live_result_no_narrow(i16 %x) {
 }
 
 ; --------------------------------------------------------------------------
-; Test 3: and i16 with LARGE constant (C > 0xFF). Must NOT narrow.
+; Test 3: and i16 with LARGE constant (C > 0xFF). Must NOT narrow to ANI.
+; After O93 this lowers via V6C_AND16_IMM (two ANA bytes, no LXI scratch pair).
 ;
 ; CHECK-LABEL: and_large_const_no_narrow:
-; CHECK:       LXI
 ; CHECK-NOT:   ANI
+; CHECK:       ANA
 ; --------------------------------------------------------------------------
 define i16 @and_large_const_no_narrow(i16 %x) {
   %res = and i16 %x, 3855

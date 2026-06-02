@@ -1,52 +1,41 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
 ; RUN: llc -march=v6c --v6c-disable-peephole < %s | FileCheck %s --check-prefix=DISABLED
 ;
-; O89: MOV-chain "rewrite-producer" collapse when Y is clobbered between
-; producer and consumer.
+; O93: the 16-bit constant XOR tap of an LFSR hot loop must lower to the
+; immediate bitwise pseudo (V6C_XOR16_IMM) — `MVI A, hi ; XRA reg ; MOV reg, A`
+; — instead of materialising the constant into a scratch register pair
+; (`LXI B, 0xb400` + reg/reg V6C_XOR16).
 ;
-; Pattern (before fix, with peephole disabled):
+; History: this test previously guarded the collapseMovChain "rewrite-producer"
+; transform (O89), which fired when register pressure spilled the 16-bit loop
+; state and reloaded its lo-byte through a MOV chain clobbered by a POP H.
+; O93 removes the *need* for the scratch constant pair, which lowers register
+; pressure enough that this LFSR no longer spills through that MOV chain at all:
+; the surviving accumulator spill now reloads straight into A via the O61
+; patched landing pad (`.LLo61_0: MVI A, 0 ; ANI 1`).  The rewrite-producer
+; transform remains in V6CPeephole.cpp (collapseMovChain) and is exercised by
+; the C benchmark suite; this test now pins the O93 lowering that obsoleted the
+; old spill scenario.
 ;
-;   LHLD  .LLo61_0+1   ; reload spilled 16-bit value into HL
-;   MOV   C, L         ; producer: X=C ← Y=L (save lo-byte before HL clobbered)
-;   MOV   B, H         ; also save hi-byte
-;   POP   H            ; clobbers HL (Y=L) — part of reload address setup
-;   MOV   A, C         ; consumer: Z=A ← X=C
-;   ANI   1            ; use A
-;
-; collapseMovChain previously terminated the scan when it saw POP H clobber Y=L
-; (ClobbersY=true), so it never reached the consumer MOV A,C.
-;
-; The classic "rewrite consumer" transform (MOV A,C → MOV A,L) would be wrong
-; here: after POP H, L holds the stack-restored value, not the spilled lo-byte.
-;
-; The "rewrite-producer" variant (O89) instead rewrites the *producer* before
-; the clobber and erases the consumer:
-;
-;   LHLD  .LLo61_0+1   ; reload spilled value into HL
-;   MOV   A, L         ; rewritten producer: Z=A ← Y=L  (saves 8 cc)
-;   POP   H            ; clobbers HL — irrelevant, A already holds the value
-;   ANI   1            ; consumer erased; A already set
-;
-; Preconditions checked: Z=A not read or written between producer and consumer,
-; X=C dead after consumer.
-;
-; Trigger: LFSR-16 hot loop under register pressure that spills the 16-bit
-; loop state (HL) and needs its lo-byte for the LSB test.
+; The tap constant is 0xB400 (-19456): the lo byte 0x00 is an XOR identity and
+; is folded away, so only the hi byte is emitted.
 
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
 target triple = "i8080-unknown-v6c"
 
+; O93 lowering: single hi-byte XOR through A, no scratch pair for the constant.
 ; CHECK-LABEL:     main:
-; CHECK:           LHLD    .LLo61_0+1
-; CHECK-NEXT:      MOV     A, L
-; CHECK-NEXT:      POP     H
-; CHECK-NEXT:      ANI     1
+; CHECK-NOT:       LXI     {{[BD]}}, 0xb400
+; CHECK:           MVI     A, 0xb4
+; CHECK-NEXT:      XRA     B
+; CHECK-NEXT:      MOV     B, A
 
+; The expansion is independent of the peephole pass: same O93 form with it off.
 ; DISABLED-LABEL:  main:
-; DISABLED:        LHLD    .LLo61_0+1
-; DISABLED-NEXT:   MOV     C, L
-; DISABLED:        MOV     A, C
-; DISABLED-NEXT:   ANI     1
+; DISABLED-NOT:    LXI     {{[BD]}}, 0xb400
+; DISABLED:        MVI     A, 0xb4
+; DISABLED-NEXT:   XRA     B
+; DISABLED-NEXT:   MOV     B, A
 
 define dso_local noundef i16 @main(i16 noundef %0, ptr nocapture noundef readnone %1) local_unnamed_addr {
   %3 = alloca i16, align 2

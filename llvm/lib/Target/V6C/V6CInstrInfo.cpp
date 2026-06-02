@@ -1282,6 +1282,74 @@ bool V6CInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     return true;
   }
 
+  case V6C::V6C_AND16_IMM:
+  case V6C::V6C_OR16_IMM:
+  case V6C::V6C_XOR16_IMM: {
+    // O93: dst = src OP imm16 (constant). dst and src are tied to the same
+    // pair. The constant is loaded into A byte-wise and the cheaper 4cc
+    // register ALU form is applied (legal because AND/OR/XOR are commutative),
+    // so no scratch register pair is needed. Per-byte 0x00/0xFF identities are
+    // folded away, and a dead high byte is skipped (O89-style).
+    unsigned Kind = MI.getOpcode();
+    unsigned OpOpc;
+    switch (Kind) {
+    case V6C::V6C_AND16_IMM: OpOpc = V6C::ANAr; break;
+    case V6C::V6C_OR16_IMM:  OpOpc = V6C::ORAr; break;
+    case V6C::V6C_XOR16_IMM: OpOpc = V6C::XRAr; break;
+    default: llvm_unreachable("unexpected opcode");
+    }
+
+    Register DstReg = MI.getOperand(0).getReg();
+    uint64_t Imm = MI.getOperand(2).getImm();
+    unsigned LoByte = Imm & 0xFF;
+    unsigned HiByte = (Imm >> 8) & 0xFF;
+
+    MCRegister DstLo = RI.getSubReg(DstReg, V6C::sub_lo);
+    MCRegister DstHi = RI.getSubReg(DstReg, V6C::sub_hi);
+
+    // O89: skip the hi-byte work entirely when DstHi is dead (e.g. (u8)(x OP C)).
+    bool HiDead = isRegDeadAfter(MBB, MI.getIterator(), DstHi, &RI);
+
+    // Emit `RegByte = RegByte OP ByteVal` with per-byte identity folding.
+    auto emitByte = [&](unsigned ByteVal, MCRegister RegByte) {
+      switch (Kind) {
+      case V6C::V6C_AND16_IMM:
+        if (ByteVal == 0xFF)
+          return; // x & 0xFF == x — identity.
+        if (ByteVal == 0x00) {
+          // x & 0x00 == 0 — just zero the byte (O55 may fold MVI A,0 → XRA A).
+          BuildMI(MBB, MI, DL, get(V6C::MVIr), RegByte).addImm(0);
+          return;
+        }
+        break;
+      case V6C::V6C_OR16_IMM:
+        if (ByteVal == 0x00)
+          return; // x | 0x00 == x — identity.
+        if (ByteVal == 0xFF) {
+          // x | 0xFF == 0xFF — set the byte.
+          BuildMI(MBB, MI, DL, get(V6C::MVIr), RegByte).addImm(0xFF);
+          return;
+        }
+        break;
+      case V6C::V6C_XOR16_IMM:
+        if (ByteVal == 0x00)
+          return; // x ^ 0x00 == x — identity.
+        break;
+      }
+      // Generic: MVI A, ByteVal; OP A, RegByte; MOV RegByte, A.
+      BuildMI(MBB, MI, DL, get(V6C::MVIr), V6C::A).addImm(ByteVal);
+      BuildMI(MBB, MI, DL, get(OpOpc), V6C::A).addReg(V6C::A).addReg(RegByte);
+      BuildMI(MBB, MI, DL, get(V6C::MOVrr), RegByte).addReg(V6C::A);
+    };
+
+    emitByte(LoByte, DstLo);
+    if (!HiDead)
+      emitByte(HiByte, DstHi);
+
+    MI.eraseFromParent();
+    return true;
+  }
+
   case V6C::V6C_CMP16_ZERO: {
     // O34: Zero-test for i16 — MOV A, Hi; ORA Lo → Z=1 iff pair==0.
     Register SrcReg = MI.getOperand(0).getReg();

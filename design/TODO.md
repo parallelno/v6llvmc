@@ -21,36 +21,3 @@ this compiles wrongly when draw_pixel is not inlined.
         uint8_t y = 127 + sin8(x);
         draw_pixel(x, y);
     }
-================================
-tests\benchmarks_c\asm\v6llvmc_lfsr16_O2.s
-	LXI	B, 0xb400
-	;--- V6C_SPILL16 ---
-	...
-	;--- V6C_RELOAD16 ---
-	...
-	;--- V6C_XOR16 ---
-	MOV	A, L
-	XRA	C
-	MOV	C, A
-	MOV	A, H
-	XRA	B
-	MOV	B, A
-    ; takes 52 cc
-Introduce V6C_XOR16_IMM/ (same for AND16/OR16/CMD16) that takes an emmidiate
-constant and produces the code like this
-	;--- V6C_XOR16_IMM ---
-	MVI	A, IMM_LO
-	XRA	REG_LO
-	MOV	REG_LO, A
-	MVI A, IMM_HI
-	XRA	REG_HI
-	MOV	REG_HI, A
-    ; takes 40 cc
-
-Benefits: it takes less cpu time and the MOST IMPORTANT benefit it doesn't
-clobber an extra reg pair (BL in the example above) because it doesn't require
-a spare reg pair!
-
-Note: AND, OR, XRA are all produce valid results if the arguments are swapped:
-A & B == B & A, but CMP doesn't. So you need to carefully design it optimization
-case.

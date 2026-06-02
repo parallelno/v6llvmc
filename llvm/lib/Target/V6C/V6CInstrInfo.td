@@ -890,6 +890,25 @@ let Defs = [A, FLAGS] in {
   def V6C_XOR16 : V6CPseudo<(outs GR16:$dst), (ins GR16:$lhs, GR16:$rhs),
       "# XOR16 $dst, $lhs, $rhs",
       [(set i16:$dst, (xor i16:$lhs, i16:$rhs))]>;
+
+  // O93: Bitwise-16 against a compile-time constant. The immediate is loaded
+  // into A byte-wise and the cheaper 4cc register ALU form is applied to the
+  // source register (legal because AND/OR/XOR are commutative). No scratch
+  // register pair is needed — avoids the LXI + reg-pair cost of the reg/reg
+  // form. Higher AddedComplexity so a constant RHS prefers these over the
+  // generic reg/reg patterns above. Expanded in expandPostRAPseudo with
+  // per-byte 0x00/0xFF identity folding.
+  let Constraints = "$dst = $src", AddedComplexity = 20 in {
+    def V6C_AND16_IMM : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i16imm:$imm),
+        "# AND16_IMM $dst, $src, $imm",
+        [(set i16:$dst, (and i16:$src, imm:$imm))]>;
+    def V6C_OR16_IMM : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i16imm:$imm),
+        "# OR16_IMM $dst, $src, $imm",
+        [(set i16:$dst, (or i16:$src, imm:$imm))]>;
+    def V6C_XOR16_IMM : V6CPseudo<(outs GR16:$dst), (ins GR16:$src, i16imm:$imm),
+        "# XOR16_IMM $dst, $src, $imm",
+        [(set i16:$dst, (xor i16:$src, imm:$imm))]>;
+  }
 }
 
 let Defs = [A, FLAGS], AddedComplexity = 10 in

@@ -65,6 +65,7 @@ O54d_alloca_constant_size_push.md
 ✅ O89_dead_hi_byte_bitwise_ops.md
 ✅ O90_pre_isel_i8_narrow_instcombine_undo.md
 ✅ O91_cmp8_zero_after_alu_flag_elision.md
+✅ O93_bitwise16_immediate_pseudos.md
 O66_switch_jump_table_pchl.md
 
 **Phase 3 — Core optimizations (Medium complexity, high payoff)**:

@@ -1,0 +1,236 @@
+Feature 77 — O93 16-bit Bitwise-Immediate Pseudos (V6C_AND16_IMM / OR16_IMM / XOR16_IMM)
+=========================================================================================
+
+Status
+------
+
+O93 is implemented and validated.
+
+A 16-bit bitwise op against a compile-time constant (`x & C`, `x | C`, `x ^ C`)
+previously materialised the constant into a scratch register pair
+(`LXI D, C`) and then ran the 6-instruction reg/reg `V6C_*16` expansion.
+That ties up one of only three register pairs (HL/BC/DE) for the duration of
+the op — in a hot loop it forces a spill/reload of the loop state.
+
+O93 adds three ISel pseudos that carry the immediate directly and expand,
+per byte, using the commutativity of AND/OR/XOR (`A ^ r == r ^ A`):
+
+    MVI A, imm_byte      ; 8cc — load the *constant* byte into A
+    {ANA|ORA|XRA} reg    ; 4cc — cheap reg-form ALU (A op reg)
+    MOV reg, A           ; 8cc — store result back
+
+No scratch pair is needed, and trivial bytes fold away:
+
+    XOR/OR  byte 0x00  → identity, skipped
+    AND     byte 0xFF  → identity, skipped
+    AND     byte 0x00  → MVI reg, 0
+    OR      byte 0xFF  → MVI reg, 0xFF
+
+CMP16 is intentionally excluded — subtraction is not commutative
+(`A - r != r - A`), so the constant-into-A trick is illegal for compares.
+
+
+C Test Case Code
+----------------
+
+`v6llvmc.c` / `c8080.c`
+
+```c
+typedef unsigned char  u8;
+typedef unsigned short u16;
+
+/* 1. XOR with full-width constant — both bytes non-trivial. */
+u16 xor16_const(u16 x)    { return x ^ 0xB43C; }
+
+/* 2. XOR hi-only (lo byte 0x00 → XOR identity, folded). */
+u16 xor16_hi_only(u16 x)  { return x ^ 0xB400; }
+
+/* 3. OR lo-only (hi byte 0x00 → OR identity, folded). */
+u16 or16_lo_only(u16 x)   { return x | 0x0080; }
+
+/* 4. AND clearing low byte (lo 0x00 → MVI L,0; hi 0xFF → AND identity). */
+u16 and16_clear_lo(u16 x) { return x & 0xFF00; }
+
+/* 5. AND full mask — both bytes non-trivial. */
+u16 and16_mask(u16 x)     { return x & 0xF00F; }
+
+/* 6. OR 0xFFFF — DAGCombiner const-folds to 0xFFFF (control). */
+u16 or16_set_all(u16 x)   { return x | 0xFFFF; }
+
+/* 7. LFSR-16 hot loop: x ^= 0xB400 per step. Motivating case where the
+ *    constant-pair LXI forced a spill/reload around the loop body. */
+u16 lfsr_run(u16 seed, u8 steps) {
+    u16 x = seed;
+    for (u8 i = 0; i < steps; i++) {
+        if (x & 1) x = (x >> 1) ^ 0xB400;
+        else       x = x >> 1;
+    }
+    return x;
+}
+```
+
+
+c8080 Reference (i8080)
+-----------------------
+
+c8080 has no 16-bit bitwise codegen; every `x op C` is widened and dispatched
+to a 32-bit runtime helper (`__o_xor_32`, etc.) through the static-stack ABI:
+
+```asm
+xor16_const:
+    ld   (__a_1_xor16_const), hl     ; spill arg
+    ld   de, 0
+    push de
+    push hl
+    ld   hl, 46140                   ; 0xB43C
+    call __o_xor_32                  ; 32-bit helper — dozens of cc + call/ret
+    ret
+```
+
+Each call therefore costs an LD-spill, two PUSHes, an LXI, a CALL (24cc) into a
+multi-byte 32-bit helper, plus the RET — well over 100cc and ~15B per site,
+dwarfing both v6llvmc variants.  The lfsr_run loop calls the helper every
+iteration.  Precise helper cycle counts are omitted (helper body is shared and
+32-bit-wide); the whole-program benchmark below captures the real gap.
+
+
+v6llvmc OLD ASM (before O93)
+----------------------------
+
+`v6llvmc_old.asm`:
+
+```asm
+xor16_const:                 ; both bytes non-trivial
+    LXI  D, 0xb43c           ; 12cc, 3B  ← scratch pair tied up
+    MOV  A, L                ;  8cc, 1B
+    XRA  E                   ;  4cc, 1B
+    MOV  L, A                ;  8cc, 1B
+    MOV  A, H                ;  8cc, 1B
+    XRA  D                   ;  4cc, 1B
+    MOV  H, A                ;  8cc, 1B
+    RET                      ; 12cc, 1B   — total 64cc, 10B
+
+xor16_hi_only:               ; lo 0x00 NOT folded (full pair XOR)
+    LXI  D, 0xb400           ; 12cc, 3B
+    MOV  A, L / XRA E / MOV L,A   ; 20cc, 3B  (XOR by 0 — wasted)
+    MOV  A, H / XRA D / MOV H,A   ; 20cc, 3B
+    RET                      ; 12cc, 1B   — total 64cc, 10B
+
+and16_clear_lo:              ; LXI D,0xff00 + full pair AND
+    ... same shape ...                       — total 64cc, 10B
+
+lfsr_run (tap-taken path .LBB21_3):
+    LXI  B, 0xb400           ; 12cc, 3B  ← BC pair reserved for the constant
+    MOV  A, L / XRA C / MOV C,A   ; 20cc, 3B
+    MOV  A, H / XRA B / MOV B,A   ; 20cc, 3B   (tap = 52cc, 9B)
+; plus a BC *shadow* of HL kept live across the whole loop:
+;   prologue:  MOV B,H ; MOV C,L
+;   non-tap:   MOV B,H ; MOV C,L ; JMP   (shuffle every iteration)
+;   epilogue:  MOV H,B ; MOV L,C
+```
+
+
+v6llvmc NEW ASM (after O93)
+---------------------------
+
+`v6llvmc_new01.asm`:
+
+```asm
+xor16_const:                 ; no LXI, no scratch pair
+    MVI  A, 0x3c             ;  8cc, 2B
+    XRA  L                   ;  4cc, 1B
+    MOV  L, A                ;  8cc, 1B
+    MVI  A, 0xb4             ;  8cc, 2B
+    XRA  H                   ;  4cc, 1B
+    MOV  H, A                ;  8cc, 1B
+    RET                      ; 12cc, 1B   — total 52cc, 9B
+
+xor16_hi_only:               ; lo 0x00 folded away (XOR identity)
+    MVI  A, 0xb4             ;  8cc, 2B
+    XRA  H                   ;  4cc, 1B
+    MOV  H, A                ;  8cc, 1B
+    RET                      ; 12cc, 1B   — total 32cc, 5B
+
+or16_lo_only:                ; hi 0x00 folded (OR identity)
+    MVI  A, 0x80 / ORA L / MOV L,A / RET     — total 32cc, 5B
+
+and16_clear_lo:              ; hi 0xFF folded (AND identity); lo 0x00 → MVI L,0
+    MVI  L, 0                ;  8cc, 2B
+    RET                      ; 12cc, 1B   — total 20cc, 3B
+
+and16_mask:                  ; both bytes non-trivial
+    MVI A,0xf / ANA L / MOV L,A / MVI A,0xf0 / ANA H / MOV H,A / RET
+                                              — total 52cc, 9B
+
+or16_set_all:                ; DAGCombiner: x|0xFFFF → 0xFFFF (control, no change)
+    LXI  H, 0xffff / RET                       — total 24cc, 4B
+
+lfsr_run (tap-taken path %bb.3):
+    MVI  A, 0xb4             ;  8cc, 2B  ← constant in A, NO pair reserved
+    XRA  H                   ;  4cc, 1B
+    MOV  H, A                ;  8cc, 1B   (tap = 20cc, 4B)
+; the BC shadow of HL is GONE: the loop now operates directly on HL, so the
+; prologue/epilogue MOV B,H/MOV C,L pairs and the per-iteration non-tap
+; shuffle all disappear.
+```
+
+
+Comparison Table (per-function, v6llvmc)
+----------------------------------------
+
+| Function          | Compiler      | Bytes | Worst cc | vs v6llvmc old |
+|-------------------|---------------|------:|---------:|----------------|
+| `xor16_const`     | v6llvmc (old) |    10 |       64 | baseline       |
+| `xor16_const`     | v6llvmc (new) |     9 |       52 | **−1B, −12cc** |
+| `xor16_hi_only`   | v6llvmc (old) |    10 |       64 | baseline       |
+| `xor16_hi_only`   | v6llvmc (new) |     5 |       32 | **−5B, −32cc** |
+| `or16_lo_only`    | v6llvmc (old) |    10 |       64 | baseline       |
+| `or16_lo_only`    | v6llvmc (new) |     5 |       32 | **−5B, −32cc** |
+| `and16_clear_lo`  | v6llvmc (old) |    10 |       64 | baseline       |
+| `and16_clear_lo`  | v6llvmc (new) |     3 |       20 | **−7B, −44cc** |
+| `and16_mask`      | v6llvmc (old) |    10 |       64 | baseline       |
+| `and16_mask`      | v6llvmc (new) |     9 |       52 | **−1B, −12cc** |
+| `or16_set_all`    | v6llvmc (old) |     4 |       24 | baseline       |
+| `or16_set_all`    | v6llvmc (new) |     4 |       24 | no change ✓    |
+
+c8080 routes every one of these through a 32-bit helper call (LD-spill + 2×PUSH
++ LXI + CALL into a shared multi-byte helper + RET), so each costs >100cc and
+~15B — both v6llvmc variants are several times smaller and faster.
+
+
+Whole-Program Benchmark (lfsr16)
+--------------------------------
+
+The motivating LFSR-16 program (`tests/benchmarks`) is where the register-
+pressure win compounds: removing the constant pair frees HL/BC/DE so the loop
+state no longer spills, and the BC shadow-register shuffles vanish.
+
+| Compiler        | Bytes |        Cycles | Speedup vs c8080 |
+|-----------------|------:|--------------:|------------------|
+| c8080           |   176 |     2,623,212 | 1.00x            |
+| z88dk           |  1019 |     4,473,860 | 0.59x            |
+| v6llvmc (old)   |   121 |     1,344,784 | 1.95x            |
+| v6llvmc (new)   |    90 |       730,452 | **3.59x**        |
+
+v6llvmc lfsr16: **121 B → 90 B (−25.6%)**, **1,344,784 cc → 730,452 cc (−45.7%)**.
+Speedup vs c8080 jumps 1.95x → 3.59x; vs z88dk 3.33x → 6.12x.
+
+
+Notes
+-----
+
+- The per-byte non-trivial cost is 20cc in BOTH the old reg/reg form and the
+  new immediate form; the direct single-call saving comes from (a) dropping the
+  `LXI` (12cc/3B) and (b) per-byte identity folding.  The decisive win is
+  register pressure: O93 never reserves a pair, which eliminates the spills and
+  shadow-register shuffles that dominate hot loops like lfsr_run.
+- O93 composes with O90 (i8 zero-test narrowing): when the result is truncated
+  and zero-tested, O90's i8 path already produces `ANI/XRI/ORI`, so the test
+  cases deliberately return u16 to exercise O93 directly.
+- `or16_set_all` (x | 0xFFFF) is const-folded by DAGCombiner before ISel and is
+  unchanged — confirming O93 doesn't interfere with existing folds.
+- Regression: golden + lit + benchmarks all PASS. The pre-existing lit tests
+  `type-narrow-bitwise-const.ll` and `peephole-mov-chain-y-clobbered.ll` were
+  updated: O93 legitimately removes the scratch-pair spills they assumed,
+  improving their codegen.
+```
