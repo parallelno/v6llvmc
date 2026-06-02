@@ -182,6 +182,7 @@ public:
     addPass(createV6CXchgOptPass());
     addPass(createV6CBranchOptPass());
     addPass(createV6CZeroTestOptPass());
+    addPass(createV6CRegValueForwardingPass());
     addPass(createV6CRedundantFlagElimPass());
     addPass(createV6CSPTrickOptPass());
   }

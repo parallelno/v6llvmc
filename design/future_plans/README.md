@@ -78,6 +78,7 @@ O66_switch_jump_table_pchl.md
 ✅ O02_sequential_lxi_inx_folding.md
 ✅ O64_liveness_aware_i8_spill_lowering.md
 ✅ O70_math_header.md
+O92_unified_cross_bb_reg_value_forwarding.md
 
 **Phase 4 — Loop & stack (Medium-High complexity, massive payoff)**:
 

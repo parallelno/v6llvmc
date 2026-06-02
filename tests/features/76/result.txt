@@ -1,0 +1,258 @@
+Feature 76: O92 — Unified cross-BB physical-register value forwarding
+
+Optimization: A new post-RA dataflow pass (V6CRegValueForwarding) tracks, per
+basic block, which physical register / constant each register currently holds,
+and propagates that lattice across all CFG edges — including loop back-edges —
+to a fixpoint. A `MOV r, s` (or `MVI r, imm`) is erased whenever the lattice
+already proves `r` holds that exact value on entry. This subsumes two older,
+weaker, intra-block-only removers:
+
+  - V6CAccumulatorPlanning::eliminateRedundantAccMoves  (A-specific, 1 block)
+  - V6CPeephole::eliminateRedundantMov                  (adjacent dup MOVs)
+
+Both folded into O92; the AccumulatorPlanning pass is now a no-op placeholder
+and the Peephole helper was deleted. O92 is register-agnostic (TRI-based alias
+queries, no hard-coded register numbers) and value-preserving-aware: it treats
+`ORA A` / `ANA A` as non-clobbering (they only set FLAGS, A|A == A), so an
+`A == D` equality established by `MOV D,A; ORA A` survives and forwards into and
+around the loops.
+
+Soundness guard: a `MOV A, D` that is a *legitimate* reload (A was clobbered in
+the loop body, so A no longer equals D) is preserved — see .LBB15_6 below.
+
+====================================================================
+1. C test case (tests/features/76/v6llvmc.c)
+====================================================================
+
+typedef unsigned char u8;
+u8 perm1[8];
+u8 count[8];
+
+u8 repro(void) {
+    volatile u8 seed = 7;          /* forces n into a GP reg, not A */
+    u8 n = seed;
+    u8 i, r;
+    for (i = 0; i < n; i++)
+        perm1[i] = i;
+    r = n;
+    for (;;) {
+        while (r != 1) {
+            count[r - 1] = r;
+            r--;
+        }
+        if (r == n)
+            return r;
+        count[r] = (u8)(count[r] - 1);
+        r++;
+    }
+}
+
+typedef unsigned int u16;
+u16 walk16(u16 *p, u8 n) {         /* non-A / 16-bit-pair safety coverage */
+    volatile u8 seed = n;
+    u8 m = seed;
+    u16 acc = 0;
+    u8 i;
+    for (i = 0; i < m; i++) acc = (u16)(acc + p[i]);
+    for (i = 0; i < m; i++) acc = (u16)(acc ^ p[i]);
+    return acc;
+}
+
+static u16 buf[8];
+int main(int argc, char **argv) {
+    volatile u8  a = repro();
+    volatile u16 b = walk16(buf, 4);
+    return 0;
+}
+
+====================================================================
+2. c8080 reference — repro (Z80 -> i8080 mnemonics), main + deps
+====================================================================
+
+c8080 spills the loop variable r to memory (repro_r) and reloads it every
+iteration, so it never produces the redundant-register-move shape at all; it
+pays repeated LDA/STA (13cc each) instead. Body of the inner permutation loop:
+
+  repro: (i8080 form)
+    MVI  A, 7
+    STA  repro_seed
+    STA  repro_n
+    XRA  A
+    STA  repro_i
+  l_0:
+    LXI  H, repro_n
+    CMP  M              ; cp (hl)
+    JNC  l_2
+    LXI  D, perm1
+    LHLD repro_i
+    MVI  H, 0
+    DAD  D
+    MOV  M, A           ; (hl) = a
+    INR  A
+    STA  repro_i
+    JMP  l_0
+  l_2:
+    LDA  repro_n
+    STA  repro_r
+  ... (while/return tail uses LHLD/LDA repro_r each pass) ...
+
+c8080 stats (worst path, bytes):
+    repro    ~268 B   inner-loop body ~70cc/iter (memory-resident r/i)
+    walk16   ~ (16-bit acc kept in memory, reloaded per iteration)
+    main     calls repro + walk16
+
+(c8080 keeps everything memory-resident; cross-BB register forwarding is N/A.)
+
+====================================================================
+3. v6llvmc OLD asm — repro (pre-O92)
+====================================================================
+
+repro:
+; %bb.0:
+        MVI     A, 7
+        STA     __v6c_a.repro
+        LDA     __v6c_a.repro
+        MOV     D, A
+        ORA     A
+        JZ      .LBB15_3
+; %bb.1:
+        MVI     E, 0
+        LXI     H, perm1
+.LBB15_2:                       ; inner permutation loop
+        MOV     M, E
+        INR     E
+        MOV     A, D            ; <- REDUNDANT reload (A already == D)
+        CMP     E
+        INX     H
+        JNZ     .LBB15_2
+.LBB15_3:
+        MVI     E, 0
+        LXI     B, count-1
+        MOV     A, D            ; <- REDUNDANT reload (A already == D)
+.LBB15_4:
+        CPI     1
+        JZ      .LBB15_6
+.LBB15_5:
+        MOV     H, E
+        MOV     L, A
+        DAD     B
+        MOV     M, A
+        DCR     A               ; A clobbered here
+        CPI     1
+        JNZ     .LBB15_5
+.LBB15_6:
+        MOV     A, D            ; LEGITIMATE reload (A != D after DCR A)
+        CPI     1
+        RZ
+.LBB15_8:
+        LXI     H, count+1
+        DCR     M
+        MVI     A, 2
+        JMP     .LBB15_4
+
+====================================================================
+4. v6llvmc NEW asm — repro (with O92)
+====================================================================
+
+repro:
+; %bb.0:
+        MVI     A, 7
+        STA     __v6c_a.repro
+        LDA     __v6c_a.repro
+        MOV     D, A
+        ORA     A
+        JZ      .LBB15_3
+; %bb.1:
+        MVI     E, 0
+        LXI     H, perm1
+.LBB15_2:                       ; inner permutation loop
+        MOV     M, E
+        INR     E
+        CMP     E               ; MOV A, D removed
+        INX     H
+        JNZ     .LBB15_2
+.LBB15_3:
+        MVI     E, 0
+        LXI     B, count-1      ; MOV A, D removed
+.LBB15_4:
+        CPI     1
+        JZ      .LBB15_6
+.LBB15_5:
+        MOV     H, E
+        MOV     L, A
+        DAD     B
+        MOV     M, A
+        DCR     A
+        CPI     1
+        JNZ     .LBB15_5
+.LBB15_6:
+        MOV     A, D            ; PRESERVED (correct: A clobbered by DCR A)
+        CPI     1
+        RZ
+.LBB15_8:
+        LXI     H, count+1
+        DCR     M
+        MVI     A, 2
+        JMP     .LBB15_4
+
+walk16: unchanged by O92 (no redundant cross-BB moves; the non-A / 16-bit-pair
+register traffic is correctly left intact — confirms the lattice is sound and
+register-agnostic).
+
+====================================================================
+5. Comparison (repro)
+====================================================================
+
+  Removed: 2x  MOV A, D   (8cc / 1B each)
+    - .LBB15_2  inner permutation loop body  -> -8cc PER ITERATION
+    - .LBB15_3  second-loop preheader        -> -8cc once
+
+  +------------------+----------+----------------------------------+
+  | compiler         | repro B  | inner-loop body (per iter)       |
+  +------------------+----------+----------------------------------+
+  | c8080            | ~268     | ~70cc (r/i memory-resident)      |
+  | v6llvmc OLD      |  base    | 48cc (MOV M,E;INR E;MOV A,D;     |
+  |                  |          |       CMP E;INX H;JNZ)           |
+  | v6llvmc NEW      | base-2   | 40cc (MOV M,E;INR E;CMP E;       |
+  |                  |          |       INX H;JNZ)                 |
+  +------------------+----------+----------------------------------+
+
+  repro: -2 bytes, -8cc per permutation-loop iteration, -8cc one-time.
+
+Real-world impact (tests/run_all.py benchmark suite):
+  fannkuch -O2:  328 B / 28,798,404 cc  ->  325 B / 28,748,820 cc
+                 (-3 B, -49,584 cc)
+  All five benchmark checksums unchanged (correctness preserved).
+
+====================================================================
+6. Implementation
+====================================================================
+
+New pass:     llvm/lib/Target/V6C/V6CRegValueForwarding.cpp
+              FunctionPass *createV6CRegValueForwardingPass()
+Pipeline:     addPreEmitPass(), between V6CZeroTestOpt and V6CRedundantFlagElim.
+CLI toggle:   -v6c-disable-reg-value-forwarding (default off = enabled)
+Lattice:      ValState { Reg r | Const c }, DenseMap<Register, ValState>;
+              absence = Top. RPO worklist, optimistic ("must") meet over
+              already-computed predecessors so loop-carried equalities survive.
+Soundness:    isValuePreservingAccOp() treats ORA A / ANA A as non-clobbering;
+              clobberReg() erases keys aliasing the def AND entries whose Reg
+              value aliases it (TRI->regsOverlap); regmask handled via
+              clobbersPhysReg(); InlineAsm clears the state; O61 patched
+              immediates (getPreInstrSymbol / target flags) never folded.
+
+Removed (folded in):
+  V6CAccumulatorPlanning.cpp  -> eliminateRedundantAccMoves + helpers deleted;
+                                 pass retained as a no-op placeholder.
+  V6CPeephole.cpp             -> eliminateRedundantMov deleted (declaration,
+                                 definition, call site). collapseMovChain
+                                 (O82/O88) and eliminateSelfMov kept.
+
+New lit test: llvm/test/CodeGen/V6C/reg-value-forwarding-cross-bb.ll
+Baseline RUN lines of peephole-mov.ll, peephole-inx-dcx-spill-fold.ll,
+peephole-pair-copy-roundtrip.ll, shift-i16-byte-aligned.ll updated to also
+pass --v6c-disable-reg-value-forwarding so their "unoptimized" prefixes still
+show the pre-elimination output (O92 now also removes those round-trips).
+
+Regression: tests/run_all.py -> golden PASS, lit PASS (128 V6C), benchmarks
+PASS (all checksums match; fannkuch improved).

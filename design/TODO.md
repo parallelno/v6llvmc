@@ -54,36 +54,3 @@ a spare reg pair!
 Note: AND, OR, XRA are all produce valid results if the arguments are swapped:
 A & B == B & A, but CMP doesn't. So you need to carefully design it optimization
 case.
-======================
-tests\benchmarks_c\asm\v6llvmc_fannkuch_O2.s
-	MVI	A, 7
-	STA	__v6c_a.main
-	LDA	__v6c_a.main
-	MOV	E, A
-	;--- V6C_CMP8_ZERO ---
-	ORA	A
-	;--- V6C_BRCOND ---
-	JZ	.LBB15_3
-; %bb.1:
-	MVI	D, 0
-	LXI	H, perm1
-.LBB15_2:                               ; =>This Inner Loop Header: Depth=1
-	;--- V6C_STORE8_P ---
-	MOV	M, D
-	INR	D
-	MOV	A, E
-	CMP	D
-	;--- V6C_INX16 ---
-	INX	H
-	;--- V6C_BRCOND ---
-	JNZ	.LBB15_2
-.LBB15_3:
-
-1. when a zero elements check is outside the loop and it is a header of the loop,
-we must not emit it when the loop iterations provable >0 because it is redundant.
-2.
-	STA	__v6c_a.main
-	LDA	__v6c_a.main
-is redundant when there is no consummers for it.
-3. Why it didn't keep the value 7 in the A. Why it neede using E for that?
-4.

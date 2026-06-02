@@ -1,5 +1,5 @@
 ; RUN: llc -march=v6c -O2 < %s | FileCheck %s
-; RUN: llc -march=v6c -O2 -v6c-disable-inx-dcx-spill-fold < %s | FileCheck %s --check-prefix=DISABLED
+; RUN: llc -march=v6c -O2 -v6c-disable-inx-dcx-spill-fold --v6c-disable-reg-value-forwarding < %s | FileCheck %s --check-prefix=DISABLED
 ;
 ; O84: INX/DCX-through-spill round-trip fold.
 ;

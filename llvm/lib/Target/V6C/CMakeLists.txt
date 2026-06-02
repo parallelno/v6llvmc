@@ -35,6 +35,7 @@ add_llvm_target(V6CCodeGen
   V6CPeephole.cpp
   V6CRedundantFlagElim.cpp
   V6CRegisterInfo.cpp
+  V6CRegValueForwarding.cpp
   V6CSPTrickOpt.cpp
   V6CSpillExpand.cpp
   V6CSpillForwarding.cpp

@@ -135,7 +135,6 @@ main:                                   ; @main
 	DAD	B
 	MOV	C, L
 	;--- V6C_SPILL16 ---
-	MOV	L, C
 	SHLD	.LLo61_2+1
 	POP	H
 	;--- V6C_INX16 ---

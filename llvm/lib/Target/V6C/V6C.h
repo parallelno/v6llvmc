@@ -50,6 +50,9 @@ FunctionPass *createV6CAccumulatorPlanningPass();
 FunctionPass *createV6CLoadImmCombinePass();
 FunctionPass *createV6CSPTrickOptPass();
 
+/// Post-RA pass: unified cross-BB physical-register value forwarding (O92).
+FunctionPass *createV6CRegValueForwardingPass();
+
 /// IR-level optimization pass (M8).
 FunctionPass *createV6CTypeNarrowingPass();
 

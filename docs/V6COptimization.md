@@ -158,7 +158,7 @@ For most code, leave the defaults alone.
 1. **IR-level** (in `addIRPasses()`): V6CLoopPointerInduction → V6CTypeNarrowing
 2. **Post-register allocation** (in `addPostRegAlloc()`): V6CStaticStackAlloc
 3. **Pre-register allocation** (in `addPreRegAlloc()`): V6CDeadPhiConst
-4. **Pre-emit** (in `addPreEmitPass()`): V6CAccumulatorPlanning → V6CLoadImmCombine → V6CPeephole → V6CLoadStoreOpt → V6CXchgOpt → V6CBranchOpt → V6CZeroTestOpt → V6CRedundantFlagElim → V6CSPTrickOpt
+4. **Pre-emit** (in `addPreEmitPass()`): V6CAccumulatorPlanning → V6CLoadImmCombine → V6CPeephole → V6CLoadStoreOpt → V6CXchgOpt → V6CBranchOpt → V6CZeroTestOpt → V6CRegValueForwarding → V6CRedundantFlagElim → V6CSPTrickOpt
 
 ## Pass Descriptions
 
@@ -234,21 +234,50 @@ After:  MVI B, 5         ; 2 bytes
 
 ### V6CAccumulatorPlanning
 
-**Purpose:** Minimize accumulator traffic (MOV A,r / MOV r,A) by tracking which value is currently in A and reordering independent instructions to reduce round-trip moves.
-
-**Pattern:**
-```
-Before: MOV A, B    ; load B into A
-        ADD C       ; A += C
-        MOV B, A    ; save result
-        MOV A, D    ; load D into A (new value)
-        ADD E       ; A += E
-After:  (reordered to minimize A save/restore when possible)
-```
+**Purpose:** *(Superseded by V6CRegValueForwarding / O92.)* Historically removed
+redundant accumulator moves within a single basic block. Its
+redundant-move-elimination logic was folded into the unified cross-BB
+value-forwarding pass; the pass is now a no-op placeholder kept in the pipeline.
 
 **Toggle:** `-v6c-disable-acc-planning`
 
-**Impact:** Reduces total MOV instructions involving A, which dominate 8080 code due to the accumulator architecture. Typical improvement: 5–15% fewer MOV-to/from-A instructions per basic block.
+---
+
+### V6CRegValueForwarding (O92)
+
+**Purpose:** Unified cross-basic-block physical-register value forwarding.
+A post-RA dataflow pass that tracks, per register, which register or constant
+value it currently holds, and propagates that lattice across every CFG edge —
+including loop back-edges — to a fixpoint. Any `MOV r, s` or `MVI r, imm` whose
+result the lattice already proves is live in `r` on entry is erased. This
+subsumes the older intra-block-only removers in `V6CAccumulatorPlanning`
+(A-specific) and `V6CPeephole` (adjacent duplicate MOVs) with a single
+register-agnostic, cross-block analysis.
+
+**Pattern:**
+```
+Before: MOV D, A       ; A == D established
+        ORA A          ; value-preserving (only sets FLAGS)
+        ...
+  loop: MOV M, E
+        INR E
+        MOV A, D       ; redundant: A already holds D across the back-edge
+        CMP E
+        JNZ loop
+After:  (the in-loop MOV A, D is removed)
+```
+
+**Soundness:** `ORA A` / `ANA A` are treated as non-clobbering (they only set
+FLAGS, so the `A == r` equality survives). A `MOV A, r` that is a genuine reload
+(the source was clobbered in the loop body) is preserved. O61 patched
+immediates are never folded. Register aliasing (e.g. writing `H` kills `HL`) is
+handled via TRI alias queries.
+
+**Toggle:** `-v6c-disable-reg-value-forwarding`
+
+**Impact:** Removes per-iteration register reloads that no local pass can prove
+redundant. fannkuch (-O2) improved from 28,798,404 to 28,748,820 cycles
+(−49,584 cc, −3 bytes).
 
 ---
 

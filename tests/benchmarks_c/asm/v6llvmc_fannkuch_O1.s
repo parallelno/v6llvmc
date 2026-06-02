@@ -21,7 +21,6 @@ main:                                   ; @main
 	;--- V6C_STORE8_P ---
 	MOV	M, D
 	INR	D
-	MOV	A, E
 	CMP	D
 	;--- V6C_INX16 ---
 	INX	H
@@ -36,7 +35,6 @@ main:                                   ; @main
 	MOV	A, H
 	STA	.LLo61_5+1
 	;--- V6C_SPILL8 ---
-	MOV	A, H
 	STA	.LLo61_6+1
 .LBB15_4:                               ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB15_8 Depth 2

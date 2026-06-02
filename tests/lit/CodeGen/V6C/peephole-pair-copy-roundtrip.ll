@@ -1,5 +1,5 @@
 ; RUN: llc -march=v6c -O2 < %s | FileCheck %s
-; RUN: llc -march=v6c -O2 -v6c-disable-pair-copy-roundtrip < %s | FileCheck %s --check-prefix=DISABLED
+; RUN: llc -march=v6c -O2 -v6c-disable-pair-copy-roundtrip --v6c-disable-reg-value-forwarding < %s | FileCheck %s --check-prefix=DISABLED
 ;
 ; O86: Pair-copy round-trip elimination.
 ;

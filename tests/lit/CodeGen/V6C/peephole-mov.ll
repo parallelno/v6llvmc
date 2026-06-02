@@ -1,5 +1,5 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
-; RUN: llc -march=v6c --v6c-disable-peephole < %s | FileCheck %s --check-prefix=DISABLED
+; RUN: llc -march=v6c --v6c-disable-peephole --v6c-disable-reg-value-forwarding < %s | FileCheck %s --check-prefix=DISABLED
 
 target triple = "i8080-unknown-v6c"
 

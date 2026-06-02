@@ -21,7 +21,6 @@ main:                                   ; @main
 	;--- V6C_STORE8_P ---
 	MOV	M, D
 	INR	D
-	MOV	A, E
 	CMP	D
 	;--- V6C_INX16 ---
 	INX	H

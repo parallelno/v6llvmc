@@ -89,7 +89,6 @@ public:
 
 private:
   bool eliminateSelfMov(MachineBasicBlock &MBB);
-  bool eliminateRedundantMov(MachineBasicBlock &MBB);
   bool eliminateTailCall(MachineBasicBlock &MBB);
   bool foldCounterBranch(MachineBasicBlock &MBB);
   bool foldXraCmpZeroTest(MachineBasicBlock &MBB);
@@ -123,45 +122,6 @@ bool V6CPeephole::eliminateSelfMov(MachineBasicBlock &MBB) {
       MI.eraseFromParent();
       Changed = true;
     }
-  }
-  return Changed;
-}
-
-/// Remove redundant consecutive MOVs: if we see MOV X, Y followed by MOV X, Y
-/// with no intervening write to X or Y, remove the second one.
-bool V6CPeephole::eliminateRedundantMov(MachineBasicBlock &MBB) {
-  bool Changed = false;
-  for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
-    MachineInstr &MI = *I;
-    if (MI.getOpcode() != V6C::MOVrr) {
-      ++I;
-      continue;
-    }
-
-    Register Dst = MI.getOperand(0).getReg();
-    Register Src = MI.getOperand(1).getReg();
-
-    // Look at the next instruction.
-    auto Next = std::next(I);
-    if (Next == E) {
-      ++I;
-      continue;
-    }
-
-    MachineInstr &NextMI = *Next;
-    if (NextMI.getOpcode() == V6C::MOVrr &&
-        NextMI.getOperand(0).getReg() == Dst &&
-        NextMI.getOperand(1).getReg() == Src) {
-      // Duplicate MOV — remove the second one.
-      NextMI.eraseFromParent();
-      Changed = true;
-      // Don't advance I; another dup might follow.
-      continue;
-    }
-
-    // Check for MOV A, X; ...; MOV A, X (where nothing modifies A or X)
-    // This is a more aggressive pattern — only look ahead a few instructions.
-    ++I;
   }
   return Changed;
 }
@@ -1951,7 +1911,6 @@ bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
     Changed |= foldMovAluM(MBB);
     Changed |= foldIncDecMviM(MBB);
     Changed |= eliminateSelfMov(MBB);
-    Changed |= eliminateRedundantMov(MBB);
     Changed |= eliminateDeadMVI(MBB);   // O82 Pattern A
     Changed |= eliminateDeadMov(MBB);   // O82 follow-up dead MOV cleanup
     Changed |= collapseMovChain(MBB);   // O82 Pattern B

@@ -1,5 +1,5 @@
 ; RUN: llc -march=v6c < %s | FileCheck %s
-; RUN: llc -march=v6c --v6c-disable-peephole < %s | FileCheck %s --check-prefix=NOPH
+; RUN: llc -march=v6c --v6c-disable-peephole --v6c-disable-reg-value-forwarding < %s | FileCheck %s --check-prefix=NOPH
 ;
 ; O62 — Efficient i16 shift expansion for constant amount >= 8.
 ; Verifies that V6C_SRL16 / V6C_SRA16 / V6C_SHL16 expansions for byte-
