@@ -5,16 +5,6 @@
 #include <v6c_rt_macros.h>
 #include <v6c_consts.h>
 
-V6C_NOINLINE
-void fill_rect(uint8_t addr_x, uint8_t pos_y, uint8_t b, uint8_t h) {
-    for (uint16_t x = addr_x; x < addr_x + b; ++x) {
-        for (uint16_t y = pos_y; y < pos_y + h; ++y) {
-            uint8_t* scr_pos = SCR_BUFF0_PTR + (x * SCR_HEIGHT) + y;
-            *scr_pos = 0xFF;
-        }
-    }
-}
-
 
 static uint8_t font[32 * 8] = {
     // font data for 32 chars (ASCII 0-31), each char is 8 bytes (8x8 pixels)

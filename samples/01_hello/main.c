@@ -1,10 +1,7 @@
 // Minimal V6C ROM: emits a byte on the debug port and halts.
 //
-// Build:
+// Build and run:
 //   samples\01_hello\build.bat
-//
-// Run in the emulator:
-//   v6emul --rom main.rom --load-addr 0x0100 --halt-exit --dump-cpu
 //
 // Expected output: TEST_OUT port=0xED value=0x42
 #include <stdint.h>

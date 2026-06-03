@@ -1,11 +1,8 @@
 // Bubble-sort demo: sorts a statically initialized array and emits each
 // element on the debug port.
 //
-// Build:
+// Build and run:
 //   samples\02_bsort\build.bat
-//
-// Run in the emulator:
-//   v6emul --rom main.rom --load-addr 0x0100 --halt-exit --dump-cpu
 //
 // Expected output on port 0xED:
 //   0x42 0x43 0x44 0x45 0x46 0x47 0x48 0x49
@@ -15,8 +12,8 @@
 
 #define N 16
 
-// Statically initialised -> lives in .data (not .bss).
-uint8_t arr[N] = {
+// Statically initialised random data.
+static uint8_t arr[N] = {
     0x0F, 0x0E, 0x0D, 0x0C, 0x0B, 0x0A, 0x09, 0x08,
     0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
 };

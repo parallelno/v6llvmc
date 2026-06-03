@@ -1400,6 +1400,17 @@ bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
 
       bool ReadsX = false, ClobbersX = false, ClobbersY = false;
       for (const MachineOperand &MO : J->operands()) {
+        // A call's register-mask operand clobbers every register not listed
+        // as preserved.  These clobbers are NOT expressed as explicit reg
+        // defs, so they must be checked here or a call between producer and
+        // consumer would be wrongly treated as value-preserving.
+        if (MO.isRegMask()) {
+          if (MO.clobbersPhysReg(X))
+            ClobbersX = true;
+          if (MO.clobbersPhysReg(Y))
+            ClobbersY = true;
+          continue;
+        }
         if (!MO.isReg() || !MO.getReg())
           continue;
         bool IsConsumerSrc =
@@ -1460,6 +1471,16 @@ bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
               if (K->isDebugInstr())
                 continue;
               for (const MachineOperand &MO : K->operands()) {
+                // A call regmask that clobbers Z means moving Z's def to the
+                // producer position would not survive the call — treat it as
+                // a use so the producer-rewrite variant is rejected.
+                if (MO.isRegMask()) {
+                  if (MO.clobbersPhysReg(Z)) {
+                    ZUsedBetween = true;
+                    break;
+                  }
+                  continue;
+                }
                 if (!MO.isReg() || !MO.getReg())
                   continue;
                 if (TRI->regsOverlap(MO.getReg(), Z)) {

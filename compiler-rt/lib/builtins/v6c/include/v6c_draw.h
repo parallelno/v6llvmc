@@ -13,17 +13,18 @@ static const uint8_t BIT_MASK[8] = {
     0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
 
 V6C_NOINLINE_ASM
-void draw_pixel(uint8_t x, uint8_t y)
+void draw_pixel(uint8_t x, uint8_t y, uint8_t scr_addr_hi)
 {
     register uint8_t _x asm("A") = x;
     register uint8_t _y asm("L") = y;
+    register uint8_t _scr_addr_hi asm("H") = scr_addr_hi;
     asm (
         "MOV C, A           \n"
         "RRC                \n"
         "RRC                \n"
         "RRC                \n"
         "ANI 0x1F           \n" // a is byte offset within the plane (0-31)
-        "ADI 0x80           \n" // TODO: make it adjustable for different scr_addr_hi, self-modified code
+        "ADD H              \n" // TODO: make it adjustable for different scr_addr_hi, self-modified code
         "MOV H, A           \n"
         "MVI A, 0x07        \n"
         "ANA C              \n" // a is bit offset within the byte (0-7)
@@ -38,7 +39,7 @@ void draw_pixel(uint8_t x, uint8_t y)
         "MOV M, A           \n"
         : /* no outputs */
         /* input constraints */
-        : "r" (_x), "r" (_y),
+        : "r" (_x), "r" (_y), "r" (_scr_addr_hi),
             [B_MASK] "i" (BIT_MASK)
         /* clobbered registers */
         : "A", "BC", "HL", "FLAGS"
@@ -290,7 +291,7 @@ static inline uint8_t draw_scale_x_4_3(uint8_t value)
  * circles, especially for smaller radii.
 */
 V6C_NOINLINE
-void draw_circle(uint8_t cx, uint8_t cy, uint8_t r)
+void draw_circle(uint8_t cx, uint8_t cy, uint8_t r, uint8_t scr_addr_hi)
 {
     uint8_t x = r;
     uint8_t y = 0;
@@ -302,14 +303,14 @@ void draw_circle(uint8_t cx, uint8_t cy, uint8_t r)
         uint8_t sy = draw_scale_x_4_3(y);
 
         // 8-way symmetry
-        draw_pixel(cx + sx, cy + y);
-        draw_pixel(cx - sx, cy + y);
-        draw_pixel(cx + sx, cy - y);
-        draw_pixel(cx - sx, cy - y);
-        draw_pixel(cx + sy, cy + x);
-        draw_pixel(cx - sy, cy + x);
-        draw_pixel(cx + sy, cy - x);
-        draw_pixel(cx - sy, cy - x);
+        draw_pixel(cx + sx, cy + y, scr_addr_hi);
+        draw_pixel(cx - sx, cy + y, scr_addr_hi);
+        draw_pixel(cx + sx, cy - y, scr_addr_hi);
+        draw_pixel(cx - sx, cy - y, scr_addr_hi);
+        draw_pixel(cx + sy, cy + x, scr_addr_hi);
+        draw_pixel(cx - sy, cy + x, scr_addr_hi);
+        draw_pixel(cx + sy, cy - x, scr_addr_hi);
+        draw_pixel(cx - sy, cy - x, scr_addr_hi);
 
         y++;
         t1 += y;
@@ -320,6 +321,38 @@ void draw_circle(uint8_t cx, uint8_t cy, uint8_t r)
             t1 = t2;
             x--;
         }
+    }
+}
+
+// bit mask for each bit position in a byte
+static const uint8_t REQ_BIT_MASK_L[8] = {
+    0xFF, 0x7F, 0x3F, 0x1F, 0x0F, 0x07, 0x03, 0x01};
+static const uint8_t REQ_BIT_MASK_R[8] = {
+    0x80, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC, 0xFE, 0xFF};
+
+// Draw filled rectangle with bottom-left corner at (x, y) and specified width and height.
+V6C_NOINLINE
+void fill_rect(uint8_t x, uint8_t y, uint8_t width, uint8_t height, uint8_t scr_addr_hi)
+{
+    // byte address of the bottom-left corner
+    uint16_t addr_base = (scr_addr_hi << 8) | ((x / 8) * SCR_HEIGHT) + y;
+    uint8_t fill_bits_l = REQ_BIT_MASK_L[x & 0x07u];
+    uint8_t fill_bits_r = REQ_BIT_MASK_R[(x + width - 1) & 0x07u];
+    uint8_t width_bytes = width >> 3;
+    // in case width is one one byte wide
+    if (width_bytes == 0) {
+        fill_bits_l = fill_bits_l & fill_bits_r;
+    }
+
+    // the first column
+    memset((void*)addr_base, fill_bits_l, height);
+    // the middle columns (if any)
+    for (uint8_t i = 1; i < width_bytes; i++) {
+        memset((void*)(addr_base + i * SCR_HEIGHT), 0xFF, height);
+    }
+    // the last column (if it's not the same as the first column)
+    if (width_bytes && (width & 0x07u)) {
+        memset((void*)(addr_base + width_bytes * SCR_HEIGHT), fill_bits_r, height);
     }
 }
 

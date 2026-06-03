@@ -48,7 +48,11 @@
 #define SCR_VERTICAL_OFFSET_DEFAULT 255u
 
 #define SCR_BUFF0_ADDR_H    0x80u
-#define SCR_HEIGHT         256u
+#define SCR_BUFF1_ADDR_H    0xA0u
+#define SCR_BUFF2_ADDR_H    0xC0u
+#define SCR_BUFF3_ADDR_H    0xE0u
+#define SCR_WIDTH           256u
+#define SCR_HEIGHT          256u
 
 #define SCR_ADDR            (SCR_BUFF0_ADDR_H << 8u)
 #define SCR_ADDR_PTR        ((void*)(SCR_BUFF0_ADDR_H << 8u))

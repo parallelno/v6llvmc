@@ -1,4 +1,16 @@
-@echo off
-clang -O2 -target i8080-unknown-v6c main.c -o main.rom
+set s=samples\01_hello\
+set compiler=llvm-build\bin\clang
+set emulator=tools\v6emul\v6emul
+
+set target=-target i8080-unknown-v6c
+set stack_addr=0x8000
+set stack_def=-Wl,--defsym=__stack_top=%stack_addr%
+
+REM Build the ROM.
+%compiler% %target% -O2 %stack_def% %s%main.c -o %s%main.rom
+
+REM Check for build errors.
 if %errorlevel% neq 0 exit /b %errorlevel%
-v6emul --rom main.rom --load-addr 0x0100 --halt-exit --dump-cpu
+
+REM Run the ROM in the emulator.
+%emulator% --rom %s%main.rom --load-addr 0x0100 --halt-exit --dump-cpu --run-cycles 30000000
