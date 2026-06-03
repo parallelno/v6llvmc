@@ -143,22 +143,14 @@ main:                                   ; @main
 	PUSH	PSW
 	MOV	A, L
 	STA	.LLo61_2+1
-	POP	PSW
 	;--- V6C_LOAD8_P ---
-	PUSH	PSW
 	LDAX	B
-	MOV	L, A
-	POP	PSW
 	;--- V6C_SPILL8 ---
-	PUSH	PSW
-	MOV	A, L
 	STA	.LLo61_5+1
-	POP	PSW
 	;--- V6C_RELOAD8 ---
 .LLo61_2:
 	MVI	L, 0
 	;--- V6C_STORE8_P ---
-	PUSH	PSW
 	MOV	A, L
 	STAX	B
 	POP	PSW

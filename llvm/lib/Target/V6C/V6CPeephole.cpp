@@ -1569,8 +1569,8 @@ bool V6CPeephole::collapseMovChain(MachineBasicBlock &MBB) {
 ///   2. No instruction between them reads or writes rp (or any sub-register).
 ///   3. No stack-affecting instruction between them (PUSH, POP, XTHL, SPHL,
 ///      or any instruction that modifies SP).
-///   4. rp is dead after the PUSH (isRegDeadAfter).
-///   5. PSW (A+FLAGS) is never considered because FLAGS is implicitly live.
+///   4. rp is dead after the PUSH (isRegDeadAfter).  PSW is checked half-wise
+///      because a later A def alone does not prove FLAGS dead.
 static bool isStackAffecting(const MachineInstr &MI,
                              const TargetRegisterInfo *TRI) {
   unsigned Op = MI.getOpcode();
@@ -1594,13 +1594,6 @@ bool V6CPeephole::eliminateDeadPopPush(MachineBasicBlock &MBB) {
     }
 
     Register Rp = I->getOperand(0).getReg();
-
-    // PSW contains FLAGS which is implicitly live across many instructions;
-    // skip to avoid incorrect elimination.
-    if (TRI->regsOverlap(Rp, V6C::PSW)) {
-      ++I;
-      continue;
-    }
 
     // Scan forward from POP looking for a matching PUSH rp.
     bool CanElim = true;
@@ -1642,8 +1635,13 @@ bool V6CPeephole::eliminateDeadPopPush(MachineBasicBlock &MBB) {
       continue;
     }
 
-    // Verify rp is truly dead after the PUSH.
-    if (!isRegDeadAfter(MBB, PushIt, Rp, TRI)) {
+    // Verify rp is truly dead after the PUSH.  For PSW, check A and FLAGS
+    // independently: isRegDeadAfter(PSW) can be fooled by a later A-only def.
+    bool DeadAfterPush = TRI->regsOverlap(Rp, V6C::PSW)
+                             ? isRegDeadAfter(MBB, PushIt, V6C::A, TRI) &&
+                                   isRegDeadAfter(MBB, PushIt, V6C::FLAGS, TRI)
+                             : isRegDeadAfter(MBB, PushIt, Rp, TRI);
+    if (!DeadAfterPush) {
       ++I;
       continue;
     }
