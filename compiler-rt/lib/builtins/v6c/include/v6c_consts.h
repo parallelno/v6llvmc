@@ -185,6 +185,7 @@
 #define OPCODE_XCHG         0xEBu
 #define OPCODE_EI           0xFBu
 #define OPCODE_RET          0xC9u
+#define OPCODE_CALL         0xCDu
 #define OPCODE_RC           0xD8u
 #define OPCODE_RNC          0xD0u
 #define OPCODE_JMP          0xC3u

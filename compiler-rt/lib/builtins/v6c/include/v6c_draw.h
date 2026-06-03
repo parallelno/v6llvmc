@@ -1,3 +1,26 @@
+/**
+ * @file v6c_draw.h
+ * @brief Drawing primitives for the V6C architecture.
+ *
+ * This module provides low-level pixel and shape drawing routines targeting
+ * the V6C 8-bit CPU. All routines operate directly on a memory-mapped screen
+ * buffer organized as a 1-bit-per-pixel planar framebuffer. Coordinates are
+ * byte-addressed using a high-byte screen address (scr_addr_hi/h) combined
+ * with X/Y pixel positions. Inner loops are implemented in inline assembly
+ * for performance and precise register control.
+ *
+ * Functions:
+ * - v6c_set_palette()
+ * - draw_pixel()
+ * - draw_line()
+ * - draw_circle()
+ * - fill_rect()
+ * - set_font()
+ * - draw_text()
+ *
+ *
+ */
+
 #ifndef DRAW_H
 #define DRAW_H
 
@@ -8,11 +31,18 @@
 #include "v6c_consts.h"
 
 
+
 // bit mask for each bit position in a byte
 static const uint8_t BIT_MASK[8] = {
     0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
 
 V6C_NOINLINE_ASM
+/**
+ * @brief Set a single pixel in the framebuffer.
+ * @param x X coordinate.
+ * @param y Y coordinate.
+ * @param scr_addr_hi High byte of the screen address.
+ */
 void draw_pixel(uint8_t x, uint8_t y, uint8_t scr_addr_hi)
 {
     register uint8_t _x asm("A") = x;
@@ -47,6 +77,14 @@ void draw_pixel(uint8_t x, uint8_t y, uint8_t scr_addr_hi)
 }
 
 V6C_NOINLINE_ASM
+/**
+ * @brief Draw a line between two points.
+ * @param scr_addr_h High byte of the screen address.
+ * @param x0 Start X coordinate.
+ * @param y0 Start Y coordinate.
+ * @param x1 End X coordinate.
+ * @param y1 End Y coordinate.
+ */
 void draw_line(uint8_t scr_addr_h, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)
 {
     register uint8_t _scr_addr_h asm("A") = scr_addr_h;
@@ -291,6 +329,13 @@ static inline uint8_t draw_scale_x_4_3(uint8_t value)
  * circles, especially for smaller radii.
 */
 V6C_NOINLINE
+/**
+ * @brief Draw a circle using an integer midpoint-style algorithm.
+ * @param cx Circle center X coordinate.
+ * @param cy Circle center Y coordinate.
+ * @param r Circle radius.
+ * @param scr_addr_hi High byte of the screen address.
+ */
 void draw_circle(uint8_t cx, uint8_t cy, uint8_t r, uint8_t scr_addr_hi)
 {
     uint8_t x = r;
@@ -332,6 +377,14 @@ static const uint8_t REQ_BIT_MASK_R[8] = {
 
 // Draw filled rectangle with bottom-left corner at (x, y) and specified width and height.
 V6C_NOINLINE
+/**
+ * @brief Fill a rectangle.
+ * @param x Bottom-left X coordinate.
+ * @param y Bottom-left Y coordinate.
+ * @param width Rectangle width.
+ * @param height Rectangle height.
+ * @param scr_addr_hi High byte of the screen address.
+ */
 void fill_rect(uint8_t x, uint8_t y, uint8_t width, uint8_t height, uint8_t scr_addr_hi)
 {
     // byte address of the bottom-left corner
@@ -423,11 +476,22 @@ static const uint8_t __font[][8] ={
 uint8_t** __font_ptr = __font;
 
 V6C_INLINE
+/**
+ * @brief Set the active font pointer.
+ * @param new_font Pointer to an 8-byte-per-glyph font table.
+ */
 void set_font(uint8_t* new_font) {
     __font_ptr = &new_font;
 }
 
 V6C_NOINLINE
+/**
+ * @brief Draw text using the active font.
+ * @param text Null-terminated string to render.
+ * @param x Starting X coordinate.
+ * @param y Starting Y coordinate.
+ * @param scr_addr_hi High byte of the screen address.
+ */
 void draw_text(const char* text, uint8_t x, uint8_t y, uint8_t scr_addr_hi) {
     char c;
     uint16_t addr_base = (scr_addr_hi << 8) + (x >> 3u) * SCR_HEIGHT + y;

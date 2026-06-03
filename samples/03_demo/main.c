@@ -16,7 +16,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <v6c.h>
-#include <v6c_inter.h>
+#include <v6c_interrupt.h>
 #include <v6c_consts.h>
 #include <v6c_draw.h>
 #include <v6c_math.h>
@@ -34,14 +34,17 @@ static uint8_t palette[16] = {
 #define LINES 100
 
 void main() {
-    v6c_set_empty_interrupt();
+    // Set an empty interrupt handler to avoid issues with enabled iterrupts and
+    // no handler.
+    v6c_set_empty_interrupt_handler();
+    // // Enable interrupts so the palette update can work, because it expects
+    // // interrupts to be enabled to function correctly.
     v6c_ei();
-    // clean up the screen.
-    v6c_set_palette(palette + PALETTE_LEN - 1);
+    // // Set the palette to a gradient to better visualize the lines and circles.
+    // v6c_set_palette(palette + PALETTE_LEN - 1, true);
 
+    // Clear all 4 planes of the screen buffer.
     memset(SCR_BUFF0_PTR, 0x00, SCR_BUFF_LEN * 4);
-
-    // draw_text("HELLO WORLD", 10, 10);
 
     // Draw 100 lines from the center of the screen to random points.
     for (int i = 0; i < LINES; i++) {
