@@ -89,6 +89,11 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
   setOperationAction(ISD::BR_CC,     MVT::i8, Custom);
   setOperationAction(ISD::SELECT_CC, MVT::i8, Custom);
 
+  // BRCOND with a non-setcc value condition (e.g. `if (x & 1)`) has no
+  // selection pattern. Expand it so LegalizeDAG rewrites it into a
+  // `BR_CC <cond> SETNE 0`, which the custom BR_CC lowering handles.
+  setOperationAction(ISD::BRCOND,    MVT::Other, Expand);
+
   // O75 Phase B: Custom-lower i8 ADD/SUB/AND/OR/XOR to flag-producing
   // V6CISD::*F nodes so a downstream BR_CC/SELECT_CC against zero can
   // consume the flags directly (no redundant CMP/CPI).

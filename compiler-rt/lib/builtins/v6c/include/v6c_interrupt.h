@@ -84,7 +84,7 @@ void v6c_set_interrupt_handler(void* handler) {
         "SHLD %[int_addr] + 1       \n"
         : /* no outputs */
           /* input constraints */
-        : [int_addr] "i"(INT_ADDR), "r" (_handler), [op_call] "i"(OPCODE_CALL)
+        : [int_addr] "i"(INT_ADDR), "r" (_handler), [op_call] "i"(OPCODE_JMP)
         /* clobbers */
         : "A", "HL"
     );

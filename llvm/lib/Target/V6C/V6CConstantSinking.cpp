@@ -127,6 +127,14 @@ bool V6CConstantSinking::runOnMachineFunction(MachineFunction &MF) {
         ToSink.push_back(&MI);
     }
 
+    // Cache of split blocks created for a given successor edge MBB->Succ.
+    // Multiple constants defined in MBB may all feed PHIs in the same
+    // successor via the same edge; they must share a single split block.
+    // Splitting the edge more than once is wrong: after the first split
+    // MBB no longer lists Succ as a successor, so a second
+    // replaceSuccessor(Succ, ...) walks off the end of the successor list.
+    DenseMap<MachineBasicBlock *, MachineBasicBlock *> SplitBlocks;
+
     // Sink each collected instruction.
     for (MachineInstr *MI : ToSink) {
       Register DstReg = MI->getOperand(0).getReg();
@@ -166,25 +174,32 @@ bool V6CConstantSinking::runOnMachineFunction(MachineFunction &MF) {
 
       for (auto &[SuccMBB, SU] : UsesByBlock) {
         if (SU.HasPhi && !SU.HasNonPhi) {
-          // PHI-only uses: manually split MBB→SuccMBB edge.
-          // Create a new block between MBB and SuccMBB.
-          MachineBasicBlock *NewMBB = MF.CreateMachineBasicBlock();
-          MF.insert(SuccMBB->getIterator(), NewMBB);
+          // PHI-only uses: manually split MBB→SuccMBB edge, reusing an
+          // already-split block if a previous constant from this MBB
+          // already split the same edge.
+          MachineBasicBlock *NewMBB = SplitBlocks.lookup(SuccMBB);
+          if (!NewMBB) {
+            // Create a new block between MBB and SuccMBB.
+            NewMBB = MF.CreateMachineBasicBlock();
+            MF.insert(SuccMBB->getIterator(), NewMBB);
 
-          // CFG: replace MBB→SuccMBB with MBB→NewMBB→SuccMBB.
-          MBB->replaceSuccessor(SuccMBB, NewMBB);
-          NewMBB->addSuccessor(SuccMBB);
+            // CFG: replace MBB→SuccMBB with MBB→NewMBB→SuccMBB.
+            MBB->replaceSuccessor(SuccMBB, NewMBB);
+            NewMBB->addSuccessor(SuccMBB);
 
-          // Update terminator MBB references in MBB.
-          for (MachineInstr &Term : MBB->terminators()) {
-            for (MachineOperand &MO : Term.operands()) {
-              if (MO.isMBB() && MO.getMBB() == SuccMBB)
-                MO.setMBB(NewMBB);
+            // Update terminator MBB references in MBB.
+            for (MachineInstr &Term : MBB->terminators()) {
+              for (MachineOperand &MO : Term.operands()) {
+                if (MO.isMBB() && MO.getMBB() == SuccMBB)
+                  MO.setMBB(NewMBB);
+              }
             }
-          }
 
-          // Fix PHIs in SuccMBB: incoming MBB → NewMBB.
-          SuccMBB->replacePhiUsesWith(MBB, NewMBB);
+            // Fix PHIs in SuccMBB: incoming MBB → NewMBB.
+            SuccMBB->replacePhiUsesWith(MBB, NewMBB);
+
+            SplitBlocks[SuccMBB] = NewMBB;
+          }
 
           // Place the constant materialization in NewMBB.
           Register NewReg = MRI.createVirtualRegister(RC);
