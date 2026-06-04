@@ -1,47 +1,7 @@
 {
     "breakpoints": [
         {
-            "addr": "0x0136",
-            "autoDel": false,
-            "comment": "",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 0,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x012B",
-            "autoDel": false,
-            "comment": "",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 0,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x011E",
-            "autoDel": false,
-            "comment": "",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 0,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x0037",
-            "autoDel": false,
-            "comment": "",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 0,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x0038",
+            "addr": "0x0528",
             "autoDel": false,
             "comment": "",
             "cond": "=ANY",
@@ -61,7 +21,47 @@
             "value": "0x00"
         },
         {
-            "addr": "0x0528",
+            "addr": "0x0038",
+            "autoDel": false,
+            "comment": "",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 0,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x0037",
+            "autoDel": false,
+            "comment": "",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 0,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x011E",
+            "autoDel": false,
+            "comment": "",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 0,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x012B",
+            "autoDel": false,
+            "comment": "",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 0,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x0136",
             "autoDel": false,
             "comment": "",
             "cond": "=ANY",

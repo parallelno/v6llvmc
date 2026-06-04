@@ -18,6 +18,7 @@
 
 #include "V6C.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
+#include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
@@ -1918,6 +1919,25 @@ bool V6CPeephole::foldPairCopyRoundTrip(MachineBasicBlock &MBB) {
 bool V6CPeephole::runOnMachineFunction(MachineFunction &MF) {
   if (DisablePeephole)
     return false;
+
+  // Several transforms here (e.g. eliminateDeadMov, collapseMovChain) decide
+  // whether a register is dead at a block boundary by consulting successor
+  // block live-in lists.  Earlier V6C passes (spill-patched reload, spill
+  // forwarding) keep values in physical registers across basic blocks without
+  // updating the affected successors' live-in lists, leaving them stale — a
+  // register that is genuinely live-out can be missing from a successor's
+  // live-in set.  Trusting such stale lists makes a live MOV look dead and
+  // erasing it miscompiles the program.  Recompute live-ins for the whole
+  // function to a fixpoint (necessary because of loop back-edges) so the
+  // deadness queries below are sound.
+  {
+    bool LiveInsChanged = true;
+    while (LiveInsChanged) {
+      LiveInsChanged = false;
+      for (MachineBasicBlock &MBB : llvm::reverse(MF))
+        LiveInsChanged |= recomputeLiveIns(MBB);
+    }
+  }
 
   bool Changed = false;
   for (MachineBasicBlock &MBB : MF) {

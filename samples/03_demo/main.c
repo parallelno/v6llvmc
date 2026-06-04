@@ -60,7 +60,7 @@ void main() {
     // }
 
     // Draw a sin wave across the screen across all 4 planes to test palette and different scr_addr_hi.
-    for (uint8_t i = 0; i <= 1; i++) {
+    for (uint8_t i = 0; i <= 10; i++) {
         for (int x = 0; x < 256; x++) {
             uint8_t y = 127 + sin8(x + i) / 4 + i;
             draw_pixel(x, y, SCR_BUFF0_ADDR_H + ((i & 3) << 5));
