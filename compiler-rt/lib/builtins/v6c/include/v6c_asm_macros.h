@@ -41,7 +41,9 @@
 #endif
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "v6c_consts.h"
+#include <v6c_rt_macros.h>
 
 /* ==========================================================================
  * Internal stringify helpers
@@ -303,11 +305,13 @@
 /* HL = A + int16_const  (36 cc) */
 #ifndef HL_TO_A_PLUS_INT16
 #define HL_TO_A_PLUS_INT16(c) \
-    "adi (" #c ") & 0xFF \n\t" \
-    "mov l, a \n\t" \
-    "aci ((" #c ") >> 8) & 0xFF \n\t" \
-    "sub l \n\t" \
-    "mov h, a \n\t"
+    asm ( \
+        "adi <(" #c ")              \n" \
+        "mov l, a                   \n" \
+        "aci >(" #c ")             \n" \
+        "sub l                      \n" \
+        "mov h, a                   \n" \
+    );
 #endif
 
 /* BC = A + int16_const  (36 cc) */
@@ -377,8 +381,30 @@
 
 /* A_TO_ZERO(int8_const) — set A = 0 using XRA A.
  * int8_const must equal 0 (e.g. RAM_DISK_OFF_CMD, PALETTE_UPD_REQ_NO). */
+// V6C_INLINE
+// void A_TO_ZERO(uint8_t _const, bool useXRA){
+//     /* Compile-time assertion: int8_const must be 0. */
+//     if (_const != 0) {
+//         /* Force a compile-time error if _const is not zero. */
+//         ((void)sizeof(char[(_const == 0) ? 1 : -1]));
+//     }
+//     if (useXRA) {
+//         asm ("xra a \n");
+//     } else {
+//         asm ("mvi a, 0 \n");
+//     }
+// }
 #ifndef A_TO_ZERO
-#define A_TO_ZERO(int8_const) "xra a \n\t"
+#define A_TO_ZERO(int8_const, useXRA) \
+    do { \
+        /* Compile-time assertion: int8_const must be 0. */ \
+        _Static_assert((int8_const) == 0, "A_TO_ZERO: int8_const must be 0"); \
+        if (useXRA) { \
+            asm ("XRA A         \n"); \
+        } else { \
+            asm ("MVI A, 0      \n"); \
+        } \
+    } while (0)
 #endif
 
 /* SET_CY(val) — set or clear the carry flag.
@@ -439,17 +465,20 @@
 
 /* RAM_DISK_OFF_NO_RESTORE() — disable without saving mode. */
 #ifndef RAM_DISK_OFF_NO_RESTORE
-#define RAM_DISK_OFF_NO_RESTORE() \
-    "xra a \n\t" \
-    "out " _V6C_RAM_DISK_PORT_S " \n\t"
+#define RAM_DISK_OFF_NO_RESTORE(useXRA, ram_disk_port) \
+    A_TO_ZERO(RAM_DISK_OFF_CMD, useXRA); \
+    asm ("OUT " _V6C_XSTR(ram_disk_port) " \n");
 #endif
+
 
 /* RAM_DISK_RESTORE() — reload mode from ram_disk_mode and re-enable.
  * Requires ram_disk_mode to be declared in the TU. */
 #ifndef RAM_DISK_RESTORE
-#define RAM_DISK_RESTORE() \
-    "lda ram_disk_mode \n\t" \
-    "out " _V6C_RAM_DISK_PORT_S " \n\t"
+#define RAM_DISK_RESTORE(_ram_disk_port, _ram_disk_mode) \
+    asm ( \
+        "lda " _V6C_XSTR(_ram_disk_mode) "\n" \
+        "out " _V6C_XSTR(_ram_disk_port) "    \n" \
+    );
 #endif
 
 /* CALL_RAM_DISK_FUNC(func, cmd) — save mode, enable, call, disable. */

@@ -61,18 +61,19 @@
  *===-----------------------------------------------------------------------===
  */
 
-#ifndef __V6C_V6C_INTERRUPTION_H
-#define __V6C_V6C_INTERRUPTION_H
+#ifndef __V6C_V6C_INTERRUPT_H
+#define __V6C_V6C_INTERRUPT_H
 
 #ifndef __V6C__
-#error "<v6c_interruption.h> is only valid for the V6C target"
+#error "<v6c_interrupt.h> is only valid for the V6C target"
 #endif
 
 #include <stdint.h>
 #include "v6c_rt_macros.h"
+#include "v6c_asm_macros.h"
 #include "v6c_consts.h"
 #include "v6c_display.h"
-
+#include "v6c_controls.h"
 
 V6C_INLINE
 void v6c_set_interrupt_handler(void* handler) {
@@ -93,8 +94,11 @@ void v6c_set_interrupt_handler(void* handler) {
 
 V6C_NOINLINE
 /*
- * Minimal interrupt handler for when interrupts are enabled but no specific
- * handling is needed. Mostly useful for tests to set a color palette.
+ * interruption subroutine.
+ *
+ * Invoked by the hardware at INT_ADDR (0x38) via JMP.
+ * Minimal handler for when interrupts are enabled but no specific handling is
+ * needed. Mostly useful for tests to set a color palette.
  */
 void v6c_empty_interrupt_handler() {
     v6c_ei();
@@ -108,85 +112,106 @@ void v6c_set_empty_interrupt_handler() {
 }
 
 
-/*
- * Counter reset every second. Helps to count the game updates per second.
- */
+/* Counter reset every second. Helps to count the game updates per second. */
 static uint8_t ints_per_sec_counter = 0;
 
-/* ------------------------------------------------------------------
- * Forward declarations for external project symbols.
- * ------------------------------------------------------------------ */
 /* ram_disk_mode: persists the active RAM Disk bank command so
  * RAM_DISK_RESTORE() (from v6c_macros.h) can re-enable it on exit. */
-extern uint8_t ram_disk_mode;
+uint8_t ram_disk_mode = 0;
 
-/* ram_disk_mode: persists the active RAM Disk bank command so
- * RAM_DISK_RESTORE() can re-enable it on exit from the interruption. */
-extern uint8_t ram_disk_mode;
-
-extern void controls_check(void);
-extern uint8_t border_color_idx;
-extern uint8_t scr_offset_y;
-extern uint8_t game_updates_required;
+// extern void controls_check(void);
+// extern uint8_t border_color_idx;
+// extern uint8_t scr_offset_y;
+// extern uint8_t game_updates_required;
 
 /* ------------------------------------------------------------------
- * interruption — ISR entry point.
+ * interruption subroutine.
  *
- * Invoked by the hardware at INT_ADDR (0x38) via a JMP or RST 7.
- * Does NOT use the V6C C calling convention; manages its own stack.
+ * Invoked by the hardware at INT_ADDR (0x38) via JMP.
+ * Manages its own stack, supports fast data reading via stack in the main
+ * program when interrupts are enabled.
  *
- * Stack layout on entry (i8080 auto-pushes PC on interrupt):
- *   [SP]   = return address (low byte)
- *   [SP+1] = return address (high byte)
+ * Why do we need this complexity?
+ * When the main program is doing "POP BC" operation for fast data read/copy,
+ * and an interruption happens, then i8080 performs "push PC" corrupting the
+ * data where SP register was pointing to. This subroutine restores the corrupted
+ * data.
  *
- * Exit: restores all registers, re-enables interrupts, then JMPs
- * to the saved return address (EI + JMP instead of RETI).
+ * Requirements:
+ * BC - the only register pair to read data from the stack in the main program.
+ * Each data block read by stack has to have two extra bytes 0,0 stored in front
+ * of the actual data to not let the "push PC" corrupts the data before BC pair
+ * gets it.
  *
- * Asm-constant derivations (all from v6c_consts.h):
- *   STACK_MAIN_PROGRAM_ADDR    = 0x8000 - 2            = 0x7FFE
- *   STACK_INTERRUPTION_ADDR    = 0x7FFE - 48           = 0x7FCE
- *   STACK_INTERRUPTION_ADDR-2  = 0x7FCE - 2            = 0x7FCC
- *   PORT0_OUT_OUT              = 0x88
- *   PALETTE_LEN - 1            = 15
- *   INTS_PER_SEC               = 50
+ * It assumes:
+ * - [SP]   = return address (low byte)
+ * - [SP+1] = return address (high byte)
+ * - BC contains the data to be restored back to SP address.
+ * How this solves the problem:
+ * 1. It swaps the return address with the HL pair in the stack.
+ * 2. Saves the return address from HL to the self-modifying JMP instruction.
+ * 3. Gets the original HL from the stack and store it to the self-modifying LXI
+ * instruction.
+ * 4. Store PSW via Push PSW; POP H; SHLD direct to the reserved stack space for
+ * PSW in the interruption stack.
+ * 5. Gets SP via DAD SP and stores it to the self-modifying LXI instruction.
+ * 6. Restores the two bytes corrupted by "push PC" via PUSH B.
+ * 7. Switches to the dedicated interruption stack.
+ * 8. Routine main logic.
+ * 9. On exit, restores registers, PSW, and SP, re-enables interrupts, then JMPs
+ * to the saved return address.
  * ------------------------------------------------------------------ */
-V6C_RT void v6c_interrupt(void) {
+V6C_INLINE
+void v6c_interrupt_handler(void) {
     __asm__ volatile (
 
-        /* Save the interrupt return address (hardware-pushed PC) into
-         * the self-modifying JMP immediate at .Lint_return+1.         */
-        "XTHL                                   \n"   /* HL = ret addr, [SP] = old HL */
-        // "SHLD .Lint_return + 1                  \n"
-        // "POP  H                                 \n"   /* HL = old HL                  */
-        // "SHLD .Lint_restoreHL + 1               \n"
+        // Save the interrupt return address (hardware-pushed PC) into
+        // the self-modifying JMP immediate at .L_INT_RETURN+1.
+        "XTHL                                   \n"   // HL = ret addr, [SP] = old HL
+        "SHLD .L_INT_RETURN + 1                 \n"
+        "POP  H                                 \n"   // HL = old HL
+        "SHLD .L_INT_RESTORE_HL + 1             \n"
 
-        // /* Save PSW to the bottom of the interrupt stack so PUSH PSW
-        //  * later (via DAD / SHLD) lands in the right slot.             */
-        // "PUSH PSW                               \n"
-        // "POP  H                                 \n"   /* HL = PSW (A:flags)           */
-        // "SHLD 0x7FCC                            \n"   /* STACK_INTERRUPTION_ADDR - 2  */
+        // Save PSW to the bottom of the interrupt stack so PUSH PSW
+        // later (via DAD; SHLD;) lands in the right slot.
+        "PUSH PSW                               \n"
+        "POP  H                                 \n"   // HL = PSW (A:flags)
+        "SHLD %[stack_int_addr_m2]              \n"
 
-        // /* Save current SP so it can be restored on exit.             */
-        // "LXI  H, 0                              \n"
-        // "DAD  SP                                \n"   /* HL = SP                      */
-        // "SHLD .Lint_restoreSP + 1               \n"
+        // Save current SP so it can be restored on exit.
+        "LXI  H, 0                              \n"
+        "DAD  SP                                \n"   // HL = SP
+        "SHLD .L_INT_RESTORE_SP + 1             \n"
 
-        // /* Restore two bytes corrupted by the interrupt's PUSH PC.
-        //  * The main program protects its stack-read data with two
-        //  * leading zero bytes so this PUSH B lands in the padding.    */
-        // "PUSH B                                 \n"
+        // Restore two bytes possibly corrupted by the interrupt's `PUSH PC`.
+        // The main program protects its stack-read data with two leading zero
+        // bytes so this `PUSH B` lands in the padding.
+        "PUSH B                                 \n"
+        : /* no outputs */
+          /* input constraints */
+        : [stack_int_addr_m2] "i"(STACK_INTERRUPTION_ADDR - 2)
+        /* no clobbers */
+        :
+    );
+        // Switch to the dedicated interrupt stack.
+        RAM_DISK_OFF_NO_RESTORE(true, RAM_DISK_PORT)
 
-        // /* Switch to the dedicated interrupt stack.                   */
-        // //RAM_DISK_OFF_NO_RESTORE()
-        // "LXI  SP, 0x7FCC                        \n"   /* STACK_INTERRUPTION_ADDR - 2  */
-        // "PUSH B                                 \n"
-        // "PUSH D                                 \n"
+    __asm__ volatile (
+        "LXI  SP, %[stack_int_addr_m2]          \n"
+        "PUSH B                                 \n"
+        "PUSH D                                 \n"
+        : /* no outputs */
+          /* input constraints */
+        : [stack_int_addr_m2] "i"(STACK_INTERRUPTION_ADDR - 2)
+        /* no clobbers */
+        :
+    );
+        // ================================================================
+        // Interruption main logic
+        // ================================================================
+        controls_check();
 
-        // /* ================================================================
-        //  * Interruption main logic
-        //  * ================================================================ */
-        // "CALL controls_check                    \n"
-
+    __asm__ volatile (
         // /* -- Palette update check ----------------------------------- */
         // ".Lint_pal_upd_req_:                    \n"
         // "MVI  A, 0                              \n"   /* PALETTE_UPD_REQ_NO = 0; self-modifying */
@@ -242,40 +267,33 @@ V6C_RT void v6c_interrupt(void) {
         //  * (e.g. #define PERMANENT_SONG01_RAM_DISK_M 0x10) for asm use.   */
         // //CALL_RAM_DISK_FUNC_NO_RESTORE(v6_sound_update, PERMANENT_SONG01_RAM_DISK_M | _V6C_RAM_DISK_M_8F)
 
-        // /* -- Restore registers and return -------------------------- */
-        // "POP  D                                 \n"
-        // "POP  B                                 \n"
-        // "POP  PSW                               \n"
-        // "MOV  L, A                              \n"   /* stash A before RAM_DISK_RESTORE clobbers it */
-        // //RAM_DISK_RESTORE()
-        // "MOV  A, L                              \n"   /* restore A                    */
-
-        // ".Lint_restoreHL:                       \n"
-        // "LXI  H, 0                              \n"   /* immediate patched at runtime  */
-        // ".Lint_restoreSP:                       \n"
-        // "LXI  SP, 0                             \n"   /* immediate patched at runtime  */
-        // "EI                                     \n"
-        // ".Lint_return:                          \n"
-        // "JMP  0                                 \n"   /* immediate patched at runtime  */
-
-        // /* ---- Assembler equates for self-modifying code targets ---- */
-        // /* game_draw_counter  — points to the frame-count LXI H immediate
-        //  *                      (updated every second by the FPS block).  */
-        // "game_draw_counter    = .Lint_fps + 1   \n"
-        /* palette_update_request — points to the MVI A immediate in the
-         *                          palette-update-request self-mod site.  */
-//        "palette_update_request = .Lint_pal_upd_req_ + 1 \n"
+        // ================================================================
+        // Exit sequence
+        // ================================================================
+        "POP  D                                 \n"
+        "POP  B                                 \n"
+        "POP  PSW                               \n"
+        "MOV  L, A                              \n" // stash A before RAM_DISK_RESTORE clobbers it
         : /* no outputs */
           /* input constraints */
+        : [stack_int_addr_m2] "i"(STACK_INTERRUPTION_ADDR - 2)
+        /* no clobbers */
         :
-        // [controls_check] "i"(controls_check),
-        //   [palette_end] "i"(__palette + PALETTE_LEN - 1),
-        //   [v6c_set_palette] "i"(v6c_set_palette),
-        //   [border_color_idx] "i"(border_color_idx),
-        //   [scr_offset_y] "i"(scr_offset_y),
-        //   [game_updates_required] "i"(game_updates_required)
+    );
+        RAM_DISK_RESTORE(RAM_DISK_PORT, ram_disk_mode);
+
+    __asm__ volatile (
+        "MOV  A, L                              \n"   /* restore A                    */
+
+        ".L_INT_RESTORE_HL:                       \n"
+        "LXI  H, 0                              \n"   /* immediate patched at runtime  */
+        ".L_INT_RESTORE_SP:                       \n"
+        "LXI  SP, 0                             \n"   /* immediate patched at runtime  */
+        "EI                                     \n"
+        ".L_INT_RETURN:                          \n"
+        "JMP  0                                 \n"   /* immediate patched at runtime  */
     );
 }
 
 #undef V6C_RT
-#endif /* __V6C_V6C_INTERRUPTION_H */
+#endif /* __V6C_V6C_INTERRUPT_H */
