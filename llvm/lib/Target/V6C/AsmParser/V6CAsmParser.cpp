@@ -18,6 +18,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MCTargetDesc/V6CMCExpr.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 #include "TargetInfo/V6CTargetInfo.h"
 
@@ -300,6 +301,27 @@ bool V6CAsmParser::parseOperand(OperandVector &Operands) {
       return false;
     }
     // Otherwise fall through to expression parsing (symbolic immediate).
+  }
+
+  // V6C lo8/hi8 byte-extraction prefix operators, matching V6CInstPrinter:
+  //   <(expr)  -> low byte  of a (possibly link-time) 16-bit value
+  //   >(expr)  -> high byte of a (possibly link-time) 16-bit value
+  // For a symbol reference these emit an R_V6C_LO8 / R_V6C_HI8 relocation,
+  // letting inline asm take one byte of an address resolved at link time.
+  if (getLexer().is(AsmToken::Less) || getLexer().is(AsmToken::Greater)) {
+    bool IsLo = getLexer().is(AsmToken::Less);
+    SMLoc S = getLexer().getTok().getLoc();
+    getLexer().Lex(); // consume '<' or '>'
+    const MCExpr *Sub;
+    if (getParser().parseExpression(Sub))
+      return Error(S, "expected expression after lo8/hi8 operator");
+    const MCExpr *Val = V6CMCExpr::create(
+        IsLo ? V6CMCExpr::VK_V6C_LO8 : V6CMCExpr::VK_V6C_HI8, Sub,
+        getParser().getContext());
+    SMLoc E =
+        SMLoc::getFromPointer(getLexer().getTok().getLoc().getPointer() - 1);
+    Operands.push_back(V6COperand::CreateImm(Val, S, E));
+    return false;
   }
 
   // Numeric / expression / symbol operand.
