@@ -1,4 +1,8 @@
+REM Update the path to emulator devector.exe if needed.
 set s=samples\03_demo\
+set e=bin\devector.exe
+
+REM
 set compiler=llvm-build\bin\clang
 set emulator=tools\v6emul\v6emul
 
@@ -13,6 +17,4 @@ REM Check for build errors.
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 REM Run the ROM in the emulator.
-%emulator% --rom %s%main.rom --load-addr 0x0100 --halt-exit --run-cycles 30000000
-
-C:\Work\Programming\devector\bin\devector.exe %s%\main.rom
+%e% %s%\main.rom
