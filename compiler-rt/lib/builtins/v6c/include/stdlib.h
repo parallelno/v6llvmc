@@ -73,7 +73,7 @@ void exit(uint8_t __status) {
 #endif
 
 /* Internal PRNG state — 16-bit, must not be 0. */
-uint16_t __v6c_rand_state = 1u;
+static uint16_t __v6c_rand_state = 1u;
 
 V6C_INLINE
 void srand(uint16_t __seed) {
