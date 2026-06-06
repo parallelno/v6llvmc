@@ -1,0 +1,93 @@
+{
+    "breakpoints": [
+        {
+            "addr": "0x0528",
+            "autoDel": false,
+            "comment": "",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 0,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x00FF",
+            "autoDel": false,
+            "comment": "",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 0,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x0038",
+            "autoDel": false,
+            "comment": "",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 1,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x0037",
+            "autoDel": false,
+            "comment": "",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 0,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x011E",
+            "autoDel": false,
+            "comment": "",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 0,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x012B",
+            "autoDel": false,
+            "comment": "",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 0,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x0136",
+            "autoDel": false,
+            "comment": "",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 0,
+            "value": "0x00"
+        }
+    ],
+    "codePerfs": null,
+    "comments": null,
+    "consts": null,
+    "labels": null,
+    "memoryEdits": null,
+    "scripts": null,
+    "watchpoints": [
+        {
+            "access": "RW",
+            "active": true,
+            "comment": "",
+            "cond": "=ANY",
+            "globalAddr": "0x0001DD",
+            "id": 0,
+            "len": "0x0010",
+            "type": "LEN",
+            "value": "0x0000"
+        }
+    ]
+}
