@@ -473,7 +473,7 @@ static const uint8_t __font[][8] ={
 /* Z */ 0x7E,0x40,0x20,0x10,0x08,0x04,0x02,0x7E,
 };
 
-uint8_t** __font_ptr = __font;
+static uint8_t* __font_ptr = __font;
 
 V6C_INLINE
 /**
@@ -481,7 +481,7 @@ V6C_INLINE
  * @param new_font Pointer to an 8-byte-per-glyph font table.
  */
 void set_font(uint8_t* new_font) {
-    __font_ptr = &new_font;
+    __font_ptr = new_font;
 }
 
 V6C_NOINLINE
@@ -495,7 +495,7 @@ V6C_NOINLINE
 void draw_text(const char* text, uint8_t x, uint8_t y, uint8_t scr_addr_hi) {
     char c;
     uint16_t addr_base = (scr_addr_hi << 8) + (x >> 3u) * SCR_HEIGHT + y;
-    uint8_t* font = __font;
+    uint8_t* font = __font_ptr;
 
 
     while ((c = *text)) {
