@@ -23,7 +23,7 @@ uint8_t v6c_in(uint8_t port) {
         "in %[_port]            \n\t"
         : "=r"(in_val)
         : [_port] "i"(port) /* input constraint: immediate value */
-        : "FLAGS" /* clobbers */
+        : /* no clobbers */
     );
     return in_val;
 }
@@ -36,7 +36,7 @@ void v6c_out(uint8_t port, uint8_t val) {
         "out %[_port]           \n\t"
         :
         : [_val] "r"(val), [_port] "i"(port) /* input constraints */
-        : "A", "FLAGS" /* clobbers */
+        : "A" /* clobbers */
     );
 }
 
