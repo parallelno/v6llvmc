@@ -100,7 +100,7 @@ substitutions (or, as above, indirectly via register-pinned variables).
 | `I`    | 8-bit unsigned immediate (compile-time constant).      | —         |
 | `J`    | 16-bit unsigned immediate.                             | —         |
 | `m`    | A memory operand (generic GCC; lowers via address regs). | — |
-| `i`    | Any immediate integer constant.                        | —         |
+| `i`    | Any immediate integer constant, or a symbol address (`&global`). For byte extraction from a link-time address use the `<`/`>` operators in the template (see §7.5). | —         |
 | `g`    | Register, memory, or immediate.                        | —         |
 | `0`..`9` | Matching constraint — must share location with operand N. | — |
 
@@ -265,7 +265,67 @@ static inline uint16_t call_helper(uint16_t arg) {
 }
 ```
 
-### 7.5 Naked runtime helper (the V6C runtime pattern)
+### 7.5 Load the hi/lo byte of a link-time symbol address
+
+8080 `MVI r, imm8` takes a single byte. When you want to load only the
+high or low byte of an address that is not known until link time, use the
+V6C byte-extraction prefix operators inside the asm template:
+
+| Operator | Meaning                         | ELF relocation  |
+|----------|---------------------------------|-----------------|
+| `<(sym)` | Low byte of the 16-bit address  | `R_V6C_LO8`     |
+| `>(sym)` | High byte of the 16-bit address | `R_V6C_HI8`     |
+
+The relocation is patched by lld at link time, so the asm assembles and
+links correctly regardless of where the linker places the symbol.
+
+```c
+static uint8_t addr = 0x42;
+
+void set_hl_to_addr(void) {
+    asm (
+        "MVI H, >(%[a]) \n"   // H = high byte of &addr
+        "MVI L, <(%[a]) \n"   // L = low  byte of &addr
+        :
+        : [a] "i" (&addr)
+    );
+}
+```
+
+The `"i"` constraint passes the *address* of `addr` as a symbolic
+immediate. The operators `<`/`>` are applied in the assembler, not at the
+C level — so this compiles and links correctly even though the address is
+not a compile-time constant.
+
+**Why not compute the byte in C?**
+
+```c
+// WRONG — does not compile:
+[lo] "i" (((uint8_t)&addr) & 0xFF)
+```
+
+The `"i"` constraint requires an integer constant expression in the C
+sense. A pointer cast to an integer is a runtime/link-time quantity, not a
+C constant expression, so Clang rejects it with `invalid operand for inline
+asm constraint 'i'`.
+
+**Full LXI + byte-load example** (set HL to the address, then override one
+byte — e.g. to page-switch a banked address):
+
+```c
+asm (
+    "LXI  H, %[a]    \n"   // HL = full 16-bit address  (R_V6C_16)
+    "MVI  H, >(%[a]) \n"   // H  = high byte            (R_V6C_HI8)
+    "MVI  L, <(%[a]) \n"   // L  = low  byte            (R_V6C_LO8)
+    :
+    : [a] "i" (&addr)
+);
+```
+
+The operators work on any constant-address expression accepted by `"i"`,
+including `&global`, `&global + N`, and numeric literals.
+
+### 7.6 Naked runtime helper (the V6C runtime pattern)
 
 ```c
 #define V6C_RT static __attribute__((noinline, used, naked, \
