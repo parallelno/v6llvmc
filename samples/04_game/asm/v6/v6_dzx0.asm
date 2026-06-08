@@ -1,4 +1,4 @@
-.section .text.dzx0
+
 
 ; -----------------------------------------------------------------------------
 ; ZX0 8080 decoder by Ivan Gorodetsky - OLD FILE FORMAT v1
@@ -87,7 +87,7 @@ dzx0:
 
 
 /*
-.section .text.dzx0_rd
+
 
 	; unpack to the RAM Disk $8000-$FFFF
 	; in:

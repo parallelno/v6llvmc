@@ -1,44 +1,89 @@
      VMA      LMA     Size Align Out     In      Symbol
        0        0      100     1 . = 0x0100
-     100      100      16e     1 .text
+     100      100      617     1 .text
      100      100       1f     1         C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\crt0.o:(.text._start)
      100      100        0     1                 _start
      10a      10a        0     1                 _crt0_bss_loop
      114      114        0     1                 _crt0_bss_step
      11a      11a        0     1                 _crt0_bss_done
-     11f      11f        c     1         C:\Users\PARALL~1\AppData\Local\Temp\main-80b838.o:(.text.memset)
-     11f      11f        0     1                 memset
-     12b      12b       3b     1         C:\Users\PARALL~1\AppData\Local\Temp\main-80b838.o:(.text.main)
-     12b      12b        0     1                 main
-     166      166       19     1         samples\04_game\out\\v6_interruption.o:(.text.set_palette)
-     17f      17f        2     1         samples\04_game\out\\v6_interruption.o:(.text.v6_action_code)
-     17f      17f        0     1                 v6_action_code
-     181      181        5     1         samples\04_game\out\\v6_interruption.o:(.text.controls_check)
-     186      186       4a     1         samples\04_game\out\\v6_interruption.o:(.text.controls_keys_check)
-     1d0      1d0       31     1         samples\04_game\out\\v6_interruption.o:(.text.controls_joy_check)
-     201      201       6d     1         samples\04_game\out\\v6_interruption.o:(.text.v6_interruption)
-     201      201        0     1                 v6_interruption
-     222      222        0     1                 v6_palette_update_request
-     24b      24b        0     1                 v6_game_draw_counter
-     26e      26e       10     1 .data
-     26e      26e       10     1         C:\Users\PARALL~1\AppData\Local\Temp\main-80b838.o:(.data)
-     26e      26e        0     1                 v6_palette
-     27e      27e        0     1 . = ALIGN ( 1 )
-     27e      27e        0     1 __bss_start = .
-     27e      27e        3     1 .bss
-     27e      27e        3     1         C:\Users\PARALL~1\AppData\Local\Temp\main-80b838.o:(.bss)
-     27e      27e        0     1                 v6_scr_offset_y
-     27f      27f        0     1                 v6_ram_disk_mode
-     280      280        0     1                 v6_game_updates_required
-     281      281        0     1 __bss_end = .
-     281      281        0     1 __stack_top = 0x0000
-     281      281        0     1 
-     281      281        0     1 
+     11f      11f       2f     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.__v6c_udivmod16_body)
+     11f      11f        0     1                 __v6c_udivmod16_body
+     14e      14e        8     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.__v6c_neg_hl_body)
+     14e      14e        0     1                 __v6c_neg_hl_body
+     156      156        8     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.__v6c_neg_de_body)
+     156      156        0     1                 __v6c_neg_de_body
+     15e      15e       1f     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.__modhi3)
+     15e      15e        0     1                 __modhi3
+     17d      17d       15     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.rand)
+     17d      17d        0     1                 rand
+     192      192       90     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.draw_line)
+     192      192        0     1                 draw_line
+     1a1      1a1        0     1                 .SET_DX
+     1aa      1aa        0     1                 .ADV_Y_POS
+     1af      1af        0     1                 .ADV_Y_NEG
+     1b3      1b3        0     1                 .CHECK_SLOP
+     1c7      1c7        0     1                 .DY
+     1cd      1cd        0     1                 .ADV_Y
+     1ce      1ce        0     1                 .NO_ADV_Y
+     1d4      1d4        0     1                 .SWAP_POINTS
+     1de      1de        0     1                 .VERTICAL_DRAW
+     1ef      1ef        0     1                 .ADV_Y2
+     1f1      1f1        0     1                 .DX2
+     1ff      1ff        0     1                 .NO_ADV_X2
+     204      204        0     1                 .SET_LOOP_VARS
+     216      216        0     1                 .ADDR_H
+     222      222       19     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.draw_pixel)
+     222      222        0     1                 draw_pixel
+     23b      23b       f3     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.draw_circle)
+     23b      23b        0     1                 draw_circle
+     32e      32e       5e     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.sin8)
+     32e      32e        0     1                 sin8
+     38c      38c       2e     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.memset)
+     38c      38c        0     1                 memset
+     3ba      3ba      117     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.fill_rect)
+     3ba      3ba        0     1                 fill_rect
+     4d1      4d1       ea     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.draw)
+     4d1      4d1        0     1                 draw
+     5bb      5bb       47     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.text.main)
+     5bb      5bb        0     1                 main
+     602      602       c7     1         samples\04_game\out\\v6_interruption.o:(.text)
+     65e      65e        0     1                 v6_interruption
+     67f      67f        0     1                 v6_palette_update_request
+     6a8      6a8        0     1                 v6_game_draw_counter
+     6c9      6c9       19     1         samples\04_game\out\\v6_interruption.o:(.text.set_palette_int)
+     6e2      6e2        3     1         samples\04_game\out\\v6_interruption.o:(.text.controls_check)
+     6e5      6e5       32     1         samples\04_game\out\\v6_interruption.o:(.text.controls_keys_check)
+     717      717       ce     1 .rodata
+     717      717       be     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.rodata)
+     717      717        0     1                 BIT_MASK
+     71f      71f        0     1                 sin_q_lut
+     7d5      7d5       10     1         <internal>:(.rodata.cst8)
+     7e5      7e5       2e     1 .data
+     7e5      7e5       12     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.data)
+     7e5      7e5        0     1                 v6_palette
+     7f5      7f5        0     1                 __v6c_rand_state
+     7f7      7f7        2     1         samples\04_game\out\\v6_interruption.o:(.data.v6_action_code)
+     7f7      7f7        0     1                 v6_action_code
+     7f9      7f9       10     1         samples\04_game\out\\v6_interruption.o:(.data.keys_to_controls_arrows)
+     809      809        8     1         samples\04_game\out\\v6_interruption.o:(.data.keys_to_controls_alt_tab_space)
+     811      811        1     1         samples\04_game\out\\v6_interruption.o:(.data.ints_per_sec_counter)
+     812      812        1     1         samples\04_game\out\\v6_interruption.o:(.data.game_updates_required)
+     813      813        0     1 . = ALIGN ( 1 )
+     813      813        0     1 __bss_start = .
+     813      813        3     1 .bss
+     813      813        3     1         C:\Users\PARALL~1\AppData\Local\Temp\main-cf505f.o:(.bss)
+     813      813        0     1                 v6_scr_offset_y
+     814      814        0     1                 v6_ram_disk_mode
+     815      815        0     1                 v6_game_updates_required
+     816      816        0     1 __bss_end = .
+     816      816        0     1 __stack_top = 0x0000
+     816      816        0     1 
+     816      816        0     1 
        0        0       13     1 .comment
        0        0       13     1         <internal>:(.comment)
-       0        0      120     4 .symtab
-       0        0      120     4         <internal>:(.symtab)
-       0        0       35     1 .shstrtab
-       0        0       35     1         <internal>:(.shstrtab)
-       0        0       f6     1 .strtab
-       0        0       f6     1         <internal>:(.strtab)
+       0        0      300     4 .symtab
+       0        0      300     4         <internal>:(.symtab)
+       0        0       3d     1 .shstrtab
+       0        0       3d     1         <internal>:(.shstrtab)
+       0        0      23e     1 .strtab
+       0        0      23e     1         <internal>:(.strtab)

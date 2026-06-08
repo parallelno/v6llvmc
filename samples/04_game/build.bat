@@ -1,3 +1,4 @@
+@echo off
 REM Update the path to emulator devector.exe if needed.
 set s=samples\04_game\
 set out=%s%out\

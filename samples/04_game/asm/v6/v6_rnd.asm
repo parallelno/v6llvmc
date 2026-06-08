@@ -1,4 +1,4 @@
-.section .text.random
+
 
 ; 16-bit xorshift pseudorandom number generator
 ; http://www.retroprogramming.com/2017/07/xorshift-pseudorandom-numbers-in-z80.html?m=1
@@ -8,6 +8,7 @@
 ; a = h
 ; cc - 116
 ; TODO: optimization. check if the faster rnd solutions gives good enough result.
+.optional
 random:
 			lxi h, 1       ; seed must not be 0
 			mov a, h
@@ -26,6 +27,7 @@ random:
 			mov h, a
 			shld random + 1
 			ret
+.endopt
 
 /*
 ; 8-bit pseudo rnd. it uses 256 bytes of a main program as a seed.
@@ -34,6 +36,7 @@ random:
 ; out:
 ; a - random number
 ; cc - 84
+.optional
 random:
 @mainCodeAddr:
 			lxi h, $100
@@ -46,6 +49,7 @@ random:
 			shld @mainCodeAddr + 1
 			sta @rnd + 1
 			ret
+.endopt
 */
 
 /*
@@ -56,6 +60,7 @@ random:
 ; an 8-bit unsigned integer. 256 period
 ; http://www.z80.info/pseudo-random.txt
 ; cc - 60
+.optional
 RndVal		.byte 34
 random:
 			lxi	h, RndVal
@@ -68,6 +73,7 @@ random:
 			sbi 255
 			mov m, a
 			ret
+.endopt
 */
 /*
 ; Highway Encounter game 8-bit pseudo random number.
@@ -76,6 +82,7 @@ random:
 ; O: A=RND
 ; M: HL, AF
 ; cc - 52
+.optional
 RndVal		.byte 1
 random:
 			lxi	h, RndVal
@@ -86,4 +93,5 @@ random:
 			adi	7
 			mov	m, a
 			ret
+.endopt
 */

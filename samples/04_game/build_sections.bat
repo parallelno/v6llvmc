@@ -37,7 +37,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 @echo on
 
 REM Compile asm
-%compiler% %target% -O2 %stack_def% %s%main.c %out%\v6_interruption.o -S -o %out%\main.s
+%compiler% %target% -O2 %s%main.c -S -o %out%\main.s
 
 REM Print the merged output section headers in the linked ELF.
 llvm-build\bin\llvm-readelf -S %out%\main.o

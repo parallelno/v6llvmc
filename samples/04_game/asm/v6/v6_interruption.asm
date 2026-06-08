@@ -9,12 +9,10 @@
 .include "asm/v6/v6_consts.asm"
 .include "asm/v6/v6_utils.asm"
 .include "asm/v6/v6_controls.asm"
-.include "asm/v6/sound/v6_sound.asm"
+;.include "asm/v6/sound/v6_sound.asm"
 
 
-.section .text.v6_interruption
 
-@memusage_v6_interruption:
 ;----------------------------------------------------------------
 ; The interruption sub which supports stack manipulations in
 ; the main program without di/ei.
@@ -121,18 +119,23 @@ interruption_restoreSP:
 			ei
 interruption_return:
 			jmp TEMP_ADDR
+.endopt
 
+.opt
 ints_per_sec_counter:
 			.byte INTS_PER_SEC
+.endopt
 
 ; a lopped counter increased every game draw call
 v6_game_draw_counter = interruption_fps + 1
 v6_palette_update_request = palette_update_request_ + 1
 
 
+.opt
 ; Counts pending game updates to sync the game loop with interrupts.
 ; If < 0, no updates are pending.
 ; Incremented in the interruption routine.
 ; Checked and decremented in the game update.
 game_updates_required:
-.byte NULL
+			.byte NULL
+.endopt

@@ -4,23 +4,25 @@
 
 .include "asm/v6/v6_controls_consts.asm"
 
-.section .text.v6_action_code
 
+.optional
 v6_action_code:
 			.word CONTROL_CODE_NO<<8 || CONTROL_CODE_NO
 action_code_old: = v6_action_code + 1
+.endopt
 
-.section .text.controls_check
-
+.optional
 controls_check:
 			jmp controls_keys_check
 controls_check_func_ptr: = controls_check + 1
+.endopt
+
+.optional
 controls_check_func_ptr_flipped:
 			.word controls_joy_check
+.endopt
 
-
-.section .text.controls_keys_check
-
+.optional
 controls_keys_check:
 			mvi a, PORT0_OUT_IN
 			out 0
@@ -51,6 +53,9 @@ controls_keys_check:
 			ora e
 			sta v6_action_code
 			ret
+.endopt
+
+.opt
 keys_to_controls_arrows:
 			; bits that form an offset in this tbl: down, right, up, left. they are inversed
 			; bits of data: 0,0,0,0, CONTROL_CODE_DOWN, CONTROL_CODE_UP, CONTROL_CODE_LEFT, CONTROL_CODE_RIGHT
@@ -71,7 +76,9 @@ keys_to_controls_arrows:
 			.byte %0100 ;
 			.byte %0010	; right + up + down
 			.byte 0		; right + up + left + down
+.endopt
 
+.opt
 keys_to_controls_alt_tab_space:
 			; bits that form an offset in this tbl: alt, tab, space. they are inversed
 			; bits of data: CONTROL_CODE_FIRE1, CONTROL_CODE_FIRE2, CONTROL_CODE_KEY_SPACE, CONTROL_CODE_RETURN, 0,0,0,0
@@ -83,10 +90,9 @@ keys_to_controls_alt_tab_space:
 			.byte %0001_0000 ; alt + space
 			.byte %1010_0000 ; alt + tab
 			.byte 0			 ; alt + space + tab
+.endopt
 
-
-.section .text.controls_joy_check
-
+.optional
 controls_joy_check:
 			; read joystick "P" code
 			in $06
@@ -129,10 +135,10 @@ controls_joy_check:
 			cma
 			sta v6_action_code
 			ret
+.endopt
 
 
-.section .text.controls_get_preset
-
+.optional
 ; return control_preset value
 ; out:
 ; a - control_preset value
@@ -149,9 +155,9 @@ controls_get_preset:
 @preset_joystic:
 			mvi a, CONTROL_PRESET_JOYSTICK
 			ret
+.endopt
 
-.section .text.controls_flip_preset
-
+.optional
 controls_flip_preset:
 			lhld controls_check_func_ptr
 			xchg
@@ -160,4 +166,6 @@ controls_flip_preset:
 			shld controls_check_func_ptr
 			xchg
 			shld controls_check_func_ptr_flipped
-			rnz
+			; rnz <--- TODO: investigate why it is here
+			ret   ; TODO: added a fix, but still requires checking the history
+.endopt

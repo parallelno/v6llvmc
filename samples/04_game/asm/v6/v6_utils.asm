@@ -2,16 +2,16 @@
 .include "asm/v6/v6_rnd.asm"
 .include "asm/v6/v6_dzx0.asm"
 
-.section .text.restore_sp
 
 ; shared chunk of code to restore SP
 ; and dismount the RAM Disk
+.opt
 restore_sp:
 			lxi sp, TEMP_ADDR
 			RAM_DISK_OFF()
 			ret
+.endopt
 
-.section .text.mem_erase
 
 ; erase a memory buffer (ram)
 ; 	hl - source
@@ -23,6 +23,7 @@ restore_sp:
 ; loop: 32-64cc
 ; copy 4 bytes: 48 + 32*4 + 32 * 1 = 208
 ; copy 32 bytes: 48 + 32*32 + 32 * 1 = 1104
+.opt
 mem_erase:
 			mvi e, 0
 ; e - filler
@@ -41,8 +42,8 @@ mem_fill:
 			cmp h
 			jnz @loop2
 			ret
+.endopt
 
-.section .text.mem_erase_sp
 
 ; clears a memory buffer using stack operations
 ; can be used to clear the RAM Disk as well
@@ -59,6 +60,8 @@ mem_fill:
 			ei
 		.endif
 .endmacro
+
+.opt
 ; input:
 ; bc - source + len
 ; de - length // 32 - 1
@@ -84,10 +87,10 @@ mem_erase_sp_filler:
 			cmp d
 			jnz @loop
 			jmp restore_sp
+.endopt
 
 
-.section .text.mem_fill_sp
-
+.opt
 ; fill a memory buffer with a word using stack operations
 ; can be used to clear RAM Disk memory as well
 ; input:
@@ -102,10 +105,10 @@ mem_fill_sp:
 			lxi h, 0
 			shld mem_erase_sp_filler + 1
 			ret
+.endopt
 
 
-.section .text.mem_copy
-
+.opt
 ; copy a memory buffer (ram to ram )
 ; in:
 ; 	hl - source
@@ -140,10 +143,10 @@ mem_copy:
 			dcr b
 			jnz @loop
 			ret
+.endopt
 
 
-.section .text.mem_copy_to_ram_disk
-
+.opt
 ;========================================
 ; copy a memory buffer (ram to RAM Disk)
 ; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -237,6 +240,7 @@ jmp_tbl:
 			.word mem_copy_to_ram_disk_loop + MEM_COPY_WORD_LEN * 3
 			.word mem_copy_to_ram_disk_loop + MEM_COPY_WORD_LEN * 2
 			.word mem_copy_to_ram_disk_loop + MEM_COPY_WORD_LEN * 1
+.endopt
 
 ; 12*4=48cc
 ; len = 5 bytes
@@ -249,8 +253,8 @@ jmp_tbl:
 .endmacro
 
 
-.section .text.mem_copy_from_ram_disk
 
+.opt
 ;========================================
 ; copy a memory buffer (RAM Disk to ram )
 ; works with enabled interruptions
@@ -266,7 +270,6 @@ jmp_tbl:
 ; TODO: optimization: unroll the loop 4 or more times,
 ; then start it depending on the remined:
 
-.optional
 mem_copy_from_ram_disk:
 			shld @source + 1
 
@@ -304,9 +307,7 @@ mem_copy_from_ram_disk:
 .endopt
 
 
-.section .text.get_word_from_ram_disk
-
-
+.opt
 ; Read a word from the RAM Disk w/o blocking interruptions
 ; It requires two reserved bytes prior the read data
 ; in:
@@ -319,7 +320,7 @@ mem_copy_from_ram_disk:
 ; de - data addr in the RAM Disk
 ; used: hl
 ; 116 cc
-.optional
+
 get_word_from_ram_disk:
 			RAM_DISK_ON_BANK()
 			; store sp
@@ -339,14 +340,12 @@ get_word_from_ram_disk:
 .endopt
 
 
-.section .text.get_word_from_scr_ram_disk
-
+.opt
 ; a special version of a func above for accessing addr $8000 and higher
 ; out:
 ; bc - data
 ; hl - data addr + 1 in the RAM Disk
 ; 100 cc
-.optional
 get_word_from_scr_ram_disk:
 			RAM_DISK_ON_BANK()
 			xchg
@@ -358,8 +357,8 @@ get_word_from_scr_ram_disk:
 .endopt
 
 
-.section .text.add_offset_to_labels_eod
 
+.opt
 ; Converts local labels to absolute by adding the absolute address
 ; It also can convert it back if the provided addr is negative.
 ; The the array data must ends with EOD word
@@ -391,10 +390,10 @@ add_offset_to_labels_eod:
 			mov m, d
 			inx h
 			jmp @loop
+.endopt
 
 
-.section .text.add_offset_to_labels_len
-
+.opt
 ; Converts local labels to absolute by adding the absolute address
 ; It also can convert it back if the provided addr is negative.
 ; in:
@@ -419,10 +418,10 @@ add_offset_to_labels_len:
 			dcr c
 			jnz @loop
 			ret
+.endopt
 
 
-.section .text.set_palette
-
+.opt
 ; Set the palette
 ; input: hl - the addr of the last item in the palette
 ; use: hl, b, a
@@ -448,9 +447,10 @@ set_palette_int:			; call it from an interruption routine
 
 			jp	@loop
 			ret
+.endopt
 
-.section .text.copy_palette_request_update
 
+.opt
 ; Copy the pallete, then init the request for apply it
 ; in:
 ; hl - RAM Disk palette addr
@@ -464,12 +464,12 @@ copy_palette_request_update:
 			lxi h, v6_palette_update_request
 			mvi m, PALETTE_UPD_REQ_YES
 			ret
-
+.endopt
 
 PALETTE_UPDATE_EVERY_NTH_COLOR = 2 ; update every Nth color
 
-.section .text.pallete_fade_out
 
+.opt
 ; Inits and performes the palette fade out
 ; Interrupts must be enabled
 ; in:
@@ -491,10 +491,10 @@ pallete_fade_out:
 			jnc @loop
 			ret
 pallete_fade_in: = @pallete_fade_in
+.endopt
 
 
-.section .text.pallete_fade_init
-
+.opt
 ; Resets the fade timer
 ; in:
 ; de - palette fade addr; ex. PERMANENT_PAL_MENU_ADDR + _pal_menu_palette_fade_to_black_relative
@@ -551,10 +551,10 @@ pallete_fade_init:
 			xchg
 			shld pallete_update_current_pal + 1
 			ret
+.endopt
 
 
-.section .text.pallete_update_current_pal
-
+.opt
 ; Fades out the current pallete
 ; Interrupts must be enabled
 ; out:
@@ -580,10 +580,12 @@ pallete_fade_update_iterations:
 			sui 1
 			sta pallete_fade_update_iterations + 1
 			ret
+.endopt
 
-.section .text.empty_func
 
+.opt
 ; empty func
 ; used as a placeholder for empty callbacks
 empty_func:
 			ret
+.endopt
