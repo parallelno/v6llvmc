@@ -271,6 +271,90 @@ bool V6CRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
       return true;
     }
 
+    // Direct stack/frame-index value loads and stores. Unlike the
+    // SP-relative path these need no `DAD SP` — the static slot address is
+    // absolute. The *_FI pseudos clobber HL (Defs=[HL, FLAGS]), so the
+    // address may be formed in HL freely.
+    if (Opc == V6C::V6C_LOAD8_FI) {
+      Register DstReg = MI.getOperand(0).getReg();
+      if (DstReg == V6C::A) {
+        // LDA __v6c_ss+offset (13cc, 3B)
+        BuildMI(MBB, II, DL, TII.get(V6C::LDA), V6C::A)
+            .addGlobalAddress(GV, StaticOffset);
+      } else {
+        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+            .addReg(V6C::HL, RegState::Define)
+            .addGlobalAddress(GV, StaticOffset);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+            .addReg(DstReg, RegState::Define);
+      }
+      MI.eraseFromParent();
+      return true;
+    }
+
+    if (Opc == V6C::V6C_LOAD16_FI) {
+      Register DstReg = MI.getOperand(0).getReg();
+      if (DstReg == V6C::HL) {
+        // LHLD __v6c_ss+offset (16cc, 3B)
+        BuildMI(MBB, II, DL, TII.get(V6C::LHLD), V6C::HL)
+            .addGlobalAddress(GV, StaticOffset);
+      } else {
+        // DE or BC: LXI HL, addr; MOV lo, M; INX HL; MOV hi, M
+        Register DstLo = getSubReg(DstReg, V6C::sub_lo);
+        Register DstHi = getSubReg(DstReg, V6C::sub_hi);
+        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+            .addReg(V6C::HL, RegState::Define)
+            .addGlobalAddress(GV, StaticOffset);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+            .addReg(DstLo, RegState::Define);
+        BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVrM))
+            .addReg(DstHi, RegState::Define);
+      }
+      MI.eraseFromParent();
+      return true;
+    }
+
+    if (Opc == V6C::V6C_STORE8_FI) {
+      Register SrcReg = MI.getOperand(0).getReg();
+      bool IsKill = MI.getOperand(0).isKill();
+      if (SrcReg == V6C::A) {
+        // STA __v6c_ss+offset (13cc, 3B)
+        BuildMI(MBB, II, DL, TII.get(V6C::STA))
+            .addReg(V6C::A, getKillRegState(IsKill))
+            .addGlobalAddress(GV, StaticOffset);
+      } else {
+        // SrcReg is GR8NoHL (never H/L), so MOV M, r is safe with HL holding
+        // the address.
+        BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+            .addReg(V6C::HL, RegState::Define)
+            .addGlobalAddress(GV, StaticOffset);
+        BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
+            .addReg(SrcReg, getKillRegState(IsKill));
+      }
+      MI.eraseFromParent();
+      return true;
+    }
+
+    if (Opc == V6C::V6C_STORE16_FI) {
+      // SrcReg is GR16Idx (BC or DE only, never HL), so forming the address
+      // in HL does not clobber the value.
+      Register SrcReg = MI.getOperand(0).getReg();
+      bool IsKill = MI.getOperand(0).isKill();
+      Register SrcLo = getSubReg(SrcReg, V6C::sub_lo);
+      Register SrcHi = getSubReg(SrcReg, V6C::sub_hi);
+      BuildMI(MBB, II, DL, TII.get(V6C::LXI))
+          .addReg(V6C::HL, RegState::Define)
+          .addGlobalAddress(GV, StaticOffset);
+      BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
+          .addReg(SrcLo, getKillRegState(IsKill));
+      BuildMI(MBB, II, DL, TII.get(V6C::INX), V6C::HL).addReg(V6C::HL);
+      BuildMI(MBB, II, DL, TII.get(V6C::MOVMr))
+          .addReg(SrcHi, getKillRegState(IsKill));
+      MI.eraseFromParent();
+      return true;
+    }
+
     // Fallback for other instructions with frame indices in static mode:
     // replace with global address offset. This shouldn't normally happen.
     if (CommentMI)
