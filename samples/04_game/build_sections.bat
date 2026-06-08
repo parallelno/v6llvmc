@@ -15,11 +15,11 @@ tools\v6asm\v6asm.exe %s%\asm\v6\v6_interruption.asm -o %s%\out\v6_interruption.
 REM Check for build errors.
 if %errorlevel% neq 0 exit /b %errorlevel%
 
-REM Build the ROM.
-%compiler% %target% -O2 %stack_def% %s%main.c %s%\out\v6_interruption.o -o %s%main.rom
-
+REM Build the ROM. --print-gc-sections makes lld report every section it
+REM garbage-collected (removed) during the link.
+%compiler% %target% -O2 %stack_def% -Wl,--print-gc-sections %s%main.c %s%\out\v6_interruption.o -o %s%\out\main.o
 REM Check for build errors.
 if %errorlevel% neq 0 exit /b %errorlevel%
 
-REM Run the ROM in the emulator.
-%e% %s%\main.rom
+REM Print the section headers that SURVIVED garbage collection in the linked ELF.
+llvm-build\bin\llvm-readelf -S %s%\out\main.o

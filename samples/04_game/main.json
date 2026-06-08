@@ -1,23 +1,13 @@
 {
     "breakpoints": [
         {
-            "addr": "0x0528",
+            "addr": "0x0100",
             "autoDel": false,
             "comment": "",
             "cond": "=ANY",
             "memPages": 4294967295,
             "operand": "A",
-            "status": 0,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x00FF",
-            "autoDel": false,
-            "comment": "",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 0,
+            "status": 1,
             "value": "0x00"
         },
         {
@@ -28,46 +18,6 @@
             "memPages": 4294967295,
             "operand": "A",
             "status": 1,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x0037",
-            "autoDel": false,
-            "comment": "",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 0,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x011E",
-            "autoDel": false,
-            "comment": "",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 0,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x012B",
-            "autoDel": false,
-            "comment": "",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 0,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x0136",
-            "autoDel": false,
-            "comment": "",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 0,
             "value": "0x00"
         }
     ],
@@ -80,12 +30,23 @@
     "watchpoints": [
         {
             "access": "RW",
-            "active": true,
+            "active": false,
             "comment": "",
             "cond": "=ANY",
-            "globalAddr": "0x0001DD",
+            "globalAddr": "0x0004C2",
             "id": 0,
-            "len": "0x0010",
+            "len": "0x0001",
+            "type": "LEN",
+            "value": "0x0000"
+        },
+        {
+            "access": "RW",
+            "active": false,
+            "comment": "",
+            "cond": "=ANY",
+            "globalAddr": "0x000333",
+            "id": 1,
+            "len": "0x0001",
             "type": "LEN",
             "value": "0x0000"
         }

@@ -1,33 +1,39 @@
-/*===---- v6c_interrupt.h - V6C i8080 interrupt handler ---------------===*
+/*===---- v6c_interrupt.h - V6C i8080 interrupt utilities -------------===*
  *
- * Interrupt support that allows safe stack manipulation in the main
- * program without disabling interrupts (DI/EI).
+ * Minimal interrupt support utilities for the V6C target.
  *
- * Overview
- * --------
- * When the main program executes a `POP RP` to read from a stack-based
- * buffer, an interrupt may occur. The CPU then performs `PUSH PC`,
- * overwriting the two bytes currently pointed to by SP and corrupting
- * the buffer.
+ * Provided functionality
+ * ----------------------
+ *   • Install a custom interrupt handler at INT_ADDR (0x38) by writing
+ *     a JMP instruction and target address.
  *
- * This handler restores the corrupted register pair using BC.
+ *   • Provide a default "empty" interrupt handler that simply re-enables
+ *     interrupts (EI) and returns. This is useful when interrupts must
+ *     remain enabled but no handling is required.
  *
- * Requirements for correct operation
- * ---------------------------------
- * The main program must:
- *   1. Use only `POP B` to read stack-based data.
- *   2. Prepend two dummy bytes (0x00, 0x00) before the actual data so
- *      that a `PUSH PC` cannot overwrite meaningful content before the
- *      handler restores it.
+ * Notes
+ * -----
+ *   • The interrupt vector is patched in-place with a JMP opcode followed
+ *     by the handler address.
  *
- * Public symbols
- * --------------
- *   interruption           — ISR entry point; mapped to INT_ADDR (0x38)
- *   ints_per_sec_counter   — countdown byte (from INTS_PER_SEC)
- *   game_draw_counter      — alias to frame counter (incremented per second)
- *   palette_update_request — flag byte; write non-zero to request update
+ *   • The handler must follow the platform calling convention (address
+ *     passed in HL).
  *
- *===------------------------------------------------------------------===*/
+ *   • No state preservation or stack repair is performed by the default
+ *     handler.
+ *
+ * Public API
+ * ----------
+ *   v6c_set_interrupt_handler(void* handler)
+ *       Install a handler at INT_ADDR.
+ *
+ *   v6c_empty_interrupt_handler()
+ *       Minimal ISR: enables interrupts and returns.
+ *
+ *   v6c_set_empty_interrupt_handler()
+ *       Convenience wrapper to install the empty handler.
+ *
+ *===-------------------------------------------------------------------===*/
 
 #ifndef __V6C_V6C_INTERRUPT_H
 #define __V6C_V6C_INTERRUPT_H
