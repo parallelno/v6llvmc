@@ -19,11 +19,31 @@ Include another file inline.
 .include 'file.asm'
 ```
 
-Paths are resolved relative to the including file, the main asm file, or the workspace directory. Includes support recursive expansion up to 16 levels.
+Paths are resolved relative to the including file, the main asm file, any directories passed with `-I` / `--include-dir`, or the current working directory. Includes support recursive expansion up to 16 levels.
+
+## `.pragma once`
+
+Marks the current file so that the preprocessor includes it only once, regardless of how many times it is referenced with `.include`. Subsequent `.include` directives pointing to the same file are silently ignored.
+
+Place it as the first non-comment line of any file that defines macros, constants, or other declarations that must not be emitted twice.
+
+```asm
+.pragma once
+
+; v6_macros.asm — safe to include from multiple files
+.macro RAM_DISK_OFF()
+    mvi a, 0
+    out RAM_DISK_PORT
+.endmacro
+```
+
+Files without `.pragma once` are included every time they appear in an `.include` directive (the traditional textual-paste behaviour).
+
+> **Note:** Deduplication is based on the canonical file path, so two `.include` directives that spell the same path differently (e.g. `./foo.asm` vs `foo.asm`) are correctly treated as the same file.
 
 ## `.filesize`
 
-Defines a constant equal to the byte size of a given file. The path resolves like `.include` (current file, main asm, project folder, workspace, then CWD).
+Defines a constant equal to the byte size of a given file. The path resolves relative to the project directory.
 
 ```asm
 ROM_SIZE .filesize "out/prg.rom" ; ROM_SIZE becomes the size of prg.rom
@@ -40,7 +60,7 @@ Include raw bytes from an external file at the current address.
 .incbin "path", offset, length  ; start at offset, read length bytes
 ```
 
-Paths resolve like `.include`. `offset` and `length` are optional expressions (decimal, hex, or binary); omit them to start at 0 and read the entire file.
+Paths resolve relative to the project directory. `offset` and `length` are optional expressions (decimal, hex, or binary); omit them to start at 0 and read the entire file.
 
 ## `.if` / `.endif`
 
@@ -103,9 +123,53 @@ This is an alias for `.optional` / `.endoptional`. Short forms: `.func` / `.endf
 
 Updates assembler defaults using non-case-sensitive key/value pairs. Values may be string, integer, or boolean. Multiple pairs can be specified in one directive.
 
+| Key | Values | Default | Description |
+|-----|--------|---------|-------------|
+| `optional` | `true` / `false` | `true` | Enable or disable pruning of unreferenced `.optional` blocks. |
+| `force_once` | `true` / `false` | `false` | Include this file and all files it includes at most once (see below). |
+
 ```asm
-.setting optional, false ; disables pruning of .optional blocks
+.setting optional, false          ; disables pruning of .optional blocks
+.setting force_once, true         ; deduplicate this file and its sub-includes
+.setting force_once, true, optional, false  ; multiple pairs in one directive
 ```
+
+### `force_once`
+
+When a file contains `.setting force_once, true`, the preprocessor treats it
+like `.pragma once` — subsequent `.include` directives pointing to the same
+file are silently ignored.  In addition, the setting **propagates** to every
+file that file includes: all direct and transitive sub-includes are also
+deduplicated for the duration of that include tree.
+
+**Priority:** `true` wins over `false` and over the default.  If the same file
+is included from multiple modules and at least one of them (or the file itself)
+sets `force_once = true`, the file is assembled only once — the first
+occurrence is kept and all later ones are skipped.
+
+```asm
+; macros.asm — safe to include from multiple files
+.setting force_once, true
+
+.macro NOP_()
+    nop
+.endmacro
+```
+
+```asm
+; module_a.asm
+.include "macros.asm"   ; assembled — macros.asm registered as force-once
+```
+
+```asm
+; module_b.asm
+.include "macros.asm"   ; skipped — already registered
+```
+
+The difference from `.pragma once` is one of *declaration point*: `.pragma
+once` is declared inside the file itself; `force_once` can also be set by the
+**parent** file (`.setting force_once, true` in the file that does the
+including), which covers the case where you cannot modify the included file.
 
 ## Labels and Constants
 

@@ -85,25 +85,27 @@ V6C_NOINLINE_ASM
 uint16_t rand(void) {
     register uint16_t _out asm("HL");
     __asm__ volatile (
-    "1:  lhld   __v6c_rand_state    \n\t"
-        "mov    a, h                \n\t"  /* --- seed ^= seed >> 9 --- */
-        "rar                        \n\t"  /* A  = H >> 1  (CY = H.0)  */
-        "mov    a, l                \n\t"
-        "rar                        \n\t"  /* A  = L >> 1 | H.0 << 7  */
-        "xra    h                   \n\t"
-        "mov    h, a                \n\t"  /* H' = H ^ (seed>>9).hi    */
-        "mov    a, l                \n\t"  /* --- seed ^= seed >> 1 (via RAR chain) --- */
-        "rar                        \n\t"
-        "mov    a, h                \n\t"
-        "rar                        \n\t"
-        "xra    l                   \n\t"
-        "mov    l, a                \n\t"
-        "xra    h                   \n\t"  /* --- seed ^= seed << 8 --- */
-        "mov    h, a                \n\t"  /* H  = old-L ^ ...         */
-        "shld   __v6c_rand_state    \n\t"  /* store updated state       */
+    "1:  lhld   %[rand_state]       \n"
+        "mov    a, h                \n"  /* --- seed ^= seed >> 9 --- */
+        "rar                        \n"  /* A  = H >> 1  (CY = H.0)  */
+        "mov    a, l                \n"
+        "rar                        \n"  /* A  = L >> 1 | H.0 << 7  */
+        "xra    h                   \n"
+        "mov    h, a                \n"  /* H' = H ^ (seed>>9).hi    */
+        "mov    a, l                \n"  /* --- seed ^= seed >> 1 (via RAR chain) --- */
+        "rar                        \n"
+        "mov    a, h                \n"
+        "rar                        \n"
+        "xra    l                   \n"
+        "mov    l, a                \n"
+        "xra    h                   \n"  /* --- seed ^= seed << 8 --- */
+        "mov    h, a                \n"  /* H  = old-L ^ ...         */
+        "shld   %[rand_state]       \n"  /* store updated state       */
         : "=r"(_out)
-        : /* no inputs */
-        : "A", "FLAGS"
+        : /* inputs constrain */
+          [rand_state] "i"(&__v6c_rand_state)
+          /* clobbers */
+        : "HL", "A", "FLAGS"
     );
     return _out;
 }
