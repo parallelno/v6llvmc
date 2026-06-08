@@ -103,7 +103,7 @@ interruption_no_fps_update:
 			;================================================================
 			; music update
 			;================================================================
-			CALL_RAM_DISK_FUNC_NO_RESTORE(v6_sound_update, PERMANENT_SONG01_RAM_DISK_M | RAM_DISK_M_8F)
+;			CALL_RAM_DISK_FUNC_NO_RESTORE(v6_sound_update, PERMANENT_SONG01_RAM_DISK_M | RAM_DISK_M_8F)
 
 			pop d
 			pop b

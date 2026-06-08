@@ -1,0 +1,44 @@
+     VMA      LMA     Size Align Out     In      Symbol
+       0        0      100     1 . = 0x0100
+     100      100      16e     1 .text
+     100      100       1f     1         C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\crt0.o:(.text._start)
+     100      100        0     1                 _start
+     10a      10a        0     1                 _crt0_bss_loop
+     114      114        0     1                 _crt0_bss_step
+     11a      11a        0     1                 _crt0_bss_done
+     11f      11f        c     1         C:\Users\PARALL~1\AppData\Local\Temp\main-80b838.o:(.text.memset)
+     11f      11f        0     1                 memset
+     12b      12b       3b     1         C:\Users\PARALL~1\AppData\Local\Temp\main-80b838.o:(.text.main)
+     12b      12b        0     1                 main
+     166      166       19     1         samples\04_game\out\\v6_interruption.o:(.text.set_palette)
+     17f      17f        2     1         samples\04_game\out\\v6_interruption.o:(.text.v6_action_code)
+     17f      17f        0     1                 v6_action_code
+     181      181        5     1         samples\04_game\out\\v6_interruption.o:(.text.controls_check)
+     186      186       4a     1         samples\04_game\out\\v6_interruption.o:(.text.controls_keys_check)
+     1d0      1d0       31     1         samples\04_game\out\\v6_interruption.o:(.text.controls_joy_check)
+     201      201       6d     1         samples\04_game\out\\v6_interruption.o:(.text.v6_interruption)
+     201      201        0     1                 v6_interruption
+     222      222        0     1                 v6_palette_update_request
+     24b      24b        0     1                 v6_game_draw_counter
+     26e      26e       10     1 .data
+     26e      26e       10     1         C:\Users\PARALL~1\AppData\Local\Temp\main-80b838.o:(.data)
+     26e      26e        0     1                 v6_palette
+     27e      27e        0     1 . = ALIGN ( 1 )
+     27e      27e        0     1 __bss_start = .
+     27e      27e        3     1 .bss
+     27e      27e        3     1         C:\Users\PARALL~1\AppData\Local\Temp\main-80b838.o:(.bss)
+     27e      27e        0     1                 v6_scr_offset_y
+     27f      27f        0     1                 v6_ram_disk_mode
+     280      280        0     1                 v6_game_updates_required
+     281      281        0     1 __bss_end = .
+     281      281        0     1 __stack_top = 0x0000
+     281      281        0     1 
+     281      281        0     1 
+       0        0       13     1 .comment
+       0        0       13     1         <internal>:(.comment)
+       0        0      120     4 .symtab
+       0        0      120     4         <internal>:(.symtab)
+       0        0       35     1 .shstrtab
+       0        0       35     1         <internal>:(.shstrtab)
+       0        0       f6     1 .strtab
+       0        0       f6     1         <internal>:(.strtab)

@@ -1,7 +1,7 @@
 {
     "breakpoints": [
         {
-            "addr": "0x0100",
+            "addr": "0x0038",
             "autoDel": false,
             "comment": "",
             "cond": "=ANY",
@@ -11,7 +11,7 @@
             "value": "0x00"
         },
         {
-            "addr": "0x0038",
+            "addr": "0x0100",
             "autoDel": false,
             "comment": "",
             "cond": "=ANY",
@@ -33,8 +33,8 @@
             "active": false,
             "comment": "",
             "cond": "=ANY",
-            "globalAddr": "0x0004C2",
-            "id": 0,
+            "globalAddr": "0x000333",
+            "id": 1,
             "len": "0x0001",
             "type": "LEN",
             "value": "0x0000"
@@ -44,8 +44,8 @@
             "active": false,
             "comment": "",
             "cond": "=ANY",
-            "globalAddr": "0x000333",
-            "id": 1,
+            "globalAddr": "0x0004C2",
+            "id": 0,
             "len": "0x0001",
             "type": "LEN",
             "value": "0x0000"
