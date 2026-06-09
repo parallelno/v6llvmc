@@ -20,6 +20,7 @@
 #include <v6c_math.h>
 
 extern void v6_interruption();
+extern void v6_gc_start();
 
 uint8_t v6_palette[16] = {
     0x00, 0x11, 0x22, 0x33,
@@ -34,6 +35,8 @@ uint8_t v6_game_updates_required = 0;
 extern uint8_t v6_palette_update_request;
 extern uint16_t v6_action_code;
 
+//#define PERMANENT_SONG01_RAM_DISK_M PERMANENT_SONG01_RAM_DISK_M | RAM_DISK_M_8F
+uint8_t song01_ram_disk_m = RAM_DISK_OFF_CMD;
 
 #define LINES 100
 
@@ -81,22 +84,24 @@ void main() {
     v6_palette_update_request = PALETTE_UPD_REQ_YES;
 
     // Clear all 4 planes of the screen buffer.
-    memset(SCR_BUFF0_PTR, 0x00, SCR_BUFF_LEN * 4);
+    //memset(SCR_BUFF0_PTR, 0x00, SCR_BUFF_LEN * 4);
 
-    draw();
+    //draw();
+
+    v6_gc_start();
 
     while(true){
-        if (v6_action_code) {
-            // output the hi8 and lo8 code into the debug port
-            uint8_t code_hi = (v6_action_code >> 8) & 0xFF;
-            uint8_t code_lo = v6_action_code & 0xFF;
-            if(code_lo == CONTROL_CODE_UP){
-                v6_scr_offset_y--;
-            }
-            if(code_lo == CONTROL_CODE_DOWN){
-                v6_scr_offset_y++;
-            }
-        }
+    //     if (v6_action_code) {
+    //         // output the hi8 and lo8 code into the debug port
+    //         uint8_t code_hi = (v6_action_code >> 8) & 0xFF;
+    //         uint8_t code_lo = v6_action_code & 0xFF;
+    //         if(code_lo == CONTROL_CODE_UP){
+    //             v6_scr_offset_y--;
+    //         }
+    //         if(code_lo == CONTROL_CODE_DOWN){
+    //             v6_scr_offset_y++;
+    //         }
+    //     }
         v6c_hlt();
     }
 

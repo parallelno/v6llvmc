@@ -388,11 +388,13 @@ BY_A			= 5
 			out ram_disk_port
 .endmacro
 
+
 ; mount the RAM Disk w/o storing mode
 .macro RAM_DISK_ON_NO_RESTORE(command, ram_disk_port = RAM_DISK_PORT)
 			mvi a, <command
 			out ram_disk_port
 .endmacro
+
 
 ; mount the RAM Disk
 ; command is a RAM Disk activation command
@@ -464,6 +466,19 @@ BY_A			= 5
 			di
 		.endif
 			RAM_DISK_ON_NO_RESTORE(_command)
+			call func_addr
+			RAM_DISK_OFF_NO_RESTORE(useXRA)
+		.if disable_int
+			ei
+		.endif
+.endmacro
+
+; a - RAM Disk activation command
+.macro CALL_RAM_DISK_FUNC_BANK_NO_RESTORE(func_addr, disable_int = false, useXRA = true)
+		.if disable_int
+			di
+		.endif
+			RAM_DISK_ON_BANK_NO_RESTORE()
 			call func_addr
 			RAM_DISK_OFF_NO_RESTORE(useXRA)
 		.if disable_int

@@ -842,7 +842,7 @@ main:                                   ; @main
 	LXI	D, 0
 	LXI	B, 0x8000
 	CALL	memset
-	CALL	draw
+	CALL	v6_gc_start
 	LXI	H, v6_scr_offset_y
 .LBB23_1:                               ; =>This Inner Loop Header: Depth=1
 	XCHG
@@ -889,6 +889,10 @@ v6_ram_disk_mode:
 
 	.globl	v6_game_updates_required        ; @v6_game_updates_required
 v6_game_updates_required:
+	DB	0                               ; 0x0
+
+	.globl	song01_ram_disk_m               ; @song01_ram_disk_m
+song01_ram_disk_m:
 	DB	0                               ; 0x0
 
 	.data

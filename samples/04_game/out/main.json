@@ -1,6 +1,26 @@
 {
     "breakpoints": [
         {
+            "addr": "0x01F5",
+            "autoDel": false,
+            "comment": "v6_gc_tasks_init",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 1,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x0130",
+            "autoDel": false,
+            "comment": "call v6_gc_start",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 1,
+            "value": "0x00"
+        },
+        {
             "addr": "0x0100",
             "autoDel": false,
             "comment": "",

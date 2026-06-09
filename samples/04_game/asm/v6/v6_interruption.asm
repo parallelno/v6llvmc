@@ -3,13 +3,14 @@
 .global v6_palette_update_request
 .global v6_palette
 .global v6_scr_offset_y
+.global song01_ram_disk_m
 
 
 .include "asm/v6/v6_macros.asm"
 .include "asm/v6/v6_consts.asm"
 .include "asm/v6/v6_utils.asm"
 .include "asm/v6/v6_controls.asm"
-;.include "asm/v6/sound/v6_sound.asm"
+.include "asm/v6/sound/v6_sound.asm"
 
 
 
@@ -101,7 +102,8 @@ interruption_no_fps_update:
 			;================================================================
 			; music update
 			;================================================================
-;			CALL_RAM_DISK_FUNC_NO_RESTORE(v6_sound_update, PERMANENT_SONG01_RAM_DISK_M | RAM_DISK_M_8F)
+			lda song01_ram_disk_m
+			CALL_RAM_DISK_FUNC_BANK_NO_RESTORE(v6_sound_update)
 
 			pop d
 			pop b

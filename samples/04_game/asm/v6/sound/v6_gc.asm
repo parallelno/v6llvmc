@@ -15,6 +15,9 @@
 ; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 .include "asm/v6/sound/v6_gc_consts.asm"
+.include "asm/v6/sound/v6_gc_runtime_data.asm"
+
+.global v6_gc_start
 
 setting_music:
 			.byte SETTING_OFF
