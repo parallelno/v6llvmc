@@ -10,25 +10,30 @@
 
 ; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ; !!!              MUSIC DATA MUST BE LOADED             !!!
-; !!!       INTO THE RAM DISK $8000-$FFFF SEGMENT        !!!
+; !!!  INTO RAM OR INTO THE RAM DISK $8000-$FFFF SEGMENT !!!
 ; !!! BECAUSE IT'S ACCESSED VIA THE NON_STACK OPERATIONS !!!
 ; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 .include "asm/v6/sound/v6_gc_consts.asm"
 .include "asm/v6/sound/v6_gc_runtime_data.asm"
 
+// Init the cong before playing
 .global v6_gc_init_song
+// Play the song
 .global v6_gc_start
+.global v6_gc_pause
+.global v6_gc_unpause
+.global v6_gc_flip_pause
 
 setting_music:
 			.byte SETTING_OFF
 
 v6_gc_init:
-			call v6_gc_mute
+			call v6_gc_pause
 			;call v6_gc_clear_buffers ; commented out because it's already erased in the file
 			ret
 
-; init a new song
+; init a new song before playing it.
 ; hl - the song reg ptrs (v6_gc_ay_reg_data_ptrs)
 ; de - the song data
 ; a - song data ram-disk access cmd
@@ -43,7 +48,7 @@ v6_gc_init_song:
 			shld v6_song_reg_data_ptrs_end
 
 			push d
-			call v6_gc_mute
+			call v6_gc_pause
 			pop d
 			pop h
 			; hl - points to the array of ptrs to the reg data
@@ -88,7 +93,7 @@ v6_gc_start:
 			mvi a, -1
 			sta v6_gc_task_id
 
-			call v6_gc_unmute
+			call v6_gc_unpause
 			ret
 
 
@@ -421,8 +426,8 @@ v6_gc_ay_update:
 v6_gc_buffer_ptr2 = @v6_gc_buffer_ptr + 1
 
 ; to mute the player. It can continue the song after unmute
-; to call from this module: call v6_gc_mute
-v6_gc_mute:
+; to call from this module: call v6_gc_pause
+v6_gc_pause:
 			; disable the updates
 			mvi a, SETTING_OFF
 			sta setting_music
@@ -437,23 +442,21 @@ v6_gc_mute:
 			jp @send_data
 			ret
 
-; to unmute the player after being muted. It continues the song from where it has been stopped
-; to call from this module: call v6_gc_unmute
-v6_gc_unmute:
+; to unpause the player after being muted. It continues the song from where it has been stopped
+v6_gc_unpause:
 			mvi a, SETTING_ON
 			sta setting_music
 			ret
 
 ; to flip mute/unmute
-; to call from this module: call v6_gc_flip_mute
-v6_gc_flip_mute:
+v6_gc_flip_pause:
 			lxi h, setting_music
 			mov a, m
 			cma
 			mov m, a
 			cpi SETTING_OFF
-			jz v6_gc_mute
-			jmp v6_gc_unmute
+			jz v6_gc_pause
+			jmp v6_gc_unpause
 
 ; return setting_music value
 ; to call from this module: call v6_gc_get_setting
