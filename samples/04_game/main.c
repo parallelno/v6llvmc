@@ -12,6 +12,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <v6c.h>
+#include <v6c_rt_macros.h>
 #include <v6c_interrupt.h>
 #include <v6c_consts.h>
 #include <v6c_controls_consts.h>
@@ -20,6 +21,9 @@
 #include <v6c_math.h>
 
 extern void v6_interruption();
+V6C_NOINLINE_ASM_EXTERN
+extern void v6_gc_init_song(uint8_t* ay_reg_data_ptrs, uint8_t* song_data);
+V6C_NOINLINE_ASM_EXTERN
 extern void v6_gc_start();
 
 uint8_t v6_palette[16] = {
@@ -34,6 +38,10 @@ uint8_t v6_ram_disk_mode = 0;
 uint8_t v6_game_updates_required = 0;
 extern uint8_t v6_palette_update_request;
 extern uint16_t v6_action_code;
+extern uint8_t v6_gc_task_sps[];
+extern uint8_t _song01_data[];
+extern uint8_t _v6_gc_buffer[];
+extern uint8_t song01_ay_reg_data_ptrs[];
 
 //#define PERMANENT_SONG01_RAM_DISK_M PERMANENT_SONG01_RAM_DISK_M | RAM_DISK_M_8F
 uint8_t song01_ram_disk_m = RAM_DISK_OFF_CMD;
@@ -87,7 +95,7 @@ void main() {
     //memset(SCR_BUFF0_PTR, 0x00, SCR_BUFF_LEN * 4);
 
     //draw();
-
+    v6_gc_init_song(song01_ay_reg_data_ptrs, _v6_gc_buffer);
     v6_gc_start();
 
     while(true){

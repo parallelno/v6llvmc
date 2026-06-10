@@ -1,9 +1,9 @@
 {
     "breakpoints": [
         {
-            "addr": "0x01F5",
+            "addr": "0x01CC",
             "autoDel": false,
-            "comment": "v6_gc_tasks_init",
+            "comment": "v6_gc_start",
             "cond": "=ANY",
             "memPages": 4294967295,
             "operand": "A",
@@ -11,9 +11,9 @@
             "value": "0x00"
         },
         {
-            "addr": "0x0130",
+            "addr": "0x01A1",
             "autoDel": false,
-            "comment": "call v6_gc_start",
+            "comment": "v6_gc_init_song",
             "cond": "=ANY",
             "memPages": 4294967295,
             "operand": "A",
@@ -27,7 +27,17 @@
             "cond": "=ANY",
             "memPages": 4294967295,
             "operand": "A",
-            "status": 0,
+            "status": 1,
+            "value": "0x00"
+        },
+        {
+            "addr": "0x01FD",
+            "autoDel": false,
+            "comment": "v6_gc_tasks_init",
+            "cond": "=ANY",
+            "memPages": 4294967295,
+            "operand": "A",
+            "status": 1,
             "value": "0x00"
         }
     ],
@@ -37,5 +47,17 @@
     "labels": null,
     "memoryEdits": null,
     "scripts": null,
-    "watchpoints": null
+    "watchpoints": [
+        {
+            "access": "RW",
+            "active": false,
+            "comment": "",
+            "cond": "=ANY",
+            "globalAddr": "0x001469",
+            "id": 0,
+            "len": "0x0001",
+            "type": "LEN",
+            "value": "0x0000"
+        }
+    ]
 }

@@ -1,5 +1,5 @@
 
-Symbol table '.symtab' contains 46 entries:
+Symbol table '.symtab' contains 48 entries:
    Num:    Value  Size Type    Bind   Vis       Ndx Name
      0: 00000000     0 NOTYPE  LOCAL  DEFAULT   UND 
      1: 00000000     0 SECTION LOCAL  DEFAULT     1 .text
@@ -43,7 +43,9 @@ Symbol table '.symtab' contains 46 entries:
     39: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND v6_scr_offset_y
     40: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND song01_ram_disk_m
     41: 00000000     0 NOTYPE  GLOBAL DEFAULT    20 v6_action_code
-    42: 0000008d     0 FUNC    GLOBAL DEFAULT     1 v6_gc_start
-    43: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND _v6_gc_buffer
-    44: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND _v6_gc_task_stack_end
-    45: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND v6_ram_disk_mode
+    42: 00000000     0 NOTYPE  GLOBAL DEFAULT    29 v6_gc_task_sps
+    43: 00000061     0 FUNC    GLOBAL DEFAULT     1 v6_gc_init_song
+    44: 0000008d     0 FUNC    GLOBAL DEFAULT     1 v6_gc_start
+    45: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND _v6_gc_buffer
+    46: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND _v6_gc_task_stack_end
+    47: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND v6_ram_disk_mode

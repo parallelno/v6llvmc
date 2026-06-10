@@ -50,8 +50,13 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 REM Compile asm
 %compiler% %target% -O2 %s%\main.c -S -o %out%\main.s
 
-REM Print the merged output section headers in the linked ELF.
-llvm-build\bin\llvm-readelf -S %out%\main.o
+REM Link an ELF (the .elf extension keeps an ELF instead of a flat ROM) so the
+REM full symbol table - including externals resolved at link time such as
+REM _v6_gc_task_stack_end - can be dumped.
+%compiler% %target% -O2 %stack_def% %s%\main.c %out%\v6_interruption.o %out%\song01.o -o %out%\main.elf
+
+REM Print all symbols of the linked file into out\main_symbols.txt.
+llvm-build\bin\llvm-readelf -s %out%\main.elf > %out%\main_symbols.txt
 
 REM Print the link map: surviving input sections (per function) and their
 REM addresses/sizes after garbage collection.

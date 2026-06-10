@@ -440,46 +440,35 @@ sin8:                                   ; -- Begin function sin8
 memset:                                 ; -- Begin function memset
                                         ; @memset
 ; %bb.0:
-	XCHG
 	SHLD	.LLo61_5+1
-	XCHG
-	MOV	D, B
-	MOV	E, C
-	SHLD	.LLo61_6+1
-	MOV	A, D
-	ORA	E
-	JZ	.LBB20_1
-; %bb.2:
-	LXI	B, 0
-	LHLD	.LLo61_6+1
-	XCHG
-	SHLD	.LLo61_7+1
-	XCHG
-.LBB20_3:                               ; =>This Inner Loop Header: Depth=1
+	LXI	H, 0x20
 .LLo61_5:
-	LXI	D, 0
+	LXI	B, 0
+	DAD	B
+	MOV	B, H
+	MOV	C, L
+	LHLD	.LLo61_5+1
+.LBB20_1:                               ; =>This Inner Loop Header: Depth=1
 	MOV	M, E
-.LLo61_7:
-	LXI	D, 0
 	INX	H
-	INX	B
-	MOV	A, C
-	SUB	E
-	MOV	A, B
-	SBB	D
-	JC	.LBB20_3
-.LBB20_1:
-.LLo61_6:
-	LXI	H, 0
+	MOV	A, L
+	CMP	C
+	JNZ	.LBB20_1
+; %bb.3:                                ;   in Loop: Header=BB20_1 Depth=1
+	MOV	A, H
+	CMP	B
+	JNZ	.LBB20_1
+; %bb.2:
+	LHLD	.LLo61_5+1
 	RET
                                         ; -- End function
 	.section	.text.fill_rect,"ax",@progbits
 fill_rect:                              ; -- Begin function fill_rect
                                         ; @fill_rect
 ; %bb.0:
-	LXI	H, .LLo61_14+1
+	LXI	H, .LLo61_12+1
 	MOV	M, D
-	LXI	H, .LLo61_16+1
+	LXI	H, .LLo61_14+1
 	MOV	M, B
 	MOV	L, A
 	MVI	D, 0
@@ -488,7 +477,7 @@ fill_rect:                              ; -- Begin function fill_rect
 	LXI	B, 7
 	XCHG
 	DAD	B
-	SHLD	.LLo61_12+1
+	SHLD	.LLo61_10+1
 	XCHG
 	PUSH	H
 	DAD	D
@@ -502,14 +491,14 @@ fill_rect:                              ; -- Begin function fill_rect
 	XCHG
 	POP	H
 	XCHG
-	SHLD	.LLo61_9+1
+	SHLD	.LLo61_7+1
 	XCHG
 	MOV	E, L
 	MVI	A, 7
 	ANA	E
 	MOV	E, A
 	MOV	D, B
-.LLo61_12:
+.LLo61_10:
 	LXI	B, 0
 	MOV	A, C
 	ADD	E
@@ -519,19 +508,19 @@ fill_rect:                              ; -- Begin function fill_rect
 	PUSH	H
 	MOV	L, C
 	MOV	H, A
-	SHLD	.LLo61_12+1
+	SHLD	.LLo61_10+1
 	LXI	B, REQ_BIT_MASK_L
 	XCHG
 	DAD	B
 	XCHG
 	POP	H
 	XCHG
-	SHLD	.LLo61_10+1
+	SHLD	.LLo61_8+1
 	XCHG
-	LDA	.LLo61_16+1
+	LDA	.LLo61_14+1
 	MVI	D, 0
 	MOV	E, A
-.LLo61_14:
+.LLo61_12:
 	MVI	A, 0
 	MOV	B, A
 	MOV	C, D
@@ -546,12 +535,12 @@ fill_rect:                              ; -- Begin function fill_rect
 	MOV	H, A
 	PUSH	H
 	MOV	H, B
-	SHLD	.LLo61_11+1
+	SHLD	.LLo61_9+1
 	POP	H
-	SHLD	.LLo61_13+1
+	SHLD	.LLo61_11+1
 	DAD	B
 	XCHG
-	SHLD	.LLo61_8+1
+	SHLD	.LLo61_6+1
 	XCHG
 	MOV	A, L
 	ORA	E
@@ -559,17 +548,17 @@ fill_rect:                              ; -- Begin function fill_rect
 	MOV	A, H
 	ORA	D
 	MOV	H, A
-.LLo61_10:
+.LLo61_8:
 	LXI	D, 0
 	LDAX	D
 	MOV	E, A
 	PUSH	H
-	LHLD	.LLo61_9+1
+	LHLD	.LLo61_7+1
 	MOV	C, L
 	MOV	B, H
 	LDAX	B
 	MOV	D, A
-	LHLD	.LLo61_12+1
+	LHLD	.LLo61_10+1
 	MOV	B, H
 	XRA	A
 	DAD	H
@@ -594,30 +583,29 @@ fill_rect:                              ; -- Begin function fill_rect
 	JZ	.LBB21_5
 .LBB21_1:
 	MOV	A, D
-	STA	.LLo61_15+1
+	STA	.LLo61_13+1
 	MVI	D, 0
-	SHLD	.LLo61_12+1
+	SHLD	.LLo61_10+1
 	PUSH	H
 	MOV	L, C
 	MOV	H, B
-	SHLD	.LLo61_9+1
+	SHLD	.LLo61_7+1
 	POP	H
-	LXI	B, 0x20
 	CALL	memset
-	LHLD	.LLo61_9+1
+	LHLD	.LLo61_7+1
 	XCHG
 	DCX	D
 	MOV	A, E
 	ANI	0xfe
 	JZ	.LBB21_2
 ; %bb.3:
-.LLo61_11:
+.LLo61_9:
 	LXI	H, 0
-.LLo61_13:
+.LLo61_11:
 	LXI	B, 0
 	DAD	B
 	PUSH	H
-	LHLD	.LLo61_8+1
+	LHLD	.LLo61_6+1
 	MOV	C, L
 	MOV	B, H
 	POP	H
@@ -626,35 +614,34 @@ fill_rect:                              ; -- Begin function fill_rect
 	DAD	B
 	MOV	A, B
 	XCHG
-	SHLD	.LLo61_9+1
+	SHLD	.LLo61_7+1
 	XCHG
 .LBB21_4:                               ; =>This Inner Loop Header: Depth=1
-	STA	.LLo61_16+1
-	SHLD	.LLo61_8+1
-	LHLD	.LLo61_8+1
+	STA	.LLo61_14+1
+	SHLD	.LLo61_6+1
+	LHLD	.LLo61_6+1
 	LXI	D, 0xff
-	LXI	B, 0x20
 	CALL	memset
-.LLo61_9:
+.LLo61_7:
 	LXI	D, 0
 	LXI	H, 0x100
-.LLo61_8:
+.LLo61_6:
 	LXI	B, 0
 	DAD	B
 	MOV	C, L
-.LLo61_16:
+.LLo61_14:
 	MVI	A, 0
-	SHLD	.LLo61_8+1
-	LHLD	.LLo61_8+1
+	SHLD	.LLo61_6+1
+	LHLD	.LLo61_6+1
 	INR	A
 	CMP	E
 	JC	.LBB21_4
 .LBB21_2:
 	MOV	D, E
 	MVI	E, 0
-	LHLD	.LLo61_12+1
+	LHLD	.LLo61_10+1
 	DAD	D
-.LLo61_15:
+.LLo61_13:
 	MVI	E, 0
 	JMP	.LBB21_6
 .LBB21_5:
@@ -663,7 +650,6 @@ fill_rect:                              ; -- Begin function fill_rect
 	MOV	E, A
 .LBB21_6:
 	MVI	D, 0
-	LXI	B, 0x20
 	JMP	memset
                                         ; -- End function
 	.section	.text.draw,"ax",@progbits
@@ -672,26 +658,26 @@ draw:                                   ; @draw
 ; %bb.0:
 	MVI	A, 0x64
 .LBB22_1:                               ; =>This Inner Loop Header: Depth=1
-	STA	.LLo61_21+1
+	STA	.LLo61_19+1
 	CALL	rand
 	MOV	A, L
 	MOV	B, H
 	CALL	draw_line
-	LDA	.LLo61_21+1
+	LDA	.LLo61_19+1
 	DCR	A
 	JNZ	.LBB22_1
 ; %bb.2:
 	MVI	H, 0xa
 	MVI	A, 0x64
 .LBB22_3:                               ; =>This Inner Loop Header: Depth=1
-	STA	.LLo61_21+1
+	STA	.LLo61_19+1
 	MOV	A, H
-	STA	.LLo61_24+1
-	LDA	.LLo61_21+1
+	STA	.LLo61_22+1
+	LDA	.LLo61_19+1
 	CALL	draw_circle
-.LLo61_24:
+.LLo61_22:
 	MVI	H, 0
-	LDA	.LLo61_21+1
+	LDA	.LLo61_19+1
 	ADI	0xf6
 	DCR	H
 	JNZ	.LBB22_3
@@ -703,26 +689,26 @@ draw:                                   ; @draw
 	LXI	D, 0x100
 	MOV	B, A
 	ADI	0x7f
-	STA	.LLo61_25+1
+	STA	.LLo61_23+1
 	MOV	A, B
-	STA	.LLo61_26+1
+	STA	.LLo61_24+1
 	ADD	A
 	ADD	A
 	ADD	A
 	ADD	A
 	ADD	A
 	ORI	0x80
-	STA	.LLo61_23+1
+	STA	.LLo61_21+1
 	XRA	A
-	STA	.LLo61_22+1
-	SHLD	.LLo61_19+1
+	STA	.LLo61_20+1
+	SHLD	.LLo61_17+1
 .LBB22_6:                               ;   Parent Loop BB22_5 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
-	SHLD	.LLo61_20+1
-	XCHG
-	SHLD	.LLo61_17+1
 	SHLD	.LLo61_18+1
-.LLo61_20:
+	XCHG
+	SHLD	.LLo61_15+1
+	SHLD	.LLo61_16+1
+.LLo61_18:
 	LXI	H, 0
 	CALL	sin8
 	MOV	A, H
@@ -735,7 +721,7 @@ draw:                                   ; @draw
 	MOV	E, A
 	MVI	D, 0
 	DAD	D
-.LLo61_18:
+.LLo61_16:
 	LXI	D, 0
 	XRA	A
 	DAD	H
@@ -750,24 +736,24 @@ draw:                                   ; @draw
 	ADC	A
 	MOV	L, H
                                         ; kill: def $l killed $l killed $hl
-.LLo61_25:
+.LLo61_23:
 	MVI	H, 0
 	MOV	A, L
 	ADD	H
 	MOV	B, A
-.LLo61_22:
+.LLo61_20:
 	MVI	E, 0
 	MOV	A, E
-.LLo61_23:
+.LLo61_21:
 	MVI	C, 0
 	CALL	draw_pixel
-	LHLD	.LLo61_20+1
+	LHLD	.LLo61_18+1
 	INR	E
 	MOV	A, E
-	STA	.LLo61_22+1
+	STA	.LLo61_20+1
 	INX	H
 	INX	H
-.LLo61_17:
+.LLo61_15:
 	LXI	B, 0
 	DCX	B
 	MOV	D, B
@@ -776,11 +762,11 @@ draw:                                   ; @draw
 	ORA	C
 	JNZ	.LBB22_6
 ; %bb.7:                                ;   in Loop: Header=BB22_5 Depth=1
-.LLo61_19:
+.LLo61_17:
 	LXI	H, 0
 	LXI	D, 8
 	DAD	D
-.LLo61_26:
+.LLo61_24:
 	MVI	A, 0
 	INR	A
 	CPI	0xb
@@ -793,28 +779,28 @@ draw:                                   ; @draw
 .LBB22_10:                              ; =>This Inner Loop Header: Depth=1
 	MOV	B, A
 	MOV	A, D
-	STA	.LLo61_24+1
+	STA	.LLo61_22+1
 	MOV	A, B
-	STA	.LLo61_21+1
+	STA	.LLo61_19+1
 	ADI	0x8c
 	MOV	C, A
 	MOV	A, E
-	STA	.LLo61_25+1
-.LLo61_21:
+	STA	.LLo61_23+1
+.LLo61_19:
 	MVI	B, 0
 	MOV	D, H
-	LXI	H, .LLo61_22+1
+	LXI	H, .LLo61_20+1
 	MOV	M, D
 	CALL	fill_rect
-	LXI	H, .LLo61_24+1
+	LXI	H, .LLo61_22+1
 	MOV	D, M
-	LDA	.LLo61_25+1
+	LDA	.LLo61_23+1
 	ADI	0xfc
 	MOV	E, A
-	LDA	.LLo61_22+1
+	LDA	.LLo61_20+1
 	ADI	0x20
 	MOV	H, A
-	LDA	.LLo61_21+1
+	LDA	.LLo61_19+1
 	ADI	0xf8
 	DCR	D
 	JNZ	.LBB22_10
@@ -838,35 +824,11 @@ main:                                   ; @main
 	;NO_APP
 	MVI	A, 1
 	STA	v6_palette_update_request
-	LXI	H, 0x8000
-	LXI	D, 0
-	LXI	B, 0x8000
-	CALL	memset
+	LXI	H, song01_ay_reg_data_ptrs
+	LXI	D, _v6_gc_buffer
+	CALL	v6_gc_init_song
 	CALL	v6_gc_start
-	LXI	H, v6_scr_offset_y
 .LBB23_1:                               ; =>This Inner Loop Header: Depth=1
-	XCHG
-	LHLD	v6_action_code
-	XCHG
-	MOV	A, D
-	ORA	E
-	JZ	.LBB23_7
-; %bb.2:                                ;   in Loop: Header=BB23_1 Depth=1
-	MOV	A, E
-	CPI	4
-	JZ	.LBB23_5
-; %bb.3:                                ;   in Loop: Header=BB23_1 Depth=1
-	CPI	8
-	JNZ	.LBB23_7
-; %bb.4:                                ;   in Loop: Header=BB23_1 Depth=1
-	MVI	A, 1
-	JMP	.LBB23_6
-.LBB23_5:                               ;   in Loop: Header=BB23_1 Depth=1
-	MVI	A, 0xff
-.LBB23_6:                               ;   in Loop: Header=BB23_1 Depth=1
-	ADD	M
-	STA	v6_scr_offset_y
-.LBB23_7:                               ;   in Loop: Header=BB23_1 Depth=1
 	;APP
 	HLT
 
@@ -1020,6 +982,8 @@ REQ_BIT_MASK_R:                         ; @REQ_BIT_MASK_R
 	.addrsig_sym __lshrhi3
 	.addrsig_sym __ashrhi3
 	.addrsig_sym v6_interruption
+	.addrsig_sym song01_ay_reg_data_ptrs
+	.addrsig_sym _v6_gc_buffer
 	.addrsig_sym __v6c_rand_state
 	.addrsig_sym BIT_MASK
 	.addrsig_sym sin_q_lut

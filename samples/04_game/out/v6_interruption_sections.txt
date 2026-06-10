@@ -1,4 +1,4 @@
-There are 62 section headers, starting at offset 0x1a40:
+There are 62 section headers, starting at offset 0x1a7c:
 
 Section Headers:
   [Nr] Name              Type            Address  Off    Size   ES Flg Lk Inf Al
@@ -61,9 +61,9 @@ Section Headers:
   [56] .rela.text.controls_joy_check RELA 00000000 000ff8 000024 0c     59  26  4
   [57] .rela.text.controls_get_preset RELA 00000000 00101c 00003c 0c     59  27  4
   [58] .rela.text.controls_flip_preset RELA 00000000 001058 000030 0c     59  28  4
-  [59] .symtab           SYMTAB          00000000 001088 0002e0 10     60  35  4
-  [60] .strtab           STRTAB          00000000 001368 0000bd 00      0   0  1
-  [61] .shstrtab         STRTAB          00000000 001425 000618 00      0   0  1
+  [59] .symtab           SYMTAB          00000000 001088 000300 10     60  35  4
+  [60] .strtab           STRTAB          00000000 001388 0000dc 00      0   0  1
+  [61] .shstrtab         STRTAB          00000000 001464 000618 00      0   0  1
 Key to Flags:
   W (write), A (alloc), X (execute), M (merge), S (strings), I (info),
   L (link order), O (extra OS processing required), G (group), T (TLS),

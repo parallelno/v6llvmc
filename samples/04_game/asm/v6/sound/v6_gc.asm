@@ -17,6 +17,7 @@
 .include "asm/v6/sound/v6_gc_consts.asm"
 .include "asm/v6/sound/v6_gc_runtime_data.asm"
 
+.global v6_gc_init_song
 .global v6_gc_start
 
 setting_music:
@@ -52,7 +53,7 @@ v6_gc_init_song:
 			push h
 			; hl - points to the song data
 			lxi d, _v6_gc_buffer
-			dad d
+;			dad d
 			; hl - absolute _v6_gc_buffer ptr
 			mov a, h
 			sta v6_gc_buffer_ptr0 + 1
