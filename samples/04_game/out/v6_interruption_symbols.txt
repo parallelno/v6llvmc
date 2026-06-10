@@ -1,5 +1,5 @@
 
-Symbol table '.symtab' contains 48 entries:
+Symbol table '.symtab' contains 43 entries:
    Num:    Value  Size Type    Bind   Vis       Ndx Name
      0: 00000000     0 NOTYPE  LOCAL  DEFAULT   UND 
      1: 00000000     0 SECTION LOCAL  DEFAULT     1 .text
@@ -30,22 +30,17 @@ Symbol table '.symtab' contains 48 entries:
     26: 00000000     0 SECTION LOCAL  DEFAULT    26 .text.controls_joy_check
     27: 00000000     0 SECTION LOCAL  DEFAULT    27 .text.controls_get_preset
     28: 00000000     0 SECTION LOCAL  DEFAULT    28 .text.controls_flip_preset
-    29: 00000000     0 SECTION LOCAL  DEFAULT    29 .bss.v6_gc_task_sps
-    30: 00000000     0 SECTION LOCAL  DEFAULT    30 .bss.v6_gc_current_task_spp
-    31: 00000000     0 SECTION LOCAL  DEFAULT    31 .bss.v6_gc_buffer_idx
-    32: 00000000     0 SECTION LOCAL  DEFAULT    32 .bss.v6_song_reg_data_ptrs_end
-    33: 00000000     0 SECTION LOCAL  DEFAULT    33 .data.ints_per_sec_counter
-    34: 00000000     0 SECTION LOCAL  DEFAULT    34 .data.game_updates_required
-    35: 00000386     0 FUNC    GLOBAL DEFAULT     1 v6_interruption
-    36: 000003d0     0 NOTYPE  GLOBAL DEFAULT     1 v6_game_draw_counter
-    37: 000003a7     0 NOTYPE  GLOBAL DEFAULT     1 v6_palette_update_request
-    38: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND v6_palette
-    39: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND v6_scr_offset_y
-    40: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND song01_ram_disk_m
-    41: 00000000     0 NOTYPE  GLOBAL DEFAULT    20 v6_action_code
-    42: 00000000     0 NOTYPE  GLOBAL DEFAULT    29 v6_gc_task_sps
-    43: 00000061     0 FUNC    GLOBAL DEFAULT     1 v6_gc_init_song
-    44: 0000008d     0 FUNC    GLOBAL DEFAULT     1 v6_gc_start
-    45: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND _v6_gc_buffer
-    46: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND _v6_gc_task_stack_end
-    47: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND v6_ram_disk_mode
+    29: 00000000     0 SECTION LOCAL  DEFAULT    29 .data.v6_gc_task_sps
+    30: 00000000     0 SECTION LOCAL  DEFAULT    30 .data.ints_per_sec_counter
+    31: 00000000     0 SECTION LOCAL  DEFAULT    31 .data.game_updates_required
+    32: 00000000     0 SECTION LOCAL  DEFAULT    32 .data.v6_ram_disk_mode
+    33: 00000388     0 FUNC    GLOBAL DEFAULT     1 v6_interruption
+    34: 000003d2     0 NOTYPE  GLOBAL DEFAULT     1 v6_game_draw_counter
+    35: 000003a9     0 NOTYPE  GLOBAL DEFAULT     1 v6_palette_update_request
+    36: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND v6_palette
+    37: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND v6_scr_offset_y
+    38: 00000000     0 NOTYPE  GLOBAL DEFAULT    20 v6_action_code
+    39: 00000061     0 FUNC    GLOBAL DEFAULT     1 v6_gc_init_song
+    40: 0000008f     0 FUNC    GLOBAL DEFAULT     1 v6_gc_start
+    41: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND _v6_gc_buffer
+    42: 00000000     0 NOTYPE  GLOBAL DEFAULT   UND _v6_gc_task_stack_end

@@ -1,46 +1,5 @@
 {
-    "breakpoints": [
-        {
-            "addr": "0x01CC",
-            "autoDel": false,
-            "comment": "v6_gc_start",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 1,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x01A1",
-            "autoDel": false,
-            "comment": "v6_gc_init_song",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 1,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x0100",
-            "autoDel": false,
-            "comment": "",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 1,
-            "value": "0x00"
-        },
-        {
-            "addr": "0x01FD",
-            "autoDel": false,
-            "comment": "v6_gc_tasks_init",
-            "cond": "=ANY",
-            "memPages": 4294967295,
-            "operand": "A",
-            "status": 1,
-            "value": "0x00"
-        }
-    ],
+    "breakpoints": null,
     "codePerfs": null,
     "comments": null,
     "consts": null,

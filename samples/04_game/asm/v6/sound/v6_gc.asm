@@ -31,7 +31,11 @@ v6_gc_init:
 ; init a new song
 ; hl - the song reg ptrs (v6_gc_ay_reg_data_ptrs)
 ; de - the song data
+; a - song data ram-disk access cmd
 v6_gc_init_song:
+			; store the command to be used in the interruption routine
+			sta v6_song_ram_disk_m
+
 			push h
 			; store the end of the array of ptrs to the song reg data
 			lxi b, GC_TASKS * ADDR_LEN

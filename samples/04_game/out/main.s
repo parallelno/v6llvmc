@@ -826,6 +826,7 @@ main:                                   ; @main
 	STA	v6_palette_update_request
 	LXI	H, song01_ay_reg_data_ptrs
 	LXI	D, _v6_gc_buffer
+	XRA	A
 	CALL	v6_gc_init_song
 	CALL	v6_gc_start
 .LBB23_1:                               ; =>This Inner Loop Header: Depth=1
@@ -843,10 +844,6 @@ v6_palette:
 	.section	.bss,"aw",@nobits
 	.globl	v6_scr_offset_y                 ; @v6_scr_offset_y
 v6_scr_offset_y:
-	DB	0                               ; 0x0
-
-	.globl	v6_ram_disk_mode                ; @v6_ram_disk_mode
-v6_ram_disk_mode:
 	DB	0                               ; 0x0
 
 	.globl	v6_game_updates_required        ; @v6_game_updates_required

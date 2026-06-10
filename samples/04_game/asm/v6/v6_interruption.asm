@@ -3,7 +3,6 @@
 .global v6_palette_update_request
 .global v6_palette
 .global v6_scr_offset_y
-.global song01_ram_disk_m
 
 
 .include "asm/v6/v6_macros.asm"
@@ -102,7 +101,7 @@ interruption_no_fps_update:
 			;================================================================
 			; music update
 			;================================================================
-			lda song01_ram_disk_m
+			lda v6_song_ram_disk_m
 			CALL_RAM_DISK_FUNC_BANK_NO_RESTORE(v6_sound_update)
 
 			pop d
@@ -140,4 +139,10 @@ v6_palette_update_request = palette_update_request_ + 1
 ; Checked and decremented in the game update.
 game_updates_required:
 			.byte NULL
+.endopt
+
+; Restores the RAM disk mode after the interruption routine.
+.opt
+v6_ram_disk_mode:
+			.byte RAM_DISK_OFF_CMD
 .endopt

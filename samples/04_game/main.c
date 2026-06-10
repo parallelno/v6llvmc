@@ -22,7 +22,7 @@
 
 extern void v6_interruption();
 V6C_NOINLINE_ASM_EXTERN
-extern void v6_gc_init_song(uint8_t* ay_reg_data_ptrs, uint8_t* song_data);
+extern void v6_gc_init_song(uint8_t* ay_reg_data_ptrs, uint8_t* song_data, uint8_t ram_disk_mode);
 V6C_NOINLINE_ASM_EXTERN
 extern void v6_gc_start();
 
@@ -34,7 +34,6 @@ uint8_t v6_palette[16] = {
 };
 
 uint8_t v6_scr_offset_y = 0;
-uint8_t v6_ram_disk_mode = 0;
 uint8_t v6_game_updates_required = 0;
 extern uint8_t v6_palette_update_request;
 extern uint16_t v6_action_code;
@@ -95,7 +94,7 @@ void main() {
     //memset(SCR_BUFF0_PTR, 0x00, SCR_BUFF_LEN * 4);
 
     //draw();
-    v6_gc_init_song(song01_ay_reg_data_ptrs, _v6_gc_buffer);
+    v6_gc_init_song(song01_ay_reg_data_ptrs, _v6_gc_buffer, RAM_DISK_OFF_CMD);
     v6_gc_start();
 
     while(true){

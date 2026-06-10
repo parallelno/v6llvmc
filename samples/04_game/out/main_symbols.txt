@@ -1,5 +1,5 @@
 
-Symbol table '.symtab' contains 26 entries:
+Symbol table '.symtab' contains 24 entries:
    Num:    Value  Size Type    Bind   Vis       Ndx Name
      0: 00000000     0 NOTYPE  LOCAL  DEFAULT   UND 
      1: 0000010a     0 NOTYPE  LOCAL  DEFAULT     1 _crt0_bss_loop
@@ -9,21 +9,19 @@ Symbol table '.symtab' contains 26 entries:
      5: 00000100     0 NOTYPE  GLOBAL DEFAULT     1 _start
      6: 00008000     0 NOTYPE  GLOBAL DEFAULT   ABS __stack_top
      7: 0000375f     0 NOTYPE  GLOBAL DEFAULT     2 __bss_start
-     8: 00003785     0 NOTYPE  GLOBAL DEFAULT     3 __bss_end
+     8: 00003762     0 NOTYPE  GLOBAL DEFAULT     3 __bss_end
      9: 0000011f     0 NOTYPE  GLOBAL DEFAULT     1 main
-    10: 000004c6     0 FUNC    GLOBAL DEFAULT     1 v6_interruption
-    11: 000004e7     0 NOTYPE  GLOBAL DEFAULT     1 v6_palette_update_request
+    10: 000004c9     0 FUNC    GLOBAL DEFAULT     1 v6_interruption
+    11: 000004ea     0 NOTYPE  GLOBAL DEFAULT     1 v6_palette_update_request
     12: 00003743     0 NOTYPE  GLOBAL DEFAULT     2 song01_ay_reg_data_ptrs
     13: 00000700     0 NOTYPE  GLOBAL DEFAULT     2 _v6_gc_buffer
-    14: 000001a1     0 FUNC    GLOBAL DEFAULT     1 v6_gc_init_song
-    15: 000001cd     0 FUNC    GLOBAL DEFAULT     1 v6_gc_start
+    14: 000001a2     0 FUNC    GLOBAL DEFAULT     1 v6_gc_init_song
+    15: 000001d0     0 FUNC    GLOBAL DEFAULT     1 v6_gc_start
     16: 00000600     0 NOTYPE  GLOBAL DEFAULT     2 v6_palette
     17: 0000375f     0 NOTYPE  GLOBAL DEFAULT     3 v6_scr_offset_y
-    18: 00003760     0 NOTYPE  GLOBAL DEFAULT     3 v6_ram_disk_mode
-    19: 00003761     0 NOTYPE  GLOBAL DEFAULT     3 v6_game_updates_required
-    20: 00003762     0 NOTYPE  GLOBAL DEFAULT     3 song01_ram_disk_m
-    21: 00000510     0 NOTYPE  GLOBAL DEFAULT     1 v6_game_draw_counter
-    22: 00000612     0 NOTYPE  GLOBAL DEFAULT     2 v6_action_code
-    23: 00003763     0 NOTYPE  GLOBAL DEFAULT     3 v6_gc_task_sps
-    24: 000015e0     0 NOTYPE  GLOBAL DEFAULT     2 _v6_gc_task_stack_end
-    25: 000015e0     0 NOTYPE  GLOBAL DEFAULT     2 _song01_data
+    18: 00003760     0 NOTYPE  GLOBAL DEFAULT     3 v6_game_updates_required
+    19: 00003761     0 NOTYPE  GLOBAL DEFAULT     3 song01_ram_disk_m
+    20: 00000513     0 NOTYPE  GLOBAL DEFAULT     1 v6_game_draw_counter
+    21: 00000612     0 NOTYPE  GLOBAL DEFAULT     2 v6_action_code
+    22: 00000ee0     0 NOTYPE  GLOBAL DEFAULT   ABS _v6_gc_task_stack_end
+    23: 000015e0     0 NOTYPE  GLOBAL DEFAULT     2 _song01_data
