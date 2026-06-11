@@ -2,7 +2,9 @@
  *
  * Used by clang's V6C driver as the default `-T` argument for ld.lld.
  * The user can override it with their own `-T script.ld`, or tweak
- * specific symbols with e.g. `-Wl,--defsym=__stack_top=0xF000`.
+ * specific symbols with e.g.:
+ *   -Wl,--defsym=__stack_top=0xF000   (move initial SP)
+ *   -Wl,--defsym=__entry=myStart      (use a function other than `main`)
  *
  * Memory map:
  *   0x0000 .. 0x00FF  - reserved (V6C boot vector area)
@@ -25,4 +27,7 @@ SECTIONS {
   .bss    : { *(.bss* COMMON) }
   __bss_end = .;
   __stack_top = 0x0000;
+  /* Default C entry alias.  Override with -Wl,--defsym=__entry=myStart.
+   * PROVIDE is a no-op when --defsym already defines __entry. */
+  PROVIDE(__entry = main);
 }

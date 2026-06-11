@@ -285,6 +285,21 @@ assemble crt0.s with scripts/build_v6c_runtime.ps1, or pass
 -nostartfiles to opt out'
 ```
 
+### Overriding the C Entry Function
+
+By default `crt0` calls `main`. The V6C linker script provides this
+default via `PROVIDE(__entry = main);` — a no-op when `--defsym` already
+defines `__entry`. To call a different function instead:
+
+```bash
+clang -target i8080-unknown-v6c -O2 -Wl,--defsym=__entry=myStart \
+      main.c -o out.rom
+```
+
+This is analogous to `--defsym=__stack_top=ADDR` for the stack pointer.
+No `-nostartfiles` or other workaround is required — crt0 still runs,
+sets up the stack, zeroes `.bss`, and then transfers control to `myStart`.
+
 The driver searches two locations (see
 `clang/lib/Driver/ToolChains/V6C.cpp` → `findV6CRuntimeFile`):
 

@@ -206,6 +206,14 @@ llvm-build/bin/clang -target i8080-unknown-v6c -O2 \
 `--defsym=__stack_top=ADDR` overrides the linker-script default (`0x0000`).
 `crt0` will execute `LXI SP, ADDR` as its very first instruction.
 
+To use a function other than `main` as the C entry point, add `--defsym=__entry`:
+```bash
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 \
+    -Wl,--defsym=__entry=myStart input.c -o output.rom
+```
+`--defsym=__entry=NAME` overrides the `PROVIDE(__entry = main)` default in
+`v6c.ld`. No driver change is needed — `--defsym` is already forwarded.
+
 ### Intel HEX Format
 
 Standalone conversion from flat binary to Intel HEX:

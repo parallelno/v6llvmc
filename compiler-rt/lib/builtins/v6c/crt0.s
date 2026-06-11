@@ -4,18 +4,23 @@
 ; (clang/lib/Driver/ToolChains/V6C/v6c.ld).
 ;
 ; Responsibilities:
-;   1. Set SP = __stack_top so PUSH wraps to 0xFFFE on first use.
+;   1. Set SP = __stack_top
 ;   2. Zero [__bss_start, __bss_end).
-;   3. CALL main.
+;   3. CALL __entry  (defaults to `main`; override with --defsym=__entry=NAME).
 ;   4. HLT on return (no exit syscall on bare V6C).
 ;
 ; Symbols supplied by the linker script:
 ;   __stack_top  - initial SP value (default 0x0000 -> first PUSH lands at 0xFFFE)
 ;   __bss_start  - first byte of .bss (inclusive)
 ;   __bss_end    - one-past-last byte of .bss (exclusive)
+;   __entry      - C entry point alias (default: main).
+;                  Override at link time: -Wl,--defsym=__entry=myStart
+;                  The PROVIDE in v6c.ld makes __entry = main unless --defsym
+;                  defines it first.
 ;
 ; Symbol supplied by user code:
-;   main         - C entry point, normal V6C calling convention
+;   main (or the function named by __entry) - C entry point, normal V6C
+;                  calling convention
 ;
 ; Calling convention reminder (V6C_CConv):
 ;   main's return value lands in A (i8) or HL (i16); ignored here.
@@ -43,7 +48,7 @@ _crt0_bss_step:
     JMP _crt0_bss_loop
 _crt0_bss_done:
 
-    CALL main                ; Run user code
+    CALL __entry             ; Run user entry (default: main; override: --defsym=__entry=NAME)
 
     DI                       ; Disable interrupts before halting
     HLT                      ; Stop the CPU on return

@@ -52,7 +52,7 @@ To relocate `.text` to a different base, override the script base via
 
 ### Overriding the Initial Stack Pointer
 
-`crt0` sets `SP = __stack_top` before calling `main`. The default value
+`crt0` sets `SP = __stack_top` before calling `__entry`. The default value
 `0x0000` causes the first `PUSH` to wrap SP to `0xFFFE` (top of RAM).
 To place the stack elsewhere, override the symbol at link time:
 
@@ -64,6 +64,20 @@ llvm-build/bin/clang -target i8080-unknown-v6c -O2 \
 `-Wl,` forwards the flag to `ld.lld`; `--defsym` overrides the value
 defined in `v6c.ld`. The new SP takes effect at the very first instruction
 of `_start` — before any C code runs.
+
+### Overriding the C Entry Function
+
+`crt0` calls `__entry` instead of hardcoding `main`. The linker script
+provides the default via `PROVIDE(__entry = main);`, which is a no-op when
+`--defsym` already defines `__entry`. To use a different function name:
+
+```bash
+llvm-build/bin/clang -target i8080-unknown-v6c -O2 \
+    -Wl,--defsym=__entry=myStart input.c -o output.elf
+```
+
+The user-supplied function (`myStart` here) must match the V6C calling
+convention and return `i8` or `i16`; the return value is ignored by crt0.
 
 ## Supported Type Widths
 
@@ -114,7 +128,7 @@ rationale.
 
 | File | Symbol | Description |
 |------|--------|-------------|
-| `crt0.s` | `_start` | Sets `SP = __stack_top` (default `0x0000` → first PUSH wraps to `0xFFFE`), zeros `[__bss_start, __bss_end)`, calls `main`, then `HLT`. Placed in `.text._start` so the linker script (`v6c.ld`) pins it at `0x0100`. |
+| `crt0.s` | `_start` | Sets `SP = __stack_top` (default `0x0000` → first PUSH wraps to `0xFFFE`), zeros `[__bss_start, __bss_end)`, calls `__entry` (default: `main`), then `HLT`. Placed in `.text._start` so the linker script (`v6c.ld`) pins it at `0x0100`. |
 
 ### Arithmetic (provided by `v6c_arith.h`, auto-included)
 
