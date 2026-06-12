@@ -16,6 +16,7 @@
 #include <v6c.h>
 #include <v6c_interrupt.h>
 #include <v6c_consts.h>
+#include <v6c_display.h>
 #include <v6c_draw.h>
 #include <v6c_math.h>
 
