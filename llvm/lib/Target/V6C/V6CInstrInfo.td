@@ -609,10 +609,23 @@ def NOP : V6CInstImplied<0x00, (outs), (ins), "NOP", []>;
 let hasSideEffects = 1 in
 def HLT : V6CInstImplied<0x76, (outs), (ins), "HLT", []>;
 
-// CMA — Complement A
+// CMA — Complement A.
+// NOTE: do NOT attach the `(not i8:$src)` pattern directly to this tied
+// Acc-in/Acc-out instruction.  Because Acc is a subclass of GR8, matching a
+// `not` whose value is also used elsewhere would *narrow* that value's vreg
+// to the Acc class (register A only) for its entire live range instead of
+// inserting a copy.  If another A-resident value (e.g. an LDA result feeding
+// ANA/ORA) is live across the complement, both end up pinned to A at the same
+// instruction and register allocation fails with "ran out of registers"
+// (e.g. `v &= ~mask` where v is loaded once and live across both branches).
+// Select `not` through COPY_TO_REGCLASS instead: the source and result live
+// in GR8 and only a short-lived Acc temp crosses the CMA.  The coalescer
+// removes the copies whenever the value is already in A.
 let Constraints = "$dst = $src" in
-def CMA : V6CInstImplied<0x2F, (outs Acc:$dst), (ins Acc:$src), "CMA",
-    [(set i8:$dst, (not i8:$src))]>;
+def CMA : V6CInstImplied<0x2F, (outs Acc:$dst), (ins Acc:$src), "CMA", []>;
+
+def : Pat<(not i8:$src),
+          (COPY_TO_REGCLASS (CMA (COPY_TO_REGCLASS GR8:$src, Acc)), GR8)>;
 
 // STC — Set carry flag
 let Defs = [FLAGS] in
