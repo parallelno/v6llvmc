@@ -94,6 +94,14 @@ V6CTargetLowering::V6CTargetLowering(const V6CTargetMachine &TM,
   // `BR_CC <cond> SETNE 0`, which the custom BR_CC lowering handles.
   setOperationAction(ISD::BRCOND,    MVT::Other, Expand);
 
+  // No jump-table or indirect-branch support: the i8080 has PCHL but the
+  // backend provides no br_jt / brind selection pattern. Marking both
+  // BR_JT and BRIND non-legal makes TargetLowering::areJTsAllowed() return
+  // false, so switch statements are lowered to comparison-and-branch
+  // chains instead of jump tables (avoids "Cannot select: br_jt").
+  setOperationAction(ISD::BR_JT, MVT::Other, Expand);
+  setOperationAction(ISD::BRIND, MVT::Other, Expand);
+
   // O75 Phase B: Custom-lower i8 ADD/SUB/AND/OR/XOR to flag-producing
   // V6CISD::*F nodes so a downstream BR_CC/SELECT_CC against zero can
   // consume the flags directly (no redundant CMP/CPI).
