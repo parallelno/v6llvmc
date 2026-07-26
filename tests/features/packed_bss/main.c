@@ -22,7 +22,6 @@ int main(void) {
     ok = ok && filler_block[0] == 0x11 && filler_block[39] == 0x12 &&
          anchor_block[0] == 0x21 && anchor_block[299] == 0x22 &&
          window_block[0] == 0x31 && window_block[199] == 0x32;
-    unsigned char result = ok ? 0x5A : 0xEE;
-    __asm__ volatile("OUT 0xED" : : "a"(result));
+    __builtin_v6c_out(0xED, ok ? 0x5A : 0xEE);
     return 0;
 }

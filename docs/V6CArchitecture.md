@@ -38,9 +38,9 @@ also defines the symbols `__bss_start`, `__bss_end`, and
        │  .text           │
        │  .rodata         │
        │  .data           │
-       │  .bss.pack       │  ← linker-packed zero-initialized blocks
-       │  .bss            │  ← __bss_start ... __bss_end (zero-initialized
-       │                  │     by crt0)
+       │  .bss.pack       │  ← __bss_start; linker-packed BSS blocks
+       │  .bss            │  ← ordinary BSS data (no bytes added to ROM/COM)
+       │                  │  ← __bss_end; .bss.pack & .bss sections zeroed by crt0
        │  (heap ↑)        │
        │       ...        │
        │  (stack ↓)       │  ← grows downward from 0xFFFE
