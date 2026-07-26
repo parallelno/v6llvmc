@@ -90,6 +90,9 @@ xcopy /Y /I "$root\clang\include\clang\Basic\TargetBuiltins.h" "$root\llvm-proje
 xcopy /Y /I "$root\llvm\include\llvm\IR\IntrinsicsV6C.td" "$root\llvm-project\llvm\include\llvm\IR\" > $null
 xcopy /Y /I "$root\llvm\include\llvm\IR\Intrinsics.td" "$root\llvm-project\llvm\include\llvm\IR\" > $null
 xcopy /Y /I "$root\llvm\include\llvm\IR\CMakeLists.txt" "$root\llvm-project\llvm\include\llvm\IR\" > $null
+# xcopy preserves mirror timestamps. Touch the root definition so an existing
+# build tree regenerates IntrinsicImpl.inc after reverse population.
+(Get-Item "$root\llvm-project\llvm\include\llvm\IR\Intrinsics.td").LastWriteTime = Get-Date
 # Function.cpp (IntrinsicsV6C.h include)
 xcopy /Y /I "$root\llvm\lib\IR\Function.cpp" "$root\llvm-project\llvm\lib\IR\" > $null
 Write-Host "  [OK] Intrinsics (IntrinsicsV6C.td, BuiltinsV6C.def, Function.cpp)"
@@ -112,12 +115,28 @@ xcopy /Y /I "$root\lld\ELF\Target.cpp" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\Target.h" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\Driver.cpp" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\CMakeLists.txt" "$root\llvm-project\lld\ELF\" > $null
-Write-Host "  [OK] lld/ELF V6C backend (V6C.cpp, Target.cpp/h, Driver.cpp, CMakeLists.txt)"
+xcopy /Y /I "$root\lld\ELF\LinkerScript.cpp" "$root\llvm-project\lld\ELF\" > $null
+xcopy /Y /I "$root\lld\ELF\V6CPackedSections.cpp" "$root\llvm-project\lld\ELF\" > $null
+xcopy /Y /I "$root\lld\ELF\V6CPackedSections.h" "$root\llvm-project\lld\ELF\" > $null
+Write-Host "  [OK] lld/ELF V6C backend and packed-section layout"
+
+# V6C packed-section unit tests
+if (-not (Test-Path "$root\llvm-project\lld\unittests\AsLibELF")) { New-Item -ItemType Directory -Path "$root\llvm-project\lld\unittests\AsLibELF" -Force > $null }
+xcopy /Y /I "$root\lld\unittests\AsLibELF\CMakeLists.txt" "$root\llvm-project\lld\unittests\AsLibELF\" > $null
+xcopy /Y /I "$root\lld\unittests\AsLibELF\V6CPackedSectionsTest.cpp" "$root\llvm-project\lld\unittests\AsLibELF\" > $null
+Write-Host "  [OK] lld V6C packed-section unit tests"
 
 # V6C resource-dir headers (string.h, stdlib.h, v6c.h)
-robocopy "$root\clang\lib\Driver\ToolChains\V6C\include" "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\include" /MIR /NFL /NDL /NJH /NJS > $null
-Write-Host "  [OK] V6C resource-dir headers (string.h, stdlib.h, v6c.h)"
+$resourceInclude = "$root\clang\lib\Driver\ToolChains\V6C\include"
+if (Test-Path $resourceInclude) {
+    robocopy $resourceInclude "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\include" /MIR /NFL /NDL /NJH /NJS > $null
+    if ($LASTEXITCODE -gt 7) { throw "Failed to populate V6C resource headers (robocopy exit $LASTEXITCODE)" }
+    Write-Host "  [OK] V6C resource-dir headers (string.h, stdlib.h, v6c.h)"
+} else {
+    Write-Host "  [SKIP] Optional V6C resource-dir headers are not present"
+}
 
 Write-Host ""
 Write-Host "Populate complete. llvm-project/ is ready to build."
 Write-Host "Next: cmake + ninja (see docs/V6CBuildGuide.md)"
+$global:LASTEXITCODE = 0

@@ -59,6 +59,7 @@ add_lld_library(lldELF
   SyntheticSections.cpp
   Target.cpp
   Thunks.cpp
+  V6CPackedSections.cpp
   Writer.cpp
 
   LINK_COMPONENTS

@@ -80,6 +80,15 @@ def main():
             )
             results["emulator"] = ok
 
+        packed_bss_test = root / "tests" / "features" / "packed_bss" / "run.py"
+        if packed_bss_test.exists():
+            ok = run_suite(
+                "Packed BSS End-to-End",
+                [sys.executable, str(packed_bss_test)],
+                root
+            )
+            results["packed_bss"] = ok
+
         # Benchmark correctness suite — checks checksums only (cycles are informational).
         # Skipped with --no-benchmarks because each run can take 2+ minutes.
         bench_script = root / "tests" / "benchmarks_c" / "run_benchmarks.py"

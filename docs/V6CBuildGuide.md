@@ -181,6 +181,42 @@ llvm-build/bin/ld.lld -m elf32v6c \
 llvm-build/bin/llvm-objcopy -O binary out.elf out.rom
 ```
 
+### Packed BSS Sections
+
+V6C `ld.lld` recognizes three exact input section names for compact runtime
+storage. Emit every logical block as an independent writable, allocatable
+`SHT_NOBITS` section with alignment 1. LLVM MC can create repeated exact-name
+sections with `unique`:
+
+```asm
+.section .bss.pack.window,"aw",@nobits,unique,1
+window_block:
+    .zero 64
+```
+
+Use `.bss.pack.align` for blocks that must start on a 256-byte boundary,
+`.bss.pack.window` for blocks of at most 256 bytes that must not cross a page,
+and `.bss.pack` for unrestricted filler blocks. The default `v6c.ld` collects
+all three and places the arena within the crt0 BSS zeroing range.
+
+A custom linker script must preserve the output section name and collection
+order so the specialized allocator is selected:
+
+```ld
+__bss_start = .;
+.bss.pack : {
+    *(.bss.pack.align)
+    *(.bss.pack.window)
+    *(.bss.pack)
+}
+.bss : { *(.bss .bss.* COMMON) }
+__bss_end = .;
+```
+
+Link with `--gc-sections` to discard each unreferenced packed block. Packed
+sections reserve runtime addresses but, as `SHT_NOBITS`, do not add bytes to
+the ROM or COM image.
+
 ### Start Address
 
 The default load address is `0x0100`, set by the `v6c.ld` linker script

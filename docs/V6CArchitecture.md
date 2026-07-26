@@ -26,8 +26,9 @@ e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8
 
 The canonical layout is set by `clang/lib/Driver/ToolChains/V6C/v6c.ld`,
 which clang passes to `ld.lld` automatically. Sections are emitted in
-the order `.text`, `.rodata`, `.data`, `.bss`. The linker also defines
-the symbols `__bss_start`, `__bss_end`, and `__stack_top = 0x0000`.
+the order `.text`, `.rodata`, `.data`, `.bss.pack`, `.bss`. The linker
+also defines the symbols `__bss_start`, `__bss_end`, and
+`__stack_top = 0x0000`.
 
 ```
 0x0000 ┌──────────────────┐  ← __stack_top (first PUSH wraps SP to 0xFFFE)
@@ -37,6 +38,7 @@ the symbols `__bss_start`, `__bss_end`, and `__stack_top = 0x0000`.
        │  .text           │
        │  .rodata         │
        │  .data           │
+       │  .bss.pack       │  ← linker-packed zero-initialized blocks
        │  .bss            │  ← __bss_start ... __bss_end (zero-initialized
        │                  │     by crt0)
        │  (heap ↑)        │
@@ -49,6 +51,23 @@ the symbols `__bss_start`, `__bss_end`, and `__stack_top = 0x0000`.
 
 To relocate `.text` to a different base, override the script base via
 `-Wl,-Ttext=0xNNNN` or pass a custom script with `-Wl,-T,my.ld`.
+
+### Packed BSS Blocks
+
+The V6C linker packs independent zero-initialized runtime blocks in the
+`.bss.pack` output section. Input section names select each block's rule:
+
+| Input section | Placement rule |
+|---------------|----------------|
+| `.bss.pack` | Filler; may start anywhere and cross a 256-byte page boundary. |
+| `.bss.pack.align` | Anchor; starts on a 256-byte page boundary. |
+| `.bss.pack.window` | Window; at most 256 bytes and contained in one 256-byte page. |
+
+Each logical block must be a separate writable, allocatable `SHT_NOBITS`
+input section with alignment 1. Normal linker garbage collection applies per
+block, so an unreferenced block is discarded with `--gc-sections`. The packed
+arena remains inside `[__bss_start, __bss_end)` and is zeroed by crt0 without
+occupying bytes in a flat ROM image.
 
 ### Overriding the Initial Stack Pointer
 

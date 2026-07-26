@@ -77,10 +77,22 @@ xcopy /Y /I "$root\llvm-project\lld\ELF\Target.cpp" "$root\lld\ELF\" > $null
 xcopy /Y /I "$root\llvm-project\lld\ELF\Target.h" "$root\lld\ELF\" > $null
 xcopy /Y /I "$root\llvm-project\lld\ELF\Driver.cpp" "$root\lld\ELF\" > $null
 xcopy /Y /I "$root\llvm-project\lld\ELF\CMakeLists.txt" "$root\lld\ELF\" > $null
+xcopy /Y /I "$root\llvm-project\lld\ELF\LinkerScript.cpp" "$root\lld\ELF\" > $null
+xcopy /Y /I "$root\llvm-project\lld\ELF\V6CPackedSections.cpp" "$root\lld\ELF\" > $null
+xcopy /Y /I "$root\llvm-project\lld\ELF\V6CPackedSections.h" "$root\lld\ELF\" > $null
+# V6C packed-section unit tests
+if (-not (Test-Path "$root\lld\unittests\AsLibELF")) { New-Item -ItemType Directory -Path "$root\lld\unittests\AsLibELF" -Force > $null }
+xcopy /Y /I "$root\llvm-project\lld\unittests\AsLibELF\CMakeLists.txt" "$root\lld\unittests\AsLibELF\" > $null
+xcopy /Y /I "$root\llvm-project\lld\unittests\AsLibELF\V6CPackedSectionsTest.cpp" "$root\lld\unittests\AsLibELF\" > $null
 # V6C default linker script (data resource for the driver)
 if (-not (Test-Path "$root\clang\lib\Driver\ToolChains\V6C")) { New-Item -ItemType Directory -Path "$root\clang\lib\Driver\ToolChains\V6C" -Force > $null }
 xcopy /Y /I "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\v6c.ld" "$root\clang\lib\Driver\ToolChains\V6C\" > $null
 # V6C resource-dir headers (string.h, stdlib.h, v6c.h)
-robocopy "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\include" "$root\clang\lib\Driver\ToolChains\V6C\include" /MIR /NFL /NDL /NJH /NJS > $null
+$resourceInclude = "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\include"
+if (Test-Path $resourceInclude) {
+	robocopy $resourceInclude "$root\clang\lib\Driver\ToolChains\V6C\include" /MIR /NFL /NDL /NJH /NJS > $null
+	if ($LASTEXITCODE -gt 7) { throw "Failed to mirror V6C resource headers (robocopy exit $LASTEXITCODE)" }
+}
 
 Write-Host "Mirror sync complete."
+$global:LASTEXITCODE = 0

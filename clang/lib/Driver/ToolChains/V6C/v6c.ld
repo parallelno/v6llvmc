@@ -8,7 +8,7 @@
  *
  * Memory map:
  *   0x0000 .. 0x00FF  - reserved (V6C boot vector area)
- *   0x0100 ..         - .text, .rodata, .data, .bss in that order
+ *   0x0100 ..         - .text, .rodata, .data, .bss.pack, .bss in that order
  *   __stack_top = 0x0000 - first PUSH wraps SP to 0xFFFE (top of RAM)
  *
  * crt0 places `_start` in `.text._start`, and the KEEP clause below
@@ -24,7 +24,12 @@ SECTIONS {
   .data   : { *(.data*) }
   . = ALIGN(1);
   __bss_start = .;
-  .bss    : { *(.bss* COMMON) }
+  .bss.pack : {
+    *(.bss.pack.align)
+    *(.bss.pack.window)
+    *(.bss.pack)
+  }
+  .bss    : { *(.bss .bss.* COMMON) }
   __bss_end = .;
   __stack_top = 0x0000;
   /* Default C entry alias.  Override with -Wl,--defsym=__entry=myStart.

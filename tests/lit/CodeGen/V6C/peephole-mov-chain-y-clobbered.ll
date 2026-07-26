@@ -27,15 +27,15 @@ target triple = "i8080-unknown-v6c"
 ; CHECK-LABEL:     main:
 ; CHECK-NOT:       LXI     {{[BD]}}, 0xb400
 ; CHECK:           MVI     A, 0xb4
-; CHECK-NEXT:      XRA     B
-; CHECK-NEXT:      MOV     B, A
+; CHECK-NEXT:      XRA     [[HI:[BH]]]
+; CHECK-NEXT:      MOV     [[HI]], A
 
 ; The expansion is independent of the peephole pass: same O93 form with it off.
 ; DISABLED-LABEL:  main:
 ; DISABLED-NOT:    LXI     {{[BD]}}, 0xb400
 ; DISABLED:        MVI     A, 0xb4
-; DISABLED-NEXT:   XRA     B
-; DISABLED-NEXT:   MOV     B, A
+; DISABLED-NEXT:   XRA     [[HI:[BH]]]
+; DISABLED-NEXT:   MOV     [[HI]], A
 
 define dso_local noundef i16 @main(i16 noundef %0, ptr nocapture noundef readnone %1) local_unnamed_addr {
   %3 = alloca i16, align 2
