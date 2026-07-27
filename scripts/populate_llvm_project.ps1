@@ -114,6 +114,9 @@ xcopy /Y /I "$root\lld\ELF\Arch\V6C.cpp" "$root\llvm-project\lld\ELF\Arch\" > $n
 xcopy /Y /I "$root\lld\ELF\Target.cpp" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\Target.h" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\Driver.cpp" "$root\llvm-project\lld\ELF\" > $null
+xcopy /Y /I "$root\lld\ELF\Config.h" "$root\llvm-project\lld\ELF\" > $null
+xcopy /Y /I "$root\lld\ELF\MapFile.cpp" "$root\llvm-project\lld\ELF\" > $null
+xcopy /Y /I "$root\lld\ELF\Options.td" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\CMakeLists.txt" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\LinkerScript.cpp" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\V6CPackedSections.cpp" "$root\llvm-project\lld\ELF\" > $null
