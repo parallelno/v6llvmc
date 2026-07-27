@@ -9,6 +9,10 @@ language and inline asm reference, see
 [V6CClangUsage.md](V6CClangUsage.md). For optimization-pass design
 details, see [V6COptimization.md](V6COptimization.md).
 
+For final-link outputs, including
+`-Wl,--v6c-constants-map,<path>` for global absolute assembler constants, see
+[V6CBuildGuide.md](V6CBuildGuide.md#final-constants-map).
+
 ## Recommended
 
 | Option | Effect |
