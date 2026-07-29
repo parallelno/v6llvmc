@@ -98,3 +98,10 @@ O63_split_spill_pseudo_flags.md
 **Deferred**:
 
 O57_shift_rotate_chaining.md
+
+### Tooling and debugger features
+
+- `plan_source_debug_metadata.md` - final ELF/DWARF contract, V6C
+	Clang/LLD enablement, artifact validation, and DAP source-to-address mapping.
+- `plan_v6asm_dwarf_debug_metadata.md` - separate upstream v6asm plan for
+	DWARF object output and direct-ROM debug companions.
