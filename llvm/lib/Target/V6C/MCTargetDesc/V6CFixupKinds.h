@@ -39,6 +39,7 @@ enum RelocType {
   R_V6C_16   = 2,   ///< 16-bit absolute address (little-endian)
   R_V6C_LO8  = 3,   ///< Low byte of 16-bit address
   R_V6C_HI8  = 4,   ///< High byte of 16-bit address
+  R_V6C_32   = 5,   ///< 32-bit absolute value (little-endian)
 };
 
 } // namespace V6C

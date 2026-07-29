@@ -29,6 +29,7 @@ V6CMCAsmInfo::V6CMCAsmInfo(const Triple &TT, const MCTargetOptions &Options) {
   AscizDirective = nullptr; // No null-terminated string directive.
   HasDotTypeDotSizeDirective = false;
   HasSingleParameterDotFile = false;
+  SupportsDebugInformation = true;
   IsLittleEndian = true;
 }
 

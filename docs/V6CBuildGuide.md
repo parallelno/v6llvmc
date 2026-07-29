@@ -164,6 +164,22 @@ llvm-build/bin/clang -target i8080-unknown-v6c -O2 input.c -o output.rom
 llvm-build/bin/clang -target i8080-unknown-v6c -O2 input.c -o output.elf
 ```
 
+### Debug ROM Companions
+
+Pass `-g -gdwarf-4` when producing a flat ROM to retain a sibling ELF with
+the final symbols and DWARF v4 line tables. The ROM is still derived from that
+same final ELF, so its runtime addresses and debug addresses agree.
+
+```bash
+llvm-build/bin/clang -target i8080-unknown-v6c -g -gdwarf-4 \
+    input.c -o output.rom
+# Produces output.rom and output.elf.
+```
+
+Use `output.elf` for source-to-address lookup and `output.rom` for the
+emulator. Non-debug flat-ROM builds retain the existing temporary-ELF flow and
+do not leave a companion artifact.
+
 For lower-level control (e.g. linking multiple objects with a custom
 linker script):
 

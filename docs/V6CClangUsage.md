@@ -266,6 +266,16 @@ Forced-live escapes when the relocation route is impractical:
 llvm-build/bin/clang -target i8080-unknown-v6c -O2 main.c -o out.rom
 ```
 
+For source debugging, add `-g -gdwarf-4`. A flat-ROM output retains a sibling
+final ELF containing the DWARF line tables and symbols; launch the emulator
+with the `.rom` and use the `.elf` as its debug companion.
+
+```bash
+llvm-build/bin/clang -target i8080-unknown-v6c -g -gdwarf-4 \
+    main.c -o out.rom
+# Produces out.rom and out.elf.
+```
+
 No `-nostartfiles`, `-nodefaultlibs`, or `-Wl,--defsym=_start=main`
 workaround is needed. `crt0.s` is assembled by the V6C MC AsmParser
 (Phase 3 of the asm-interop overhaul), and `_start` is the canonical

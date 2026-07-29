@@ -29,6 +29,20 @@ class V6CAsmBackend : public MCAsmBackend {
 public:
   V6CAsmBackend() : MCAsmBackend(llvm::endianness::little) {}
 
+  std::optional<MCFixupKind> getFixupKind(StringRef Name) const override {
+    if (Name == "R_V6C_8")
+      return FK_Data_1;
+    if (Name == "R_V6C_16")
+      return FK_Data_2;
+    if (Name == "R_V6C_32")
+      return FK_Data_4;
+    if (Name == "R_V6C_LO8")
+      return static_cast<MCFixupKind>(V6C::fixup_v6c_lo8);
+    if (Name == "R_V6C_HI8")
+      return static_cast<MCFixupKind>(V6C::fixup_v6c_hi8);
+    return std::nullopt;
+  }
+
   unsigned getNumFixupKinds() const override {
     return V6C::NumTargetFixupKinds;
   }
@@ -143,6 +157,8 @@ public:
     case FK_Data_2:
     case V6C::fixup_v6c_16:
       return V6C::R_V6C_16;
+    case FK_Data_4:
+      return V6C::R_V6C_32;
     case V6C::fixup_v6c_lo8:
       return V6C::R_V6C_LO8;
     case V6C::fixup_v6c_hi8:

@@ -103,5 +103,6 @@ O57_shift_rotate_chaining.md
 
 - `plan_source_debug_metadata.md` - final ELF/DWARF contract, V6C
 	Clang/LLD enablement, artifact validation, and DAP source-to-address mapping.
-- `plan_v6asm_dwarf_debug_metadata.md` - separate upstream v6asm plan for
-	DWARF object output and direct-ROM debug companions.
+- v6asm DWARF emission is packaged in `2026.07.29-6dab24c`. Mixed-language,
+	relocation-name, and adapter verification are tracked in
+	`plan_source_debug_metadata.md`.

@@ -169,13 +169,20 @@ void v6c::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddAllArgValues(CmdArgs, options::OPT_Wl_COMMA);
   Args.AddAllArgValues(CmdArgs, options::OPT_Xlinker);
 
-  // Linker output: if we'll run objcopy, link into a temp .elf;
-  // otherwise link directly to the final output.
+  // Linker output: flat debug builds retain a deterministic sibling ELF as
+  // their DWARF and symbol companion; non-debug ROM builds keep the existing
+  // temporary ELF behavior.
   const char *LinkOutput;
   if (ProduceFlat) {
-    SmallString<128> Stem(llvm::sys::path::stem(OutName));
-    std::string TmpPath = D.GetTemporaryPath(Stem, "elf");
-    LinkOutput = C.addTempFile(Args.MakeArgString(TmpPath));
+    if (Args.hasArg(options::OPT_g_Group)) {
+      SmallString<256> DebugELF(OutName);
+      llvm::sys::path::replace_extension(DebugELF, "elf");
+      LinkOutput = Args.MakeArgString(DebugELF);
+    } else {
+      SmallString<128> Stem(llvm::sys::path::stem(OutName));
+      std::string TmpPath = D.GetTemporaryPath(Stem, "elf");
+      LinkOutput = C.addTempFile(Args.MakeArgString(TmpPath));
+    }
   } else {
     LinkOutput = Output.getFilename();
   }

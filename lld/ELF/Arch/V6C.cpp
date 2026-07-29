@@ -19,6 +19,7 @@
 //   R_V6C_16  = 2   16-bit absolute address (little-endian)
 //   R_V6C_LO8 = 3   low byte of a 16-bit absolute address
 //   R_V6C_HI8 = 4   high byte of a 16-bit absolute address
+//   R_V6C_32  = 5   32-bit absolute value (little-endian)
 //
 //===----------------------------------------------------------------------===//
 
@@ -44,6 +45,7 @@ enum : uint32_t {
   R_V6C_16   = 2,
   R_V6C_LO8  = 3,
   R_V6C_HI8  = 4,
+  R_V6C_32   = 5,
 };
 
 namespace {
@@ -74,6 +76,7 @@ RelExpr V6C::getRelExpr(RelType type, const Symbol &s,
   switch (type) {
   case R_V6C_8:
   case R_V6C_16:
+  case R_V6C_32:
   case R_V6C_LO8:
   case R_V6C_HI8:
     return R_ABS;
@@ -95,6 +98,10 @@ void V6C::relocate(uint8_t *loc, const Relocation &rel, uint64_t val) const {
     // 16-bit absolute, little-endian. Accept either signed or unsigned 16-bit.
     checkIntUInt(loc, val, 16, rel);
     write16le(loc, val & 0xFFFF);
+    break;
+  case R_V6C_32:
+    checkIntUInt(loc, val, 32, rel);
+    write32le(loc, val);
     break;
   case R_V6C_LO8:
     // Low byte of a 16-bit absolute. No overflow check: explicit byte

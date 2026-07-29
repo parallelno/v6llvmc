@@ -70,6 +70,8 @@ xcopy /Y /I "$root\llvm-project\llvm\lib\CodeGen\MachineBlockPlacement.cpp" "$ro
 # O-LLD: ld.lld native linker integration
 # EM_V6C machine ID added to ELF.h
 xcopy /Y /I "$root\llvm-project\llvm\include\llvm\BinaryFormat\ELF.h" "$root\llvm\include\llvm\BinaryFormat\" > $null
+# V6C relocation type names used by llvm-readelf and object tooling.
+xcopy /Y /I "$root\llvm-project\llvm\lib\Object\ELF.cpp" "$root\llvm\lib\Object\" > $null
 # V6C lld backend (modeled on lld/ELF/Arch/MSP430.cpp)
 if (-not (Test-Path "$root\lld\ELF\Arch")) { New-Item -ItemType Directory -Path "$root\lld\ELF\Arch" -Force > $null }
 xcopy /Y /I "$root\llvm-project\lld\ELF\Arch\V6C.cpp" "$root\lld\ELF\Arch\" > $null

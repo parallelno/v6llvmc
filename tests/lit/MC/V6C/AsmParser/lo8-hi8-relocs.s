@@ -16,7 +16,7 @@ f:
 sym:
         .byte   0x42
 
-; CHECK:      Type: Unknown (4)
+; CHECK:      Type: R_V6C_HI8 (4)
 ; CHECK-NEXT: Symbol: {{.*}}
-; CHECK:      Type: Unknown (3)
+; CHECK:      Type: R_V6C_LO8 (3)
 ; CHECK-NEXT: Symbol: {{.*}}
