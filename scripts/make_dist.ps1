@@ -98,20 +98,7 @@ foreach ($exe in $LlvmExes) {
     }
 }
 
-# Pre-built reference tools (v6asm + v6emul + v6fdd ship as-is)
-$ToolsCopies = @(
-    @{ Src = 'tools\v6asm\v6asm.exe';  Dst = 'v6asm.exe'  },
-    @{ Src = 'tools\v6asm\v6fdd.exe';  Dst = 'v6fdd.exe'  },
-    @{ Src = 'tools\v6emul\v6emul.exe'; Dst = 'v6emul.exe' }
-)
-foreach ($c in $ToolsCopies) {
-    $src = Join-Path $repoRoot $c.Src
-    if (Test-Path $src) {
-        Copy-Item $src -Destination (Join-Path $StageBin $c.Dst)
-    } else {
-        Write-Warning "Skipping missing tool: $($c.Src)"
-    }
-}
+# Reference tools are installed separately and are not distributed with V6C.
 
 # ------------------------------------------- lib/clang/<ver>/v6c/v6c.ld
 $StageDriverDir = Join-Path $Stage "lib\clang\$ClangVer\v6c"

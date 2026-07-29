@@ -2,7 +2,7 @@
 // instructions: ADD/SUB/AND/OR/XOR/CMP M, MVI M, INR M, DCR M).
 //
 // Compile:
-//   tools\c8080\c8080.exe tests\features\41\c8080.c \
+//   %C8080% tests\features\41\c8080.c \
 //       -a tests\features\41\c8080.asm
 
 unsigned char add_m(unsigned char a, unsigned char *p) {

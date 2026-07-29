@@ -1,5 +1,5 @@
 // c8080 reference for O85 — TypeNarrowing: narrow i16 up-counter with arithmetic users.
-// Compiled with: tools\c8080\c8080.exe tests\features\67\c8080.c -a tests\features\67\c8080.asm
+// Compiled with: %C8080% tests\features\67\c8080.c -a tests\features\67\c8080.asm
 //
 // c8080 uses unsigned char (i8) naturally for loop counters, so its output
 // provides the reference for the optimal narrowed-counter instruction sequence.

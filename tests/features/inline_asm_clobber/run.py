@@ -28,7 +28,7 @@ BIN = ROOT / "llvm-build" / "bin"
 CLANG = BIN / "clang.exe"
 NM = BIN / "llvm-nm.exe"
 FILECHECK = BIN / "FileCheck.exe"
-V6EMUL = ROOT / "tools" / "v6emul" / "v6emul.exe"
+V6EMUL = os.environ.get("V6EMUL")
 
 ROM = HERE / "out.rom"
 ELF = HERE / "out.elf"
@@ -113,6 +113,8 @@ def step4_check_no_overspill() -> None:
 
 
 def main() -> int:
+    if not V6EMUL or not Path(V6EMUL).is_file():
+        raise RuntimeError("Set V6EMUL to the separately installed v6emul executable.")
     expected = (HERE / "expected.txt").read_text().strip()
 
     step0_assemble_crt0()

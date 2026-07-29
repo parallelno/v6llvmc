@@ -54,6 +54,3 @@ __pycache__/
 
 # temporary files
 temp/
-
-# z88dk C compiler directory. Too heavy to include in the repository.
-tools/z88dk/

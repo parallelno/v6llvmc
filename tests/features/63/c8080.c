@@ -5,7 +5,7 @@
 // single-consumer value.
 //
 // Compile:
-//   tools\c8080\c8080.exe tests\features\63\c8080.c -a tests\features\63\c8080.asm
+//   %C8080% tests\features\63\c8080.c -a tests\features\63\c8080.asm
 
 static int   acc_int;
 static char  acc_char;

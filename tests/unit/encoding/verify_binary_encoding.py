@@ -229,8 +229,12 @@ def main():
     root = find_project_root()
     parser = argparse.ArgumentParser(description='Verify V6C binary encoding')
     parser.add_argument('--llc', default=str(root / "llvm-build" / "bin" / "llc.exe"))
-    parser.add_argument('--v6asm', default=str(root / "tools" / "v6asm" / "v6asm.exe"))
+    parser.add_argument('--v6asm', default=os.environ.get("V6ASM"),
+                        help="Path to the separately installed v6asm executable")
     args = parser.parse_args()
+
+    if not args.v6asm:
+        parser.error("specify --v6asm or set V6ASM to the separately installed v6asm executable")
 
     passed = 0
     failed = 0

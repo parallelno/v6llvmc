@@ -27,11 +27,12 @@ ASM = REPO / "tests" / "benchmarks_c" / "asm"
 DOCS = REPO / "docs" / "benchmarks.md"
 
 V6C_CLANG = REPO / "llvm-build" / "bin" / "clang.exe"
-C8080 = REPO / "tools" / "c8080" / "c8080.exe"
-ZCC = REPO / "tools" / "z88dk" / "z88dk" / "bin" / "zcc.exe"
-ZCC_BIN = ZCC.parent
-ZCC_CFG = REPO / "tools" / "z88dk" / "z88dk" / "lib" / "config"
-V6EMUL = REPO / "tools" / "v6emul" / "v6emul.exe"
+C8080 = os.environ.get("C8080")
+V6EMUL = os.environ.get("V6EMUL")
+Z88DK = Path(os.environ["Z88DK"]) if os.environ.get("Z88DK") else None
+ZCC = Z88DK / "bin" / "zcc.exe" if Z88DK else None
+ZCC_BIN = ZCC.parent if ZCC else None
+ZCC_CFG = Z88DK / "lib" / "config" if Z88DK else None
 
 PROGRAMS = ["bsort", "sieve", "fib_crc", "fannkuch", "lfsr16"]
 EXPECTED = {"bsort": 0x98, "sieve": 0xEC, "fib_crc": 0x2B, "fannkuch": 0x10,
@@ -93,6 +94,8 @@ def make_z88dk_env() -> dict[str, str]:
 
 
 def probe_z88dk() -> str | None:
+    if Z88DK is None:
+        return "Z88DK is not configured; set it to the z88dk installation root"
     if not ZCC.exists():
         return f"{ZCC.name} not found"
     if not ZCC_CFG.is_dir():
@@ -224,6 +227,10 @@ def fmt_row(r: Result, baseline_cycles: int | None, md: bool = False) -> str:
 def main() -> int:
     BUILD.mkdir(exist_ok=True)
     ASM.mkdir(exist_ok=True)
+    for name, tool in (("C8080", C8080), ("V6EMUL", V6EMUL)):
+        if not tool or not Path(tool).is_file():
+            print(f"ERROR: set {name} to the separately installed executable", file=sys.stderr)
+            return 2
     print("Building and running benchmark matrix...\n")
 
     results: dict[tuple[str, str], Result] = {}

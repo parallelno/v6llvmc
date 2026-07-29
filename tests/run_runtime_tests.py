@@ -104,13 +104,30 @@ def run_test(asm_path, v6asm, v6emul, verbose=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Runtime library test runner")
+    parser.add_argument("--v6asm", default=os.environ.get("V6ASM"),
+                        help="Path to the separately installed v6asm executable")
+    parser.add_argument("--v6emul", default=os.environ.get("V6EMUL"),
+                        help="Path to the separately installed v6emul executable")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
     root = find_project_root()
     test_dir = root / "tests" / "runtime"
-    v6asm = str(root / "tools" / "v6asm" / "v6asm.exe")
-    v6emul = str(root / "tools" / "v6emul" / "v6emul.exe")
+    v6asm = args.v6asm
+    v6emul = args.v6emul
+
+    if not v6asm:
+        print("Error: specify --v6asm or set V6ASM to the separately installed v6asm executable")
+        return 1
+    if not Path(v6asm).is_file():
+        print(f"Error: v6asm not found at {v6asm}")
+        return 1
+    if not v6emul:
+        print("Error: specify --v6emul or set V6EMUL to the separately installed v6emul executable")
+        return 1
+    if not Path(v6emul).is_file():
+        print(f"Error: v6emul not found at {v6emul}")
+        return 1
 
     if not test_dir.exists():
         print(f"Error: test directory not found: {test_dir}")

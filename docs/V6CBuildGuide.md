@@ -15,14 +15,40 @@ cutting, see [V6CRelease.md](V6CRelease.md).
 - Ninja build system
 - C++17 compiler (GCC 11+, Clang 14+, or MSVC 2022+)
 - Python 3.8+ (for test runner)
+- [v6asm](https://github.com/parallelno/v6asm) installed separately (for
+    assembly-reference tests)
+- [v6emul](https://github.com/parallelno/v6emul) installed separately (for
+    execution tests)
+- [c8080](https://github.com/Aleksey-F-Morozov/c8080) installed separately
+    (for benchmarks)
+- [z88dk](https://github.com/z88dk/z88dk) installed separately (optional
+    benchmark comparator)
 
 ## Tool Dependencies
 
 | Tool | Location | Purpose |
 |------|----------|---------|
 | LLVM | `llvm-project/` (pinned `llvmorg-18.1.0`) | Compiler infrastructure (gitignored, build source) |
-| v6emul | `tools/v6emul/` | CLI Vector 06c emulator — execution, register/memory inspection, cycle counting |
-| v6asm | `tools/v6asm/` | CLI 8080 assembler — reference assembly, ASM→ROM conversion |
+| v6asm | `$env:V6ASM` | Separately installed CLI 8080 assembler — reference assembly, ASM→ROM conversion |
+| v6emul | `$env:V6EMUL` | Separately installed CLI Vector 06c emulator — execution, register/memory inspection, cycle counting |
+| c8080 | `$env:C8080` | Separately installed reference C compiler used by benchmarks |
+| z88dk | `$env:Z88DK` | Optional separately installed z88dk root used by benchmarks |
+
+Set the environment variables before running the full test suite:
+
+```powershell
+$env:V6ASM = 'C:\Tools\v6asm\v6asm.exe'
+$env:V6EMUL = 'C:\Tools\v6emul\v6emul.exe'
+$env:C8080 = 'C:\Tools\c8080\c8080.exe'
+$env:Z88DK = 'C:\Tools\z88dk'
+```
+
+`V6ASM`, `V6EMUL`, and `C8080` are executable paths. `Z88DK` is the z88dk
+installation root, containing `bin\zcc.exe` and `lib\config`; it is optional,
+and its benchmark submatrix is skipped if unset. The C compiler, linker, and
+packaged V6C release do not include or require these reference tools. Test
+scripts accept `--v6asm <path>` and `--v6emul <path>` one-off overrides, while
+`scripts\build.ps1` accepts `-V6AsmPath <path>` and `-V6EmulPath <path>`.
 
 ## Build LLVM with V6C Target
 
@@ -32,6 +58,9 @@ mirror, builds all required binaries with ninja, assembles `crt0.o`, runs all
 test suites:
 
 ```powershell
+$env:V6ASM = 'C:\Tools\v6asm\v6asm.exe'
+$env:V6EMUL = 'C:\Tools\v6emul\v6emul.exe'
+$env:C8080 = 'C:\Tools\c8080\c8080.exe'
 pwsh scripts\build.ps1
 
 # Build only, skip tests
@@ -316,7 +345,7 @@ python scripts/bin2hex.py output.bin -o output.hex --base 0x0100
 ### Running in the Emulator
 
 ```bash
-tools/v6emul/v6emul.exe --rom output.bin --load-addr 0x0100 --halt-exit --dump-cpu
+& $env:V6EMUL --rom output.bin --load-addr 0x0100 --halt-exit --dump-cpu
 ```
 
 ## Further Reading

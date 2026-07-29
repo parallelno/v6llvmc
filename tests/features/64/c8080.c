@@ -5,7 +5,7 @@
 // reference assembly for cycle/byte comparison.
 //
 // Compile:
-//   tools\c8080\c8080.exe tests\features\64\c8080.c -a tests\features\64\c8080.asm
+//   %C8080% tests\features\64\c8080.c -a tests\features\64\c8080.asm
 
 typedef unsigned short u16;
 typedef unsigned char  u8;

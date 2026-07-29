@@ -8,7 +8,7 @@ tests\features\02\ - second feature test case
 tests\features\NN\ ...
 
 Compile ASM guide:
-- tools\c8080\c8080.exe tests\features\<feature number>\c8080.c -a tests\features\<feature number>\c8080.asm
+- `%C8080%` tests\features\<feature number>\c8080.c -a tests\features\<feature number>\c8080.asm
 - llvm-build\bin\clang -target i8080-unknown-v6c -O2 -S tests\features\<feature number>\v6llvmc.c -o tests\features\<feature number>\v6llvmc.asm
 
 

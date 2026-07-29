@@ -25,8 +25,8 @@ def find_project_root():
 
 ROOT = find_project_root()
 BENCH_DIR = ROOT / "tests" / "benchmarks"
-V6ASM = ROOT / "tools" / "v6asm" / "v6asm.exe"
-V6EMUL = ROOT / "tools" / "v6emul" / "v6emul.exe"
+V6ASM = os.environ.get("V6ASM")
+V6EMUL = os.environ.get("V6EMUL")
 
 
 def parse_header(asm_path):
@@ -101,6 +101,11 @@ def run_benchmark(asm_path, verbose=False):
 
 def main():
     verbose = "-v" in sys.argv or "--verbose" in sys.argv
+
+    for name, tool in (("V6ASM", V6ASM), ("V6EMUL", V6EMUL)):
+        if not tool or not Path(tool).is_file():
+            print(f"ERROR: set {name} to the separately installed executable")
+            sys.exit(1)
 
     bench_files = sorted(BENCH_DIR.glob("bench_*.asm"))
     if not bench_files:

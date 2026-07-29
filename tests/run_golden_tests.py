@@ -217,11 +217,14 @@ def main():
     root = find_project_root()
 
     # Resolve tool paths
-    v6asm = args.v6asm or str(root / "tools" / "v6asm" / "v6asm.exe")
-    v6emul = args.v6emul or str(root / "tools" / "v6emul" / "v6emul.exe")
+    v6asm = args.v6asm or os.environ.get("V6ASM")
+    v6emul = args.v6emul or os.environ.get("V6EMUL")
     test_dir = args.test_dir or str(root / "tests" / "golden")
 
     # Check tools exist
+    if not v6asm:
+        print("ERROR: specify --v6asm or set V6ASM to the separately installed v6asm executable", file=sys.stderr)
+        sys.exit(1)
     if not os.path.isfile(v6asm):
         # Try without .exe on non-Windows
         v6asm_noext = v6asm.replace(".exe", "")
@@ -231,6 +234,9 @@ def main():
             print(f"ERROR: v6asm not found at {v6asm}", file=sys.stderr)
             sys.exit(1)
 
+    if not v6emul:
+        print("ERROR: specify --v6emul or set V6EMUL to the separately installed v6emul executable", file=sys.stderr)
+        sys.exit(1)
     if not os.path.isfile(v6emul):
         v6emul_noext = v6emul.replace(".exe", "")
         if os.path.isfile(v6emul_noext):

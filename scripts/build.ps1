@@ -15,6 +15,12 @@
 .PARAMETER SkipBuild
     Skip cmake configure + ninja build (reuse existing llvm-build/).
 
+.PARAMETER V6AsmPath
+    Path to the separately installed v6asm executable. Overrides V6ASM.
+
+.PARAMETER V6EmulPath
+    Path to the separately installed v6emul executable. Overrides V6EMUL.
+
 .EXAMPLE
     pwsh scripts\build.ps1
     pwsh scripts\build.ps1 -SkipTests
@@ -23,7 +29,9 @@
 [CmdletBinding()]
 param(
     [switch]$SkipTests,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [string]$V6AsmPath,
+    [string]$V6EmulPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,6 +54,30 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
 $BuildDir = Join-Path $repoRoot 'llvm-build'
+
+if ($V6AsmPath) {
+    $env:V6ASM = $V6AsmPath
+}
+if ($V6EmulPath) {
+    $env:V6EMUL = $V6EmulPath
+}
+
+if (-not $SkipTests) {
+    $requiredTools = @(
+        @{ Name = 'V6ASM'; Value = $env:V6ASM; Parameter = '-V6AsmPath' },
+        @{ Name = 'V6EMUL'; Value = $env:V6EMUL; Parameter = '-V6EmulPath' },
+        @{ Name = 'C8080'; Value = $env:C8080; Parameter = '' }
+    )
+    foreach ($tool in $requiredTools) {
+        if (-not $tool.Value) {
+            $override = if ($tool.Parameter) { " or pass $($tool.Parameter)" } else { '' }
+            throw "$($tool.Name) is required to run the full test suite. Set it to the separately installed executable$override."
+        }
+        if (-not (Test-Path -LiteralPath $tool.Value -PathType Leaf)) {
+            throw "Tool not found at $($tool.Name): $($tool.Value)"
+        }
+    }
+}
 
 if (-not $SkipBuild) {
     Write-Host '--- Sync llvm-project mirror ---'

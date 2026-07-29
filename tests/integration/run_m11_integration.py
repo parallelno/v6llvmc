@@ -30,8 +30,8 @@ def find_project_root():
 
 ROOT = find_project_root()
 DEFAULT_LLC = ROOT / "llvm-build" / "bin" / "llc.exe"
-DEFAULT_V6ASM = ROOT / "tools" / "v6asm" / "v6asm.exe"
-DEFAULT_V6EMUL = ROOT / "tools" / "v6emul" / "v6emul.exe"
+DEFAULT_V6ASM = os.environ.get("V6ASM")
+DEFAULT_V6EMUL = os.environ.get("V6EMUL")
 RUNTIME_DIR = ROOT / "compiler-rt" / "lib" / "builtins" / "v6c"
 
 
@@ -405,8 +405,10 @@ def main():
     parser = argparse.ArgumentParser(
         description="M11 runtime library integration tests")
     parser.add_argument("--llc", default=str(DEFAULT_LLC))
-    parser.add_argument("--v6asm", default=str(DEFAULT_V6ASM))
-    parser.add_argument("--v6emul", default=str(DEFAULT_V6EMUL))
+    parser.add_argument("--v6asm", default=DEFAULT_V6ASM,
+                        help="Path to the separately installed v6asm executable")
+    parser.add_argument("--v6emul", default=DEFAULT_V6EMUL,
+                        help="Path to the separately installed v6emul executable")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -415,6 +417,15 @@ def main():
     print(f"  v6asm:  {args.v6asm}")
     print(f"  v6emul: {args.v6emul}")
     print()
+
+    for tool_name, tool_path in [("llc", args.llc), ("v6asm", args.v6asm),
+                                 ("v6emul", args.v6emul)]:
+        if not tool_path or not Path(tool_path).is_file():
+            if tool_name in ("v6asm", "v6emul") and not tool_path:
+                print(f"ERROR: specify --{tool_name} or set {tool_name.upper()} to the separately installed {tool_name} executable")
+            else:
+                print(f"ERROR: {tool_name} not found at {tool_path}")
+            sys.exit(1)
 
     passed, failed, errors = run_tests(args.llc, args.v6asm, args.v6emul,
                                        args.verbose)

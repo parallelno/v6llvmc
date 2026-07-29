@@ -10,8 +10,8 @@ See [docs/benchmarks.md](../../docs/benchmarks.md) for the latest results.
 | Compiler | Source | Acquisition |
 |---|---|---|
 | v6llvmc  | this repo | already built; uses `dist/v6c-2026.04.27-windows-x64/bin/clang.exe` |
-| c8080    | https://github.com/Aleksey-F-Morozov/c8080 | already vendored under `tools/c8080/` |
-| z88dk    | https://github.com/z88dk/z88dk             | optional local tool drop under `tools/z88dk/` (release v2.4); skipped if unavailable |
+| c8080    | https://github.com/Aleksey-F-Morozov/c8080 | separately installed executable configured by `C8080` |
+| z88dk    | https://github.com/z88dk/z88dk             | optional installation root configured by `Z88DK`; skipped if unavailable |
 | ACK      | https://github.com/davidgiven/ack          | not yet integrated (Windows build is non-trivial) |
 
 SDCC is intentionally not benchmarked: it has no pure-8080 target — its
@@ -76,12 +76,13 @@ Prerequisites:
 
 * Python 3.9+
 * `dist/v6c-2026.04.27-windows-x64/bin/clang.exe` exists (build the dist target if needed)
-* `tools/c8080/c8080.exe` and `tools/v6emul/v6emul.exe` are present
-* Optional: `tools/z88dk/z88dk/bin/zcc.exe` to include the z88dk comparator; if absent, the runner skips only the z88dk submatrix
+* `C8080` points to the installed `c8080.exe`
+* `V6EMUL` points to the installed `v6emul.exe`
+* Optional: `Z88DK` points to the installation root containing `bin/zcc.exe` and `lib/config`; if absent, the runner skips only the z88dk submatrix
 
 ## Adding a new compiler
 
-1. Drop the toolchain into `tools/<name>/`.
+1. Install the toolchain separately and configure it through an environment variable.
 2. Pick a unique predefined macro (for example `__SDCC` or `__ACK`) and add a
    `bench_finish()` definition to [src/bench.h](src/bench.h) guarded by that
    macro.

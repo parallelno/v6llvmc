@@ -14,7 +14,7 @@ for execution in v6emul.
 Pipeline: LLVM IR → llc (obj) → ld.lld (validate) → v6asm hybrid → v6emul
 
 Usage:
-    python run_m10_link_roundtrip.py [--llc PATH] [--v6emul PATH] [-v]
+    python run_m10_link_roundtrip.py [--llc PATH] [--v6asm PATH] [--v6emul PATH] [-v]
 """
 
 import argparse
@@ -36,7 +36,8 @@ def find_project_root():
 
 ROOT = find_project_root()
 DEFAULT_LLC = ROOT / "llvm-build" / "bin" / "llc.exe"
-DEFAULT_V6EMUL = ROOT / "tools" / "v6emul" / "v6emul.exe"
+DEFAULT_V6ASM = os.environ.get("V6ASM")
+DEFAULT_V6EMUL = os.environ.get("V6EMUL")
 LD_LLD = ROOT / "llvm-build" / "bin" / "ld.lld.exe"
 LLVM_OBJCOPY = ROOT / "llvm-build" / "bin" / "llvm-objcopy.exe"
 
@@ -200,7 +201,7 @@ define i16 @add16(i16 %a, i16 %b) {
 )
 
 
-def run_tests(llc, v6emul, verbose=False):
+def run_tests(llc, v6asm, v6emul, verbose=False):
     """Run all registered tests."""
     passed = 0
     failed = 0
@@ -284,9 +285,8 @@ def run_tests(llc, v6emul, verbose=False):
                 with open(asm_path, "w") as f:
                     f.write(combined_asm)
 
-                v6asm_path = ROOT / "tools" / "v6asm" / "v6asm.exe"
                 r = subprocess.run(
-                    [str(v6asm_path), asm_path, "-o", bin_path],
+                    [v6asm, asm_path, "-o", bin_path],
                     capture_output=True, text=True, timeout=30,
                 )
                 if r.returncode != 0:
@@ -346,17 +346,31 @@ def main():
     parser = argparse.ArgumentParser(
         description="M10 multi-file linking round-trip tests")
     parser.add_argument("--llc", default=str(DEFAULT_LLC))
-    parser.add_argument("--v6emul", default=str(DEFAULT_V6EMUL))
+    parser.add_argument("--v6asm", default=DEFAULT_V6ASM,
+                        help="Path to the separately installed v6asm executable")
+    parser.add_argument("--v6emul", default=DEFAULT_V6EMUL,
+                        help="Path to the separately installed v6emul executable")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
     print(f"M10 Link Round-Trip Tests")
     print(f"  llc:    {args.llc}")
+    print(f"  v6asm:  {args.v6asm}")
     print(f"  v6emul: {args.v6emul}")
     print(f"  linker: {LD_LLD}")
     print()
 
-    passed, failed, errors = run_tests(args.llc, args.v6emul, args.verbose)
+    for tool_name, tool_path in [("llc", args.llc), ("v6asm", args.v6asm),
+                                  ("v6emul", args.v6emul)]:
+        if not tool_path or not Path(tool_path).is_file():
+            if tool_name in ("v6asm", "v6emul") and not tool_path:
+                print(f"ERROR: specify --{tool_name} or set {tool_name.upper()} to the separately installed {tool_name} executable")
+            else:
+                print(f"ERROR: {tool_name} not found at {tool_path}")
+            sys.exit(1)
+
+    passed, failed, errors = run_tests(args.llc, args.v6asm, args.v6emul,
+                                       args.verbose)
 
     print(f"\nResults: {passed} passed, {failed} failed, {errors} errors "
           f"/ {len(TESTS)} total")

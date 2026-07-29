@@ -1,6 +1,10 @@
 set s=samples\02_bsort\
 set compiler=llvm-build\bin\clang
-set emulator=tools\v6emul\v6emul
+if "%V6EMUL%"=="" (
+	echo Set V6EMUL to the separately installed v6emul executable.
+	exit /b 1
+)
+set emulator=%V6EMUL%
 
 set target=-target i8080-unknown-v6c
 set stack_addr=0x8000

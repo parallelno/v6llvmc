@@ -10,6 +10,10 @@ An LLVM compiler backend and Clang frontend targeting the **Vector 06c** home co
 
 - CMake ≥ 3.20, Ninja, MSVC 2022+ (or GCC 11+ / Clang 14+)
 - Python 3.8+
+- [v6asm](https://github.com/parallelno/v6asm) installed separately (needed for assembly-reference tests)
+- [v6emul](https://github.com/parallelno/v6emul) installed separately (needed for execution tests)
+- [c8080](https://github.com/Aleksey-F-Morozov/c8080) installed separately (needed for benchmarks)
+- [z88dk](https://github.com/z88dk/z88dk) installed separately (optional benchmark comparator)
 
 ### Using the Packaged Release
 
@@ -17,8 +21,8 @@ An LLVM compiler backend and Clang frontend targeting the **Vector 06c** home co
 # Build the bundled hello-world sample from the release root
 .\bin\clang.exe -target i8080-unknown-v6c -O2 .\samples\01_hello\main.c -o hello.rom
 
-# Run it in the bundled emulator
-.\bin\v6emul.exe --rom hello.rom --load-addr 0x0100 --halt-exit --dump-cpu
+# Run it in your configured emulator
+& $env:V6EMUL --rom hello.rom --load-addr 0x0100 --halt-exit --dump-cpu
 ```
 
 ### Build from Source
@@ -26,8 +30,18 @@ An LLVM compiler backend and Clang frontend targeting the **Vector 06c** home co
 On Windows, the recommended build entry point is:
 
 ```powershell
+$env:V6ASM = 'C:\Tools\v6asm\v6asm.exe'
+$env:V6EMUL = 'C:\Tools\v6emul\v6emul.exe'
+$env:C8080 = 'C:\Tools\c8080\c8080.exe'
+$env:Z88DK = 'C:\Tools\z88dk'
 pwsh scripts\build.ps1
 ```
+
+`V6ASM`, `V6EMUL`, and `C8080` must point to their separately installed
+executables. `Z88DK` is an optional installation root for the benchmark
+comparator. These tools are not required to compile or link C programs with
+the LLVM toolchain. Pass `-V6AsmPath <path>` or `-V6EmulPath <path>` to
+`build.ps1` for one-off overrides.
 
 For a faster build-only iteration loop:
 
@@ -48,7 +62,7 @@ repository or `docs/V6CBuildGuide.md`.
 .\llvm-build\bin\clang.exe -target i8080-unknown-v6c -O2 hello.c -o hello.rom
 
 # Run in emulator
-.\tools\v6emul\v6emul.exe --rom hello.rom --load-addr 0x0100 --halt-exit --dump-cpu
+& $env:V6EMUL --rom hello.rom --load-addr 0x0100 --halt-exit --dump-cpu
 ```
 
 ### Run Tests
@@ -86,8 +100,10 @@ python tests\run_golden_tests.py        # Emulator trust baseline (16 tests)
 | `compiler-rt/` | Runtime library, headers, and crt0 |
 | `scripts/` | Build, release, mirror sync, linker, and ELF→binary tooling |
 | `samples/` | Sample programs and demo projects |
-| `tools/v6asm/` | Reference 8080 assembler |
-| `tools/v6emul/` | Vector 06c emulator |
+| `V6ASM` | Separately installed reference 8080 assembler used by tests |
+| `V6EMUL` | Separately installed Vector 06c emulator used by tests and samples |
+| `C8080` | Separately installed reference C compiler used by benchmarks |
+| `Z88DK` | Optional z88dk installation root used by benchmarks |
 | `tests/` | Golden, lit (mirror), integration, runtime, and benchmark tests |
 | `docs/` | [Documentation index](docs/README.md) |
 | `design/` | [Architecture design](design/design.md) and [implementation plan](design/plan.md) |

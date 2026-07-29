@@ -23,7 +23,6 @@ v6llvmc/
 │   └── benchmarks/               # Performance measurements
 ├── docs/                         # Documentation
 ├── tools/
-│   ├── v6asm/                    # 8080 assembler
 │   └── v6emul/                   # Vector 06c emulator
 └── design/                       # Design & implementation plan
 ```
@@ -37,4 +36,4 @@ v6llvmc/
 | `llvm-build/` | No | CMake/Ninja build output. |
 | `design/` | Yes | [design.md](../design/design.md) (architecture spec) and [plan.md](../design/plan.md) (milestones). |
 | `tests/` | Yes | All test suites. See [golden tests README](../tests/golden/README.md). |
-| `tools/` | Yes | Pre-built `v6asm` and `v6emul` binaries. |
+| `tools/` | Yes | No reference tools are bundled. Configure external tools through `V6ASM`, `V6EMUL`, `C8080`, and optional `Z88DK`. |

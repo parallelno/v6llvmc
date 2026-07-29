@@ -4,7 +4,7 @@ set e=bin\devector.exe
 
 REM
 set compiler=llvm-build\bin\clang
-set emulator=tools\v6emul\v6emul
+set emulator=%V6EMUL%
 
 set target=-target i8080-unknown-v6c
 set stack_addr=0x8000
