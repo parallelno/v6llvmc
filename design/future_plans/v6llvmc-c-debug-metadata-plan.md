@@ -5,8 +5,13 @@
 **Owner:** v6llvmc maintainers
 **Consumer:** v6vscode
 **Related roadmap:** `c-debugging-and-call-stack-plan.md`
+**Implementation plan:** [`plan_v6llvmc_c_debug_metadata.md`](../plan_v6llvmc_c_debug_metadata.md)
 
 Checkboxes: `[x]` complete; `[~]` partially implemented; `[ ]` not complete.
+
+The implementation is split into six independently reviewed milestone
+subplans. Complete them in order; do not combine milestones into one
+implementation change.
 
 ## 1. Problem
 
@@ -34,7 +39,22 @@ In scope:
 - C scalar, pointer, array, structure, union, enum, typedef, and qualifier type metadata.
 - Inline-subroutine metadata.
 - Call-frame information for physical unwinding.
-- Final linked-ELF verification at `-O0`, debug-friendly optimization, `-O1`, and `-O2`.
+- Final linked-ELF verification at `-O0`, `-O1`, `-O2`, `-Os`, and the
+	project-default optimized configuration.
+
+Non-negotiable constraints:
+
+- Do not disable, bypass, weaken, or delete any existing optimization to make
+	debug metadata work.
+- Static-stack allocation, O61 patched reloads, and all other active V6C
+	optimizations must remain enabled under their normal conditions.
+- Non-debug code generation must remain byte-for-byte unchanged unless a
+	separately approved correctness fix requires otherwise.
+- For the same optimization level, adding `-g` must not change executable
+	`.text`, ROM bytes, runtime checksums, cycle counts, or executable code size.
+- Every implementation milestone must capture the current C benchmark
+	baseline and finish with no cycle-count or code-size regression in any
+	v6llvmc benchmark result.
 
 Out of scope:
 
@@ -174,6 +194,7 @@ Expected location operations include:
 - Constants and literals.
 - Addition/subtraction and `plus_uconst`.
 - Dereference operations.
+- `DW_OP_call_frame_cfa`.
 - `DW_OP_stack_value`.
 - `DW_OP_piece` only when split values are enabled.
 
@@ -193,9 +214,16 @@ Add LLVM IR, MIR, backend, and linked-ELF tests for:
 - Multiple return sites and tail calls.
 - Nested inline calls.
 - Final linked addresses matching ROM execution.
-- `-O0`, debug-friendly optimization if defined, `-O1`, and `-O2`.
+- `-O0`, `-O1`, `-O2`, `-Os`, and the project-default optimized
+	configuration, without disabling optimizations.
 
 Use `llvm-dwarfdump --verify` where target support permits, plus V6C-specific assertions for 16-bit addresses and register numbering. Validate unwinding against real emulator register and memory snapshots.
+
+For every milestone, run `python tests/benchmarks_c/run_benchmarks.py` before
+and after the implementation. Checksums must remain correct and every v6llvmc
+cycle-count and executable code-size result must be less than or equal to its
+captured baseline. Also compare `-g` and equivalent `-g0` executable sections;
+they must be identical.
 
 ## 13. Acceptance Gates
 
@@ -209,6 +237,13 @@ The producer prerequisite is complete only when:
 - v6vscode fixture and real-emulator tests consume the emitted contract without target-specific guessing.
 
 ## 14. Implementation Checklist
+
+- [ ] Complete Milestone 1: ABI, DWARF register map, and ELF integrity.
+- [ ] Complete Milestone 2: call-frame information and physical unwinding.
+- [ ] Complete Milestone 3: baseline parameter and local locations.
+- [ ] Complete Milestone 4: optimized lifetimes and location lists.
+- [ ] Complete Milestone 5: lexical scopes, types, and inline metadata.
+- [ ] Complete Milestone 6: final-link and v6vscode consumer integration.
 
 - [ ] Document the debugger-relevant V6C ABI.
 - [ ] Freeze V6C DWARF register numbering.
