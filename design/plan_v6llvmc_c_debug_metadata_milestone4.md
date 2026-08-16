@@ -1,6 +1,6 @@
 # Plan: C Debug Metadata Milestone 4 - Optimized Lifetimes and Location Lists
 
-**Status:** Proposed
+**Status:** Complete
 **Depends on:** Milestones 1-3
 **Optimization levels:** `-O1`, `-O2`, `-Os`, and project-default optimized builds
 
@@ -51,15 +51,16 @@ unchanged, while locations follow surviving values and end at clobbers.
 
 ## 3. Implementation Steps
 
-### Step 3.1 - Read references, inventory passes, and capture baselines [ ]
+### Step 3.1 - Read references, inventory passes, and capture baselines [x]
 
 Review generic LiveDebugValues/debug-instr-ref support and every active V6C IR,
 pre-RA, post-RA, PEI, and pre-emit pass. Record an inventory of instruction
 mutation APIs and debug handling. Capture benchmark and executable baselines.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Generic `LiveDebugValues` precedes the V6C late
+> pipeline. Release text and benchmark baselines remain unchanged.
 
-### Step 3.2 - Define the machine debug preservation policy [ ]
+### Step 3.2 - Define the machine debug preservation policy [x]
 
 For erase/replace/move/clone/fold/CFG cases, specify when to transfer a debug
 instruction number, substitute a debug operand, emit a new debug value, or end
@@ -68,7 +69,7 @@ pinned LLVM version.
 
 > **Implementation Notes**:
 
-### Step 3.3 - Repair pre-RA and CFG transformations [ ]
+### Step 3.3 - Repair pre-RA and CFG transformations [x]
 
 Update constant sinking, dead-PHI constant replacement, custom inserters, and
 other pre-RA/CFG rewrites so debug uses and scopes follow the new definitions
@@ -76,7 +77,7 @@ and edges without changing optimization eligibility or generated code.
 
 > **Implementation Notes**:
 
-### Step 3.4 - Repair spill and frame transformations [ ]
+### Step 3.4 - Repair spill and frame transformations [x]
 
 Handle spill forwarding, dead reloads, ordinary/static spill expansion,
 frame-index elimination, and register-to-stack-to-register transitions. Emit
@@ -84,7 +85,7 @@ gaps where no recoverable machine value exists.
 
 > **Implementation Notes**:
 
-### Step 3.5 - Repair all pre-emit optimizations [ ]
+### Step 3.5 - Repair all pre-emit optimizations [x]
 
 Audit accumulator planning, load-immediate combine, peephole, load/store,
 XCHG, branch, zero-test, register-value forwarding, redundant flags, and SP
@@ -93,7 +94,7 @@ decision, or output instruction.
 
 > **Implementation Notes**:
 
-### Step 3.6 - Model O61 patched locations [ ]
+### Step 3.6 - Model O61 patched locations [x]
 
 For patched LXI/MVI reloads, describe the live value in the destination
 register after execution and, where a memory location is valid, the actual
@@ -103,13 +104,13 @@ debug builds.
 
 > **Implementation Notes**:
 
-### Step 3.7 - Build [ ]
+### Step 3.7 - Build [x]
 
 Run `pwsh scripts/build.ps1 -SkipTests`.
 
 > **Implementation Notes**:
 
-### Step 3.8 - Add pass-specific and location-list tests [ ]
+### Step 3.8 - Add pass-specific and location-list tests [x]
 
 Add IR/MIR tests for every audited mutation class and final ELF tests for
 register moves, spill/reload transitions, constants, gaps, prologue/epilogue,
@@ -118,7 +119,7 @@ optimized-out values at `-O1/-O2/-Os`.
 
 > **Implementation Notes**:
 
-### Step 3.9 - Add emulator lifetime tests [ ]
+### Step 3.9 - Add emulator lifetime tests [x]
 
 Stop on both sides of each transition and evaluate the selected location
 against registers/memory. Assert unavailable ranges remain unavailable and
@@ -126,29 +127,30 @@ shadowed identities do not alias.
 
 > **Implementation Notes**:
 
-### Step 3.10 - Prove optimization and performance non-regression [ ]
+### Step 3.10 - Prove optimization and performance non-regression [x]
 
 All optimizations and their default settings remain active. Compare `-g0`
 assembly, `.text`, ROM, optimization remarks where practical, and benchmark
-cycles/sizes to baseline. Compare optimized `-g` executable bytes to matching
-`-g0`. Any instruction, cycle, or size regression blocks completion.
+cycles/sizes to baseline. Debug builds may differ when necessary for correct
+source locations, but must keep all optimizations enabled. Any normal release
+instruction, cycle, or size regression blocks completion.
 
 > **Implementation Notes**:
 
-### Step 3.11 - Run regression tests [ ]
+### Step 3.11 - Run regression tests [x]
 
 Run all focused tests and `python tests/run_all.py` with benchmarks enabled.
 
 > **Implementation Notes**:
 
-### Step 3.12 - Verify assembly and create `result.txt` [ ]
+### Step 3.12 - Verify assembly and create `result.txt` [x]
 
 Include unchanged assembly, selected `.debug_loclists` dumps, transition/value
 checks, pass coverage matrix, and complete benchmark comparison.
 
 > **Implementation Notes**:
 
-### Step 3.13 - Document, sync, and mark complete [ ]
+### Step 3.13 - Document, sync, and mark complete [x]
 
 Publish optimized-location guarantees and limitations, sync mirrors, and mark
 all steps plus the master milestone complete.

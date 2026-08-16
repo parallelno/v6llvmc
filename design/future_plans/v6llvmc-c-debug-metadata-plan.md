@@ -242,7 +242,7 @@ The producer prerequisite is complete only when:
 - [x] Complete Milestone 1: ABI, DWARF register map, and ELF integrity.
 - [x] Complete Milestone 2: call-frame information and physical unwinding.
 - [x] Complete Milestone 3: baseline parameter and local locations.
-- [ ] Complete Milestone 4: optimized lifetimes and location lists.
+- [x] Complete Milestone 4: optimized lifetimes and location lists.
 - [ ] Complete Milestone 5: lexical scopes, types, and inline metadata.
 - [ ] Complete Milestone 6: final-link and v6vscode consumer integration.
 
@@ -252,7 +252,7 @@ The producer prerequisite is complete only when:
 - [x] Preserve debug values through custom V6C machine passes.
 - [x] Emit formal-parameter and local-variable locations.
 - [x] Emit valid frame-base expressions where required.
-- [ ] Emit `.debug_loclists` with accurate transitions and gaps.
+- [x] Emit `.debug_loclists` with accurate transitions and gaps.
 - [ ] Emit lexical-block and discontinuous function ranges.
 - [ ] Emit nested inline-subroutine DIEs and abstract origins.
 - [ ] Verify C scalar, pointer, array, structure, union, enum, typedef, and qualifier types.

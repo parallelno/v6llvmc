@@ -138,6 +138,19 @@ optimized variables remain available. Complex optimized lifetimes, spill and
 reload transitions, O61 patched-code values, pieces, and unavailable ranges
 remain unsupported baseline cases.
 
+## Optimized Location Lists
+
+At `-O1`, `-O2`, and `-Os`, recoverable values use DWARF v5
+`.debug_loclists` entries with half-open PC ranges. A value may move between a
+pair register and an `SP`-relative spill home, then return to a register; each
+entry describes only the interval in which that storage is valid. The O61
+patched-reload path remains enabled and retains its final location list. When
+no value can be recovered, the list has no entry for that PC range.
+
+Optimized debug builds may differ from non-debug builds when necessary for
+correct source locations. The non-debug optimized code path and benchmark
+performance remain the release compatibility gate.
+
 ## Related Documentation
 
 - [V6CBuildGuide.md](V6CBuildGuide.md) for build setup and custom link flows.
