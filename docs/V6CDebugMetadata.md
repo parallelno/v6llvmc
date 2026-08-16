@@ -177,6 +177,20 @@ and call coordinates. Nested inline ranges use final linked 16-bit PCs. A
 debugger should select an inline frame only when the stopped PC lies within its
 emitted range; source entities absent after optimization remain unavailable.
 
+## Final-Link Fixture Matrix
+
+Feature 83 is the deterministic producer handoff fixture. It builds the same
+C call/inline program at `-O0`, `-O1`, `-O2`, and `-Os`; each build retains a
+final ELF and ROM, verifies DWARF, compares the ROM with
+`llvm-objcopy -O binary` of that ELF, and records an emulator snapshot at a
+nested-inline stop. The fixture also verifies final symbols, line rows,
+location/range sections, and `.debug_frame` coverage for its physical call
+chain.
+
+The fixture is a producer contract artifact. Consumers should use it as an
+input fixture only after their own DWARF v5 semantic reader is implemented.
+It does not claim consumer compatibility by itself.
+
 
 ## Related Documentation
 

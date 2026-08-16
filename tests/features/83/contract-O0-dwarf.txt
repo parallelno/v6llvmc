@@ -1,0 +1,367 @@
+C:\Work\Programming\v6llvmc\tests\features\83\contract-O0.elf:	file format elf32-v6c
+
+.debug_info contents:
+0x00000000: Compile Unit: length = 0x00000224, format = DWARF32, version = 0x0005, unit_type = DW_UT_compile, abbr_offset = 0x0000, addr_size = 0x02 (next unit at 0x00000228)
+
+0x0000000c: DW_TAG_compile_unit
+              DW_AT_producer	("clang version 18.1.0rc (https://github.com/llvm/llvm-project.git 461274b81d8641eab64d494accddc81d7db8a09e)")
+              DW_AT_language	(DW_LANG_C11)
+              DW_AT_name	("C:\\Work\\Programming\\v6llvmc\\tests\\features\\83\\v6llvmc.c")
+              DW_AT_str_offsets_base	(0x00000008)
+              DW_AT_stmt_list	(0x00000000)
+              DW_AT_comp_dir	("C:\\Work\\Programming\\v6llvmc")
+              DW_AT_low_pc	(0x0000)
+              DW_AT_ranges	(indexed (0x0) rangelist = 0x00000010
+                 [0x011f, 0x015a)
+                 [0x015a, 0x0189)
+                 [0x0189, 0x018f))
+              DW_AT_addr_base	(0x00000008)
+              DW_AT_rnglists_base	(0x0000000c)
+
+0x00000025:   DW_TAG_variable
+                DW_AT_name	("sink")
+                DW_AT_type	(0x00000030 "volatile int")
+                DW_AT_external	(true)
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                DW_AT_decl_line	(1)
+                DW_AT_location	(DW_OP_addrx 0x0)
+
+0x00000030:   DW_TAG_volatile_type
+                DW_AT_type	(0x00000035 "int")
+
+0x00000035:   DW_TAG_base_type
+                DW_AT_name	("int")
+                DW_AT_encoding	(DW_ATE_signed)
+                DW_AT_byte_size	(0x02)
+
+0x00000039:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x00000014)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__mulqi3")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(68)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x0000021f "unsigned char")
+
+0x0000004b:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x00000013)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__v6c_mulqihi3")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(98)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000223 "unsigned int")
+
+0x0000005d:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x00000020)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__mulhi3")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(127)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000223 "unsigned int")
+
+0x0000006f:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x0000002f)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__v6c_udivmod16_body")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(168)
+                DW_AT_prototyped	(true)
+
+0x0000007d:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x00000004)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__udivhi3")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(218)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000223 "unsigned int")
+
+0x0000008f:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x00000006)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__umodhi3")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(231)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000223 "unsigned int")
+
+0x000000a1:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x0000000a)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__udivmodhi4")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(252)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000223 "unsigned int")
+
+0x000000b3:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x00000033)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__divmodhi4")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(275)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000035 "int")
+
+0x000000c6:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x00000008)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__v6c_neg_hl_body")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(327)
+                DW_AT_prototyped	(true)
+
+0x000000d5:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x00000008)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__v6c_neg_de_body")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(344)
+                DW_AT_prototyped	(true)
+
+0x000000e4:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x0000001f)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__divhi3")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(362)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000035 "int")
+
+0x000000f7:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x0000001f)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__modhi3")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(394)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000035 "int")
+
+0x0000010a:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x00000016)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__ashlhi3")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(426)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000223 "unsigned int")
+
+0x0000011d:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x0000001c)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__lshrhi3")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(452)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000223 "unsigned int")
+
+0x00000130:   DW_TAG_subprogram
+                DW_AT_low_pc	(dead code)
+                DW_AT_high_pc	(0x0000001f)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("__ashrhi3")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\llvm-build\bin\..\..\compiler-rt\lib\builtins\v6c\include\v6c_arith.h")
+                DW_AT_decl_line	(484)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000035 "int")
+
+0x00000143:   DW_TAG_subprogram
+                DW_AT_name	("inline_outer")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                DW_AT_decl_line	(10)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000035 "int")
+                DW_AT_inline	(DW_INL_inlined)
+
+0x0000014b:     DW_TAG_formal_parameter
+                  DW_AT_name	("value")
+                  DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                  DW_AT_decl_line	(10)
+                  DW_AT_type	(0x00000035 "int")
+
+0x00000153:     DW_TAG_variable
+                  DW_AT_name	("local")
+                  DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                  DW_AT_decl_line	(11)
+                  DW_AT_type	(0x00000035 "int")
+
+0x0000015b:     NULL
+
+0x0000015c:   DW_TAG_subprogram
+                DW_AT_name	("inline_leaf")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                DW_AT_decl_line	(3)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000035 "int")
+                DW_AT_inline	(DW_INL_inlined)
+
+0x00000164:     DW_TAG_formal_parameter
+                  DW_AT_name	("value")
+                  DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                  DW_AT_decl_line	(3)
+                  DW_AT_type	(0x00000035 "int")
+
+0x0000016c:     DW_TAG_variable
+                  DW_AT_name	("local")
+                  DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                  DW_AT_decl_line	(4)
+                  DW_AT_type	(0x00000035 "int")
+
+0x00000174:     NULL
+
+0x00000175:   DW_TAG_subprogram
+                DW_AT_low_pc	(0x011f)
+                DW_AT_high_pc	(0x015a)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("leaf")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                DW_AT_decl_line	(16)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000035 "int")
+                DW_AT_external	(true)
+
+0x00000187:     DW_TAG_formal_parameter
+                  DW_AT_location	(DW_OP_addrx 0x11, DW_OP_plus_uconst 0x8)
+                  DW_AT_name	("parameter")
+                  DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                  DW_AT_decl_line	(16)
+                  DW_AT_type	(0x00000035 "int")
+
+0x00000194:     DW_TAG_variable
+                  DW_AT_location	(DW_OP_addrx 0x11, DW_OP_plus_uconst 0xa)
+                  DW_AT_name	("local")
+                  DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                  DW_AT_decl_line	(17)
+                  DW_AT_type	(0x00000035 "int")
+
+0x000001a1:     DW_TAG_inlined_subroutine
+                  DW_AT_abstract_origin	(0x00000143 "inline_outer")
+                  DW_AT_low_pc	(0x0132)
+                  DW_AT_high_pc	(0x0159)
+                  DW_AT_call_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                  DW_AT_call_line	(18)
+                  DW_AT_call_column	(12)
+
+0x000001ae:       DW_TAG_formal_parameter
+                    DW_AT_location	(DW_OP_addrx 0x11, DW_OP_plus_uconst 0x4)
+                    DW_AT_abstract_origin	(0x0000014b "value")
+
+0x000001b8:       DW_TAG_variable
+                    DW_AT_location	(DW_OP_addrx 0x11, DW_OP_plus_uconst 0x6)
+                    DW_AT_abstract_origin	(0x00000153 "local")
+
+0x000001c2:       DW_TAG_inlined_subroutine
+                    DW_AT_abstract_origin	(0x0000015c "inline_leaf")
+                    DW_AT_low_pc	(0x0142)
+                    DW_AT_high_pc	(0x0159)
+                    DW_AT_call_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                    DW_AT_call_line	(12)
+                    DW_AT_call_column	(12)
+
+0x000001cf:         DW_TAG_formal_parameter
+                      DW_AT_location	(DW_OP_addrx 0x11)
+                      DW_AT_abstract_origin	(0x00000164 "value")
+
+0x000001d7:         DW_TAG_variable
+                      DW_AT_location	(DW_OP_addrx 0x11, DW_OP_plus_uconst 0x2)
+                      DW_AT_abstract_origin	(0x0000016c "local")
+
+0x000001e1:         NULL
+
+0x000001e2:       NULL
+
+0x000001e3:     NULL
+
+0x000001e4:   DW_TAG_subprogram
+                DW_AT_low_pc	(0x015a)
+                DW_AT_high_pc	(0x0189)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("middle")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                DW_AT_decl_line	(22)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000035 "int")
+                DW_AT_external	(true)
+
+0x000001f6:     DW_TAG_formal_parameter
+                  DW_AT_location	(DW_OP_fbreg +0)
+                  DW_AT_name	("parameter")
+                  DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                  DW_AT_decl_line	(22)
+                  DW_AT_type	(0x00000035 "int")
+
+0x00000201:     DW_TAG_variable
+                  DW_AT_location	(DW_OP_fbreg +0)
+                  DW_AT_name	("local")
+                  DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                  DW_AT_decl_line	(23)
+                  DW_AT_type	(0x00000035 "int")
+
+0x0000020c:     NULL
+
+0x0000020d:   DW_TAG_subprogram
+                DW_AT_low_pc	(0x0189)
+                DW_AT_high_pc	(0x018f)
+                DW_AT_frame_base	(DW_OP_call_frame_cfa, DW_OP_consts -2, DW_OP_plus)
+                DW_AT_name	("main")
+                DW_AT_decl_file	("C:\Work\Programming\v6llvmc\tests\features\83\v6llvmc.c")
+                DW_AT_decl_line	(27)
+                DW_AT_prototyped	(true)
+                DW_AT_type	(0x00000035 "int")
+                DW_AT_external	(true)
+
+0x0000021f:   DW_TAG_base_type
+                DW_AT_name	("unsigned char")
+                DW_AT_encoding	(DW_ATE_unsigned_char)
+                DW_AT_byte_size	(0x01)
+
+0x00000223:   DW_TAG_base_type
+                DW_AT_name	("unsigned int")
+                DW_AT_encoding	(DW_ATE_unsigned)
+                DW_AT_byte_size	(0x02)
+
+0x00000227:   NULL
+
+.debug_loclists contents:
+
+.debug_rnglists contents:
+range list header: length = 0x00000043, format = DWARF32, version = 0x0005, addr_size = 0x02, seg_size = 0x00, offset_entry_count = 0x00000001
+offsets: [
+0x00000004
+]
+ranges:
+[0xffff, 0x10013)
+[0xffff, 0x10012)
+[0xffff, 0x1001f)
+[0xffff, 0x1002e)
+[0xffff, 0x10003)
+[0xffff, 0x10005)
+[0xffff, 0x10009)
+[0xffff, 0x10032)
+[0xffff, 0x10007)
+[0xffff, 0x10007)
+[0xffff, 0x1001e)
+[0xffff, 0x1001e)
+[0xffff, 0x10015)
+[0xffff, 0x1001b)
+[0xffff, 0x1001e)
+[0x011f, 0x015a)
+[0x015a, 0x0189)
+[0x0189, 0x018f)
+<End of list>

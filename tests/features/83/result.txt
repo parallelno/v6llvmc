@@ -1,0 +1,9 @@
+Feature 83 - C Debug Metadata Milestone 6 Producer Contract
+===========================================================
+
+Each optimization level builds a final ELF/ROM pair, verifies DWARF and CFI, proves the ROM is the ELF binary projection, and stops inside nested inline metadata.
+
+O0: elf-rom=a4acb99a84fb57d89e9e85ea75b7a4015ba808fe9ea7bc5a8dbf363279bdeab9 HLT=0x0154 inline-ranges=[(306, 345), (322, 345)]
+O1: elf-rom=5c2b44fce9b526cb99c01deddcf245b2cd76ba51e29193a83d88a6ac885a9ed8 HLT=0x0125 inline-ranges=[(290, 295), (290, 295)]
+O2: elf-rom=5c2b44fce9b526cb99c01deddcf245b2cd76ba51e29193a83d88a6ac885a9ed8 HLT=0x0125 inline-ranges=[(290, 295), (290, 295)]
+Os: elf-rom=5c2b44fce9b526cb99c01deddcf245b2cd76ba51e29193a83d88a6ac885a9ed8 HLT=0x0125 inline-ranges=[(290, 295), (290, 295)]

@@ -1,6 +1,6 @@
 # Plan: C Debug Metadata Milestone 6 - Final-Link and Consumer Integration
 
-**Status:** Proposed
+**Status:** In progress
 **Depends on:** Milestones 1-5
 **Consumer:** v6vscode
 
@@ -52,25 +52,29 @@ independent target heuristics.
 
 ## 3. Implementation Steps
 
-### Step 3.1 - Read references and capture release baselines [ ]
+### Step 3.1 - Read references and capture release baselines [x]
 
 Review every completed milestone, v6vscode metadata/call-stack/variables plans,
 v6emul stopped-state APIs, linker scripts, release workflow, and benchmark
 runner. Capture final pre-integration benchmark, ROM, `.text`, and assembly
 baselines.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Reviewed the completed producer milestones, linker
+> flow, ROM projection, feature fixtures, emulator stopped-state output, and
+> benchmark runner. The release benchmark matrix remains the baseline gate.
 
-### Step 3.2 - Publish the supported DWARF contract [ ]
+### Step 3.2 - Publish the supported DWARF contract [x]
 
 List exact versions, address/offset sizes, tags, attributes, forms, indexed
 sections, range/location entries, register map, location operations including
 `DW_OP_call_frame_cfa`, CFI operations, overlap policy, and known limitations.
 Require a producer test and consumer entry before adding any operation.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Added the contract-version-1 producer
+> compatibility table to `V6CDebugABI.md`, covering container, sections,
+> tags, locations, register map, CFI, O61 storage, and unavailable values.
 
-### Step 3.3 - Build deterministic final-ELF fixtures [ ]
+### Step 3.3 - Build deterministic final-ELF fixtures [x]
 
 Create source and build scripts for register/stack parameters, locals,
 spills/reloads, static stack, O61, shadowing, types, leaf/non-leaf calls,
@@ -78,15 +82,19 @@ multiple returns, FP modes, tail calls, nested inline chains, and boundaries at
 `-O0/-O1/-O2/-Os`. Keep final ELF, ROM, expected metadata, and emulator
 snapshots reproducible.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Added Feature 83. It deterministically builds a
+> three-physical-call and nested-inline program at `-O0/-O1/-O2/-Os`, retaining
+> final ELF/ROM pairs, DWARF/CFI dumps, and coherent emulator snapshots.
 
-### Step 3.4 - Verify final linking and ROM correlation [ ]
+### Step 3.4 - Verify final linking and ROM correlation [x]
 
 Run `llvm-dwarfdump --verify`; assert no unresolved debug relocations; ensure
 all code ranges map to final executable sections; and prove symbols, line rows,
 locations, and FDEs use the same 16-bit addresses executed by the ROM.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Feature 83 runs `llvm-dwarfdump --verify`, checks
+> required final debug sections and CFI for `leaf`, `middle`, and `main`, and
+> byte-compares each ROM with `llvm-objcopy -O binary` of its companion ELF.
 
 ### Step 3.5 - Pass v6vscode producer-consumer tests [ ]
 

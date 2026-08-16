@@ -1,0 +1,164 @@
+C:\Work\Programming\v6llvmc\tests\features\83\contract-O0.elf:	file format elf32-v6c
+
+.debug_frame contents:
+
+00000000 0000000c ffffffff CIE
+  Format:                DWARF32
+  Version:               4
+  Augmentation:          ""
+  Address size:          2
+  Segment desc size:     0
+  Code alignment factor: 1
+  Data alignment factor: -2
+  Return address column: 11
+
+  DW_CFA_nop:
+
+
+00000010 0000000e 00000000 FDE cie=00000000 pc=0000ffff...00010013
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+00000022 0000000e 00000000 FDE cie=00000000 pc=0000ffff...00010012
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+00000034 0000000e 00000000 FDE cie=00000000 pc=0000ffff...0001001f
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+00000046 0000000e 00000000 FDE cie=00000000 pc=0000ffff...0001002e
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+00000058 0000000e 00000000 FDE cie=00000000 pc=0000ffff...00010003
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+0000006a 0000000e 00000000 FDE cie=00000000 pc=0000ffff...00010005
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+0000007c 0000000e 00000000 FDE cie=00000000 pc=0000ffff...00010009
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+0000008e 0000000e 00000000 FDE cie=00000000 pc=0000ffff...00010032
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+000000a0 0000000e 00000000 FDE cie=00000000 pc=0000ffff...00010007
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+000000b2 0000000e 00000000 FDE cie=00000000 pc=0000ffff...00010007
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+000000c4 0000000e 00000000 FDE cie=00000000 pc=0000ffff...0001001e
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+000000d6 0000000e 00000000 FDE cie=00000000 pc=0000ffff...0001001e
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+000000e8 0000000e 00000000 FDE cie=00000000 pc=0000ffff...00010015
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+000000fa 0000000e 00000000 FDE cie=00000000 pc=0000ffff...0001001b
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+0000010c 0000000e 00000000 FDE cie=00000000 pc=0000ffff...0001001e
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_undefined: PC
+  DW_CFA_nop:
+
+  0xffff: CFA=SP+2: PC=undefined
+
+0000011e 0000000e 00000000 FDE cie=00000000 pc=0000011f...0000015a
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_offset: PC -2
+  DW_CFA_nop:
+
+  0x11f: CFA=SP+2: PC=[CFA-2]
+
+00000130 0000000e 00000000 FDE cie=00000000 pc=0000015a...00000189
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_offset: PC -2
+  DW_CFA_nop:
+
+  0x15a: CFA=SP+2: PC=[CFA-2]
+
+00000142 0000000e 00000000 FDE cie=00000000 pc=00000189...0000018f
+  Format:       DWARF32
+  DW_CFA_def_cfa: SP +2
+  DW_CFA_offset: PC -2
+  DW_CFA_nop:
+
+  0x189: CFA=SP+2: PC=[CFA-2]
+
+
+.eh_frame contents:
+

@@ -145,6 +145,27 @@ operation table enables that representation.
 They are not valid C variable locations or independently recoverable caller
 state.
 
+## Producer Compatibility Table
+
+Contract version 1 freezes the following final-ELF producer surface. Consumers
+must feature-detect unsupported data and must not infer values or frames from
+V6C instruction patterns.
+
+| Category | Version 1 output | Consumer rule |
+|----------|------------------|---------------|
+| Container | ELF32 little-endian, `EM_V6C`, 16-bit code/data addresses | The final ELF is authoritative; the ROM is its executable projection. |
+| DWARF | DWARF v5 | Accept 16-bit addresses and DWARF32 unit offsets. |
+| Core sections | `.debug_info`, `.debug_abbrev`, `.debug_line`, `.debug_str`, `.debug_str_offsets`, `.debug_addr` | Lines and symbols remain independently useful if semantic data is unavailable. |
+| Range/location sections | `.debug_rnglists`, `.debug_loclists` when required | Treat PC intervals as half-open; a missing active entry is unavailable. |
+| Frame section | `.debug_frame`, no `.eh_frame` contract | Use only emitted CIE/FDE rules; stop at unsupported boundaries. |
+| Scope/type tags | Compile units, subprograms, lexical blocks, formal parameters, variables, inline subroutines, and tested C type DIEs | Use DIE identity and emitted ranges; do not merge shadowed names. |
+| Locations | Register pairs/bytes, `DW_OP_fbreg`, `DW_OP_call_frame_cfa`, `DW_OP_addrx`, `DW_OP_plus_uconst`, and constant values | Evaluate only the selected active range with the register map in this document. |
+| O61 storage | `DW_OP_addrx; DW_OP_plus_uconst 1` for patched immediate bytes | The address is mutable code storage only for its emitted live interval. |
+| Unsupported values | No active location entry | Report unavailable/optimized out; never scan arbitrary stack words. |
+
+Changing an entry in this table requires a contract-version update, a
+final-ELF producer test, and a matching consumer test.
+
 ## Unwind Boundary Policy
 
 A physical unwind may continue only when an FDE covers the current PC and its
