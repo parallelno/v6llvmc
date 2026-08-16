@@ -50,6 +50,10 @@ FunctionPass *createV6CAccumulatorPlanningPass();
 FunctionPass *createV6CLoadImmCombinePass();
 FunctionPass *createV6CSPTrickOptPass();
 
+/// Post-O61 pass: replace debug frame indices with final static or patch-byte
+/// locations before generic PEI lowers remaining stack references.
+FunctionPass *createV6CDebugFrameIndexPass();
+
 /// Final pass: salvage globals created by V6C alloca promotion as locations.
 FunctionPass *createV6CStaticDebugValuesPass();
 

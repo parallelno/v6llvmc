@@ -256,6 +256,9 @@ static DbgValueLoc getDebugLocValue(const MachineInstr *MI) {
     } else if (Op.isGlobal()) {
       DbgValueLocEntries.push_back(
           DbgValueLocEntry(Op.getGlobal(), Op.getOffset()));
+    } else if (Op.isMCSymbol()) {
+      DbgValueLocEntries.push_back(
+          DbgValueLocEntry(Op.getMCSymbol(), Op.getTargetFlags() ? 1 : 0));
     } else if (Op.isImm())
       DbgValueLocEntries.push_back(DbgValueLocEntry(Op.getImm()));
     else if (Op.isFPImm())
@@ -2684,6 +2687,11 @@ void DwarfDebug::emitDebugLocValue(const AsmPrinter &AP, const DIBasicType *BT,
       // WebAssembly-specific encoding is supported.
       assert(AP.TM.getTargetTriple().isWasm());
       DwarfExpr.addWasmLocation(Loc.Index, static_cast<uint64_t>(Loc.Offset));
+    } else if (Entry.isGlobalAddress()) {
+      DwarfExpr.addAddress(AP.getSymbol(Entry.getGlobal()),
+                           Entry.getGlobalOffset());
+    } else if (Entry.isMCSymbolAddress()) {
+      DwarfExpr.addAddress(Entry.getSymbol(), Entry.getSymbolOffset());
     } else if (Entry.isConstantFP()) {
       if (AP.getDwarfVersion() >= 4 && !AP.getDwarfDebug()->tuneForSCE() &&
           !Cursor) {

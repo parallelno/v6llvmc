@@ -138,18 +138,31 @@ optimized variables remain available. Complex optimized lifetimes, spill and
 reload transitions, O61 patched-code values, pieces, and unavailable ranges
 remain unsupported baseline cases.
 
-## Optimized Location Lists
+## Optimized Static Locations
 
-At `-O1`, `-O2`, and `-Os`, recoverable values use DWARF v5
-`.debug_loclists` entries with half-open PC ranges. A value may move between a
-pair register and an `SP`-relative spill home, then return to a register; each
-entry describes only the interval in which that storage is valid. The O61
-patched-reload path remains enabled and retains its final location list. When
-no value can be recovered, the list has no entry for that PC range.
+At optimized levels, a recoverable value held in a V6C static-stack slot uses
+its final global address in a DWARF v5 location list. When O61 rewrites that
+slot into a patched reload immediate, the location uses the final
+`.LLo61_N+1` code address as `DW_OP_addrx; DW_OP_plus_uconst 1`. Each entry is
+limited to the PC range in which the corresponding storage is valid.
 
-Optimized debug builds may differ from non-debug builds when necessary for
-correct source locations. The non-debug optimized code path and benchmark
-performance remain the release compatibility gate.
+Other optimized movement, gaps, and complex split values remain under active
+implementation; an absent location means the value is not currently
+recoverable.
+
+## Optimized Preservation Policy
+
+V6C preserves a source location only while the final machine program still
+contains the same value in the described physical register or storage. A
+redundant-instruction fold may leave an existing location unchanged; a
+storage-changing rewrite must replace it with the final global, stack, or O61
+patch-byte address. A physical register definition or unsupported storage
+transition ends the range, producing an absent-location gap rather than a
+stale value.
+
+The post-RA optimizer pipeline remains enabled in debug builds. Its final
+instruction stream is authoritative for location-list clobber boundaries.
+
 
 ## Related Documentation
 

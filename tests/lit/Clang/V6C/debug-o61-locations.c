@@ -22,7 +22,7 @@
 // CHECK: DW_AT_location{{.*}}loclist
 // CHECK: DW_AT_name{{.*}}("third")
 // CHECK: DW_LLE_offset_pair{{.*}}DW_OP_reg9 HL
-// CHECK: DW_LLE_offset_pair{{.*}}DW_OP_breg10 SP+0
+// CHECK: DW_LLE_offset_pair{{.*}}DW_OP_addrx{{.*}}DW_OP_plus_uconst 0x1
 // CHECK: DW_LLE_offset_pair{{.*}}DW_OP_reg9 HL
 // CHECK: DW_LLE_offset_pair{{.*}}DW_OP_reg8 DE
 // CHECK: DW_LLE_offset_pair{{.*}}DW_OP_reg7 BC

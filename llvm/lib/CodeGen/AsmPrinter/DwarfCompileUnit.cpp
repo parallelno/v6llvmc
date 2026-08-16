@@ -802,6 +802,14 @@ void DwarfCompileUnit::applyConcreteDbgVariableAttributes(
         addUInt(*Loc, dwarf::DW_FORM_udata, static_cast<uint64_t>(Offset));
       }
       addBlock(VariableDie, dwarf::DW_AT_location, Loc);
+    } else if (Entry->isMCSymbolAddress()) {
+      DIELoc *Loc = new (DIEValueAllocator) DIELoc;
+      addOpAddress(*Loc, Entry->getSymbol());
+      if (int64_t Offset = Entry->getSymbolOffset()) {
+        addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_plus_uconst);
+        addUInt(*Loc, dwarf::DW_FORM_udata, static_cast<uint64_t>(Offset));
+      }
+      addBlock(VariableDie, dwarf::DW_AT_location, Loc);
     }
     return;
   }

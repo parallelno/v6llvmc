@@ -13,6 +13,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/MC/MCSymbol.h"
 
 namespace llvm {
 
@@ -30,6 +31,10 @@ class V6CMachineFunctionInfo : public MachineFunctionInfo {
   /// so the backing global can be recomputed after passes (e.g., O61)
   /// rewrite some slots away.
   DenseMap<int, int64_t> StaticSizes;
+
+  /// O61 patch-site label for a frame index whose storage moved into reload
+  /// instruction bytes. The value begins one byte after the label.
+  DenseMap<int, MCSymbol *> O61PatchSymbols;
 
   /// Bytes pushed to preserve live argument pairs before frame-pointer setup.
   unsigned PrologueArgSaveSize = 0;
@@ -104,6 +109,15 @@ public:
   void setStaticOffset(int FI, int64_t Offset) {
     assert(StaticSlots.count(FI) && "Frame index not in static map");
     StaticSlots[FI] = Offset;
+  }
+
+  void setO61PatchSymbol(int FI, MCSymbol *Symbol) {
+    O61PatchSymbols[FI] = Symbol;
+  }
+
+  MCSymbol *getO61PatchSymbol(int FI) const {
+    auto It = O61PatchSymbols.find(FI);
+    return It == O61PatchSymbols.end() ? nullptr : It->second;
   }
 
   void setPrologueArgSaveSize(unsigned Size) { PrologueArgSaveSize = Size; }

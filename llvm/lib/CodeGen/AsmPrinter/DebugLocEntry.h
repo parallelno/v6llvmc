@@ -47,7 +47,8 @@ class DbgValueLocEntry {
     E_ConstantFP,
     E_ConstantInt,
     E_TargetIndexLocation,
-    E_GlobalAddress
+    E_GlobalAddress,
+    E_MCSymbolAddress
   };
   enum EntryType EntryKind;
 
@@ -67,6 +68,8 @@ class DbgValueLocEntry {
 
   const GlobalValue *Global = nullptr;
   int64_t GlobalOffset = 0;
+  const MCSymbol *Symbol = nullptr;
+  int64_t SymbolOffset = 0;
 
 public:
   DbgValueLocEntry(int64_t i) : EntryKind(E_Integer) { Constant.Int = i; }
@@ -81,6 +84,8 @@ public:
       : EntryKind(E_TargetIndexLocation), TIL(Loc) {}
     DbgValueLocEntry(const GlobalValue *GV, int64_t Offset)
       : EntryKind(E_GlobalAddress), Global(GV), GlobalOffset(Offset) {}
+  DbgValueLocEntry(const MCSymbol *Sym, int64_t Offset)
+      : EntryKind(E_MCSymbolAddress), Symbol(Sym), SymbolOffset(Offset) {}
 
   bool isLocation() const { return EntryKind == E_Location; }
   bool isIndirectLocation() const {
@@ -90,6 +95,7 @@ public:
     return EntryKind == E_TargetIndexLocation;
   }
   bool isGlobalAddress() const { return EntryKind == E_GlobalAddress; }
+  bool isMCSymbolAddress() const { return EntryKind == E_MCSymbolAddress; }
   bool isInt() const { return EntryKind == E_Integer; }
   bool isConstantFP() const { return EntryKind == E_ConstantFP; }
   bool isConstantInt() const { return EntryKind == E_ConstantInt; }
@@ -100,6 +106,8 @@ public:
   TargetIndexLocation getTargetIndexLocation() const { return TIL; }
   const GlobalValue *getGlobal() const { return Global; }
   int64_t getGlobalOffset() const { return GlobalOffset; }
+  const MCSymbol *getSymbol() const { return Symbol; }
+  int64_t getSymbolOffset() const { return SymbolOffset; }
   friend bool operator==(const DbgValueLocEntry &, const DbgValueLocEntry &);
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
   LLVM_DUMP_METHOD void dump() const {
@@ -274,6 +282,8 @@ inline bool operator==(const DbgValueLocEntry &A, const DbgValueLocEntry &B) {
     return A.TIL == B.TIL;
   case DbgValueLocEntry::E_GlobalAddress:
     return A.Global == B.Global && A.GlobalOffset == B.GlobalOffset;
+  case DbgValueLocEntry::E_MCSymbolAddress:
+    return A.Symbol == B.Symbol && A.SymbolOffset == B.SymbolOffset;
   case DbgValueLocEntry::E_Integer:
     return A.Constant.Int == B.Constant.Int;
   case DbgValueLocEntry::E_ConstantFP:

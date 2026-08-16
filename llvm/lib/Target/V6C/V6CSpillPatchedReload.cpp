@@ -332,6 +332,10 @@ bool V6CSpillPatchedReload::runOnMachineFunction(MachineFunction &MF) {
       Syms.push_back(MF.getContext().createTempSymbol(
           "Lo61_", /*AlwaysAddSuffix=*/true));
 
+    // The first patched reload's immediate bytes are the slot's surviving
+    // storage for every spill/reload in this frame index.
+    MFI->setO61PatchSymbol(KV.first, Syms.front());
+
     // Rewrite every original spill as a per-source ladder (HL/DE/BC)
     // ending in one SHLD per winner. Address operand on each SHLD is
     // <Syms[i], MO_PATCH_IMM>. The materialisation prefix

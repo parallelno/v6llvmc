@@ -169,6 +169,7 @@ public:
     if (getV6CSpillPatchedReloadEnabled())
       addPass(createV6CSpillPatchedReloadPass());
     addPass(createV6CSpillForwardingPass());
+    addPass(createV6CDebugFrameIndexPass());
   }
 
   void addPreEmitPass() override {

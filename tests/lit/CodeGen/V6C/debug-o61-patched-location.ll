@@ -6,7 +6,8 @@
 ; DWARF: DW_TAG_variable
 ; DWARF: DW_AT_location{{.*}}loclist
 ; DWARF: DW_OP_reg9 HL
-; DWARF: DW_OP_breg10 SP+0
+; DWARF: DW_OP_addrx
+; DWARF: DW_OP_plus_uconst 0x1
 ; DWARF: DW_AT_name{{.*}}("carried")
 
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
@@ -15,7 +16,7 @@ target triple = "i8080-unknown-v6c"
 declare i16 @op(i16)
 declare void @llvm.dbg.value(metadata, metadata, metadata)
 
-define i16 @one_reload(i16 %x) !dbg !10 {
+define i16 @one_reload(i16 %x) norecurse !dbg !10 {
 entry:
   %a = call i16 @op(i16 %x), !dbg !16
   call void @llvm.dbg.value(metadata i16 %a, metadata !14, metadata !DIExpression()), !dbg !16

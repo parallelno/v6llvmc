@@ -112,6 +112,8 @@ if (-not (Test-Path "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter")) { New-Ite
 xcopy /Y /I "$root\llvm\lib\CodeGen\AsmPrinter\DebugLocEntry.h" "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\" > $null
 xcopy /Y /I "$root\llvm\lib\CodeGen\AsmPrinter\DwarfDebug.cpp" "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\" > $null
 xcopy /Y /I "$root\llvm\lib\CodeGen\AsmPrinter\DwarfCompileUnit.cpp" "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\" > $null
+xcopy /Y /I "$root\llvm\lib\CodeGen\AsmPrinter\DwarfExpression.h" "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\" > $null
+xcopy /Y /I "$root\llvm\lib\CodeGen\AsmPrinter\DwarfExpression.cpp" "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\" > $null
 Write-Host "  [OK] AsmPrinter relocatable local debug addresses"
 
 # O-LLD: V6C default linker script (data resource for the driver)

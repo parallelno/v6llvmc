@@ -25,6 +25,7 @@ add_llvm_target(V6CCodeGen
   V6CCFI.cpp
   V6CConstantSinking.cpp
   V6CDeadPhiConst.cpp
+  V6CDebugFrameIndex.cpp
   V6CFrameLowering.cpp
   V6CISelDAGToDAG.cpp
   V6CISelLowering.cpp

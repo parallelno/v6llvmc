@@ -72,6 +72,8 @@ if (-not (Test-Path "$root\llvm\lib\CodeGen\AsmPrinter")) { New-Item -ItemType D
 xcopy /Y /I "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\DebugLocEntry.h" "$root\llvm\lib\CodeGen\AsmPrinter\" > $null
 xcopy /Y /I "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\DwarfDebug.cpp" "$root\llvm\lib\CodeGen\AsmPrinter\" > $null
 xcopy /Y /I "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\DwarfCompileUnit.cpp" "$root\llvm\lib\CodeGen\AsmPrinter\" > $null
+xcopy /Y /I "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\DwarfExpression.h" "$root\llvm\lib\CodeGen\AsmPrinter\" > $null
+xcopy /Y /I "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\DwarfExpression.cpp" "$root\llvm\lib\CodeGen\AsmPrinter\" > $null
 
 # O-LLD: ld.lld native linker integration
 # EM_V6C machine ID added to ELF.h

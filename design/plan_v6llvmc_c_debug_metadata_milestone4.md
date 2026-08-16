@@ -67,7 +67,13 @@ instruction number, substitute a debug operand, emit a new debug value, or end
 a location. Adopt one consistent generic LLVM representation supported by the
 pinned LLVM version.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Use physical-location `DBG_VALUE` tracking. A
+> rewrite that preserves a value in the same physical register keeps the
+> existing debug record; final-stream clobber history closes its range. A
+> rewrite that changes storage must replace the debug operand with the final
+> address. A removed value becomes an honest gap; no pass may extend a stale
+> record over a clobber. CFG rewrites preserve debug instructions and lexical
+> scope ranges with their surviving blocks.
 
 ### Step 3.3 - Repair pre-RA and CFG transformations [x]
 
@@ -75,7 +81,10 @@ Update constant sinking, dead-PHI constant replacement, custom inserters, and
 other pre-RA/CFG rewrites so debug uses and scopes follow the new definitions
 and edges without changing optimization eligibility or generated code.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Audited constant sinking, dead-PHI replacement,
+> target select/custom-inserter CFG rewrites, loop pointer induction, and type
+> narrowing. Their SSA replacements retain frontend debug records; values no
+> longer represented in the final stream produce ordinary location gaps.
 
 ### Step 3.4 - Repair spill and frame transformations [x]
 
@@ -83,7 +92,10 @@ Handle spill forwarding, dead reloads, ordinary/static spill expansion,
 frame-index elimination, and register-to-stack-to-register transitions. Emit
 gaps where no recoverable machine value exists.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Completed static-stack frame-index lowering. A
+> debug location that survives in a static slot now uses the final backing
+> global address instead of a false SP-relative expression. Ordinary spills
+> retain generic register/stack range tracking; O61 storage is handled below.
 
 ### Step 3.5 - Repair all pre-emit optimizations [x]
 
@@ -92,7 +104,13 @@ XCHG, branch, zero-test, register-value forwarding, redundant flags, and SP
 tricks. Preserve debug semantics without altering any pattern, cost, liveness
 decision, or output instruction.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Audited accumulator planning, peephole,
+> load-immediate/load-store/XCHG, branch, zero-test, register-value forwarding,
+> redundant-flag, and SP-trick rewrites. They either remove semantically
+> redundant instructions or replace them with equivalent physical definitions;
+> the final machine stream remains the source of clobber boundaries. O61 and
+> debug alloca homes are the storage-changing exceptions and are explicitly
+> represented.
 
 ### Step 3.6 - Model O61 patched locations [x]
 
@@ -102,7 +120,10 @@ register after execution and, where a memory location is valid, the actual
 or clobbers invalidate them. Do not disable, delete, or special-case O61 out of
 debug builds.
 
-> **Implementation Notes**:
+> **Implementation Notes**: O61 records each rewritten frame index's first
+> patch-site label. A post-O61 debug pass maps that frame index to
+> `.LLo61_N+1`; final DWARF uses `DW_OP_addrx; DW_OP_plus_uconst 1` over the
+> interval where the patched immediate bytes retain the value.
 
 ### Step 3.7 - Build [x]
 
@@ -117,7 +138,10 @@ register moves, spill/reload transitions, constants, gaps, prologue/epilogue,
 disjoint ranges, half-open boundaries, static slots, O61 patches, calls, and
 optimized-out values at `-O1/-O2/-Os`.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Added direct final-ELF O61 coverage and expanded
+> C location-list coverage across `-O1`, `-O2`, and `-Os`. Tests cover
+> register-to-static/O61 transitions, final patch-byte addresses, constants,
+> stack arguments, and final DWARF verification.
 
 ### Step 3.9 - Add emulator lifetime tests [x]
 
@@ -125,7 +149,10 @@ Stop on both sides of each transition and evaluate the selected location
 against registers/memory. Assert unavailable ranges remain unavailable and
 shadowed identities do not alias.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Feature 80 evaluates static and frame-relative
+> locations against stopped emulator memory. Feature 81 stops inside an O61
+> location-list interval and verifies the patched immediate bytes contain the
+> carried value.
 
 ### Step 3.10 - Prove optimization and performance non-regression [x]
 
@@ -135,27 +162,34 @@ cycles/sizes to baseline. Debug builds may differ when necessary for correct
 source locations, but must keep all optimizations enabled. Any normal release
 instruction, cycle, or size regression blocks completion.
 
-> **Implementation Notes**:
+> **Implementation Notes**: `python tests/run_all.py` passed with 182 lit
+> tests, golden tests, packed-BSS, and unchanged benchmark sizes, cycles, and
+> checksums. The optimized debug fixture may differ from `-g0`, as permitted
+> by the source-location preservation contract; release output is unchanged.
 
 ### Step 3.11 - Run regression tests [x]
 
 Run all focused tests and `python tests/run_all.py` with benchmarks enabled.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Focused O61/static-location tests and the full
+> regression suite pass.
 
 ### Step 3.12 - Verify assembly and create `result.txt` [x]
 
 Include unchanged assembly, selected `.debug_loclists` dumps, transition/value
 checks, pass coverage matrix, and complete benchmark comparison.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Feature 81 records its final location expression,
+> live PC interval, patch-byte address, and evaluated emulator value.
 
 ### Step 3.13 - Document, sync, and mark complete [x]
 
 Publish optimized-location guarantees and limitations, sync mirrors, and mark
 all steps plus the master milestone complete.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Updated producer documentation and master plans,
+> synchronized canonical LLVM changes into tracked mirrors, and verified
+> mirror hashes for new and modified sources.
 
 ## 4. Expected Results
 

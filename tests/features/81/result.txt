@@ -1,0 +1,18 @@
+Feature 81 - C Debug Metadata Milestone 4: O61 Runtime Location
+=================================================================
+
+This fixture compiles an optimized debug build, stops at the HLT in
+`optimized_locations`, and evaluates the final `first` location from the
+linked ELF. The value must be stored in the immediate bytes of an O61 patched
+reload and evaluate as `0x1235` through `DW_OP_addrx; DW_OP_plus_uconst 1`.
+
+The runner additionally requires the stopped HLT instruction to be inside the
+same half-open location-list range, so the patch-byte address is not merely a
+syntactically valid inactive location.
+
+Observed optimized runtime result:
+
+	HLT=0x013F
+	first location: DW_OP_addrx 0x12, DW_OP_plus_uconst 1
+	patch address: 0x0138
+	evaluated value: 0x1235
