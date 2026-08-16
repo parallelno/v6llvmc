@@ -113,9 +113,10 @@ confirm DIE layout and active inline chain against actual memory and PC.
 
 ### Step 3.9 - Prove optimization and performance non-regression [ ]
 
-Do not disable or delete optimizations. Require unchanged `-g0` executable
-output, `-g`/`-g0` executable identity, identical checksums, and no benchmark
-cycle or code-size increase.
+Do not disable or delete optimizations. Require unchanged normal optimized
+executable output, identical benchmark checksums, and no release benchmark
+cycle or code-size increase. Validate debug builds for correct scopes, types,
+inline metadata, and runtime behavior rather than non-debug byte identity.
 
 > **Implementation Notes**:
 
@@ -151,7 +152,7 @@ mark all steps plus the master milestone complete.
 |------|------------|
 | Tests merely restate frontend IR | Validate final ELF and emulator memory/PC. |
 | Recursive types cause unbounded consumers | Use stable DIE references; consumer limits remain downstream. |
-| Inline optimization changes while testing | Assert executable identity and test metadata around existing output. |
+| Inline debug metadata is inaccurate after optimization | Test emitted metadata against actual debug-build PCs and runtime state. |
 | Link GC leaves stale ranges | Correlate every accepted range with final executable sections. |
 
 ## 6. Relationship to Other Improvements

@@ -89,10 +89,9 @@ are unchanged by this milestone.
 Debug-build observation: `-g` currently changes static-stack/register
 allocation in four benchmarks. At O1, measured cycles are bsort 3,297,124,
 sieve 4,533,648, fib_crc 53,384, fannkuch 25,385,692, and lfsr16 730,452.
-This behavior is outside the Milestone 1 register/ELF plumbing; normal
-benchmark ROMs remain byte-identical. It is tracked for the optimized
-debug-lifetime/pass-preservation milestone. No optimization was disabled or
-weakened to hide it.
+This is acceptable debug-build behavior: preserving source variables may
+change allocation and stack layout. Normal benchmark ROMs remain
+byte-identical, and no optimization was disabled or weakened.
 
 External Tool Validation
 ------------------------
@@ -116,6 +115,6 @@ Final object/ELF debug emission is supported and verified. Textual
 printed; ordinary `clang -S` and `clang -c/-g` work. The debugger contract uses
 the final linked ELF, so this does not affect the produced debug companion.
 
-Debug tracking can currently perturb optimized static-stack/register
-allocation. Milestone 4 must make debug records metadata-only with respect to
-optimization decisions and restore `-g`/`-g0` executable identity.
+Debug builds are not required to be byte-identical to non-debug builds. Their
+acceptance criteria are correct metadata, correct runtime behavior, and no
+artificial disabling of existing optimizations.

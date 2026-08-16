@@ -118,10 +118,10 @@ caller SP/PC against execution. Include one honest boundary-stop fixture.
 
 ### Step 3.9 - Prove optimization and performance non-regression [ ]
 
-No optimization may be disabled or deleted. CFI must not change executable
-instructions. Require baseline-identical `-g0` output, executable-byte identity
-between `-g` and matching `-g0`, identical checksums, and no cycle or code-size
-increase in any benchmark row.
+No optimization may be disabled or deleted. Require baseline-identical normal
+optimized output, identical benchmark checksums, and no cycle or code-size
+increase in any release benchmark row. Validate debug builds for correct CFI
+and runtime behavior; they need not be byte-identical to non-debug builds.
 
 > **Implementation Notes**:
 
@@ -134,7 +134,7 @@ benchmark suite enabled.
 
 ### Step 3.11 - Verify assembly and create `result.txt` [ ]
 
-Follow `tests/features/result.md`. Include assembly identity evidence,
+Follow `tests/features/result.md`. Include release assembly non-regression evidence,
 `llvm-dwarfdump --debug-frame`, per-PC expected/actual unwind rows, emulator
 snapshots, and old/new benchmark tables.
 

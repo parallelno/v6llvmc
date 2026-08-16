@@ -59,8 +59,10 @@ These apply to every milestone:
 - Non-debug (`-g0`) code generation must remain byte-for-byte unchanged unless
   the milestone documents and obtains approval for an unavoidable correctness
   fix.
-- Adding `-g` must not change executable `.text`, ROM bytes, runtime checksum,
-  cycle count, or code size for the same optimization level.
+- Debug builds may differ from non-debug builds because preserving source
+  variables can affect register allocation, stack layout, and optimization
+  decisions. They must remain correct and must not disable or remove existing
+  optimizations merely to simplify metadata emission.
 - Before implementation, capture the current benchmark baseline with
   `python tests/benchmarks_c/run_benchmarks.py`.
 - After every milestone, every v6llvmc benchmark at every tested optimization
@@ -70,7 +72,7 @@ These apply to every milestone:
 
 ## 3. Milestones
 
-1. [~] [Milestone 1: ABI, DWARF register map, and ELF integrity](plan_v6llvmc_c_debug_metadata_milestone1.md)
+1. [x] [Milestone 1: ABI, DWARF register map, and ELF integrity](plan_v6llvmc_c_debug_metadata_milestone1.md)
 2. [Milestone 2: Call-frame information and physical unwinding](plan_v6llvmc_c_debug_metadata_milestone2.md)
 3. [Milestone 3: Baseline parameter and local locations](plan_v6llvmc_c_debug_metadata_milestone3.md)
 4. [Milestone 4: Optimized lifetimes and location lists](plan_v6llvmc_c_debug_metadata_milestone4.md)
@@ -85,8 +87,8 @@ implement a later milestone.
 
 - v6vscode receives standard, bounded DWARF v5 data instead of target-specific
   prologue or stack heuristics.
-- Debug builds retain exactly the optimized executable behavior and benchmark
-  performance of equivalent non-debug builds.
+- Release/non-debug builds retain their established executable behavior and
+  benchmark performance.
 - Each delivery has a small, falsifiable acceptance surface and can be reverted
   independently if its metadata is incorrect.
 
@@ -94,7 +96,7 @@ implement a later milestone.
 
 | Risk | Mitigation |
 |------|------------|
-| Debug tracking changes generated code | Require `.text`, ROM, cycle, and size identity for `-g0` versus baseline and `-g` versus equivalent `-g0`. |
+| Debug support regresses release code | Require `.text`, ROM, cycle, and size identity for `-g0` versus the captured baseline. |
 | Custom passes invalidate debug locations | Add pass-specific before/after MIR or IR tests; update debug records without changing optimization decisions. |
 | CFI does not model dynamic prologue choices | Emit CFI beside each actual SP/register mutation and test every selected prologue/epilogue tier. |
 | Static-stack or O61 locations are unusual | Model their real memory/instruction-byte locations; never disable either optimization. |

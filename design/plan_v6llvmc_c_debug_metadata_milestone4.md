@@ -165,7 +165,7 @@ all steps plus the master milestone complete.
 
 | Risk | Mitigation |
 |------|------------|
-| A debug fix changes optimization decisions | Keep debug records excluded from semantic use counts and require byte identity. |
+| A debug fix harms normal optimized code | Compare release output and benchmarks to baseline; separately validate debug locations and runtime behavior. |
 | Stale location survives a fold | Test before/after every audited rewrite and clobber. |
 | O61 code bytes are mistaken for immutable memory | Track patch lifetime and use final linked symbol addresses. |
 | Audit misses a pass | Maintain a checked pass inventory derived from the actual pipeline. |

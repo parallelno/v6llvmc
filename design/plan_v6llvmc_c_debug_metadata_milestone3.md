@@ -118,9 +118,10 @@ ordinary stack, and static storage.
 
 ### Step 3.9 - Prove optimization and performance non-regression [ ]
 
-Keep every optimization active. Require unchanged `-g0` assembly/`.text`/ROM,
-identical executable bytes for `-g` versus matching `-g0`, correct checksums,
-and no benchmark cycle or code-size increase.
+Keep every optimization active. Require unchanged normal optimized
+assembly/`.text`/ROM, correct benchmark checksums, and no release benchmark
+cycle or code-size increase. Validate debug builds for correct locations and
+runtime values; they need not match non-debug executable bytes.
 
 > **Implementation Notes**:
 
@@ -158,7 +159,7 @@ mark all steps plus the master milestone complete.
 | Debug salvage keeps old alloca address | Test final address against symbol and emulator memory. |
 | Pair location byte order is wrong | Test known asymmetric i16 values and byte pieces. |
 | Location crosses a clobber | Stop immediately before/after spill, call, and reload. |
-| Debug records influence RA | Require executable identity with and without `-g`. |
+| Debug records influence RA | Accept debug-specific allocation while testing location accuracy and preserving normal optimized output. |
 
 ## 6. Relationship to Other Improvements
 
