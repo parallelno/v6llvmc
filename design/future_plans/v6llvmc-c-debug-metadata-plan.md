@@ -240,7 +240,7 @@ The producer prerequisite is complete only when:
 ## 14. Implementation Checklist
 
 - [x] Complete Milestone 1: ABI, DWARF register map, and ELF integrity.
-- [ ] Complete Milestone 2: call-frame information and physical unwinding.
+- [x] Complete Milestone 2: call-frame information and physical unwinding.
 - [ ] Complete Milestone 3: baseline parameter and local locations.
 - [ ] Complete Milestone 4: optimized lifetimes and location lists.
 - [ ] Complete Milestone 5: lexical scopes, types, and inline metadata.
@@ -256,9 +256,9 @@ The producer prerequisite is complete only when:
 - [ ] Emit lexical-block and discontinuous function ranges.
 - [ ] Emit nested inline-subroutine DIEs and abstract origins.
 - [ ] Verify C scalar, pointer, array, structure, union, enum, typedef, and qualifier types.
-- [ ] Emit `.debug_frame` CIE/FDE data.
-- [ ] Cover leaf/non-leaf, spills, stack arguments, frame-pointer modes, returns, tail calls, and unwind boundaries.
-- [ ] Verify final linked addresses and relocations against ROM execution.
+- [x] Emit `.debug_frame` CIE/FDE data.
+- [x] Cover leaf/non-leaf, spills, stack arguments, frame-pointer modes, returns, tail calls, and unwind boundaries.
+- [x] Verify final linked addresses and relocations against ROM execution.
 - [ ] Run `-O0`, debug-friendly, `-O1`, and `-O2` metadata tests.
 - [ ] Publish the supported forms, operations, register map, and known limitations.
 - [ ] Pass v6vscode parser and real-emulator consumer tests.

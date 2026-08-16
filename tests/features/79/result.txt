@@ -1,0 +1,78 @@
+Feature 79 - C Debug Metadata Milestone 2: Call-Frame Information
+================================================================
+
+Status
+------
+
+Implemented and validated:
+
+- Debug final ELFs contain `.debug_frame` and no `.eh_frame`.
+- CIE: DWARF32 v4 frame format, address size 2, code alignment 1,
+  data alignment -2, return-address column 11 (PC).
+- Ordinary entry rule: `CFA = SP + 2`, `PC = [CFA - 2]`.
+- Final-stream CFI tracks PUSH, POP, INX/DCX SP, and LXI/DAD/SPHL frame
+  adjustments after every V6C optimization has run.
+- BC frame-pointer rules preserve and recover caller BC and switch between
+  BC-relative and SP-relative CFA rules through prologue/epilogue PCs.
+- Naked and interrupt-marked functions emit `PC undefined` boundaries.
+- SP repurposing is marked unavailable until the recognized SP-trick restore.
+- No existing optimization is disabled or removed.
+
+C Test Case
+-----------
+
+`v6llvmc.c` keeps the physical call chain:
+
+    main -> middle -> leaf
+
+The c8080-compatible source and reference listing are included as `c8080.c`
+and `c8080.asm`.
+
+Physical Unwind Evidence
+------------------------
+
+`run.py` compiles the final debug ELF/ROM, verifies DWARF, stops v6emul inside
+`leaf`, reads the real stack bytes, and applies the emitted SP+2/PC-2 rule.
+The verified chain is:
+
+    leaf:   PC=0x011F SP=0xFFFA, return PC [SP]=0x012B
+    middle: PC=0x012B SP=0xFFFC, return PC [SP]=0x013A
+    main:   PC=0x013A SP=0xFFFE, return PC [SP]=0x011D
+    crt0:   PC=0x011D SP=0x0000
+
+The raw stopped CPU and 64K memory snapshot is `emulator-stop.txt`.
+
+Frame-Shape Coverage
+--------------------
+
+Permanent lit tests cover:
+
+- leaf and non-leaf entry rules;
+- repeated PUSH/POP allocation with intermediate CFA rows;
+- six-byte and odd-sized LXI/DAD/SPHL frames;
+- BC+4 and BC+8 frame-pointer modes;
+- saved BC offsets and restoration;
+- multiple epilogue cleanup steps;
+- naked and interrupt unwind boundaries;
+- object and final linked FDE ranges;
+- `llvm-dwarfdump --verify`.
+
+Forced-FP Correctness Fixes
+---------------------------
+
+Milestone validation exposed two existing frame-pointer defects:
+
+1. The shared i8 spill expander selected reserved B/C as scratch registers,
+   corrupting BC. It now excludes every target-reserved register.
+2. The two-live-pair prologue left four argument-save bytes below saved BC.
+   The FP epilogue now discards those bytes before RET.
+
+The forced-FP regression now reaches crt0 HLT with SP restored to 0x0000.
+
+Assembly and Performance
+------------------------
+
+CFI instructions are metadata-only and are inserted only for modules carrying
+debug information. `v6llvmc_old.asm` and `v6llvmc_new01.asm` are identical for
+the release fixture. Full benchmark and regression results are recorded in the
+Milestone 2 implementation plan.

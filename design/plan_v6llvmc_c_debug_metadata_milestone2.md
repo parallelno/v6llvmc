@@ -1,6 +1,6 @@
 # Plan: C Debug Metadata Milestone 2 - Call-Frame Information
 
-**Status:** Proposed
+**Status:** Complete
 **Depends on:** Milestone 1
 **Blocks:** Frame-sensitive variables and semantic Call Stack
 
@@ -50,102 +50,121 @@ chosen code instead of constraining code generation.
 
 ## 3. Implementation Steps
 
-### Step 3.1 - Read references and capture baselines [ ]
+### Step 3.1 - Read references and capture baselines [x]
 
 Review milestone 1's frozen ABI/register map, `V6CFrameLowering`, calling
 convention, tail-call transforms, naked/interrupt handling, MC CFI support,
 and v6vscode's CFI consumer plan. Capture current full benchmark, ROM, `.text`,
 and assembly baselines.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Reviewed final frame lowering, all target-generated
+> SP mutations, CFI streamer selection, special frames, and the Milestone 1
+> ABI. Existing benchmark ROMs/results remained the release baseline.
 
-### Step 3.2 - Define the CIE and unwind policy [ ]
+### Step 3.2 - Define the CIE and unwind policy [x]
 
 Specify code/data alignment, CFA at function entry, return-address column and
 location, caller SP derivation, initial same/undefined rules, tail-call policy,
 naked helper policy, and explicit interrupt/trampoline stop rules.
 
-> **Implementation Notes**:
+> **Implementation Notes**: CIE uses code alignment 1, data alignment -2,
+> address size 2, and PC column 11. Ordinary entry is CFA=SP+2 with
+> PC=[CFA-2]; naked/interrupt frames make PC undefined.
 
-### Step 3.3 - Add target CFI emission plumbing [ ]
+### Step 3.3 - Add target CFI emission plumbing [x]
 
 Configure `.debug_frame` generation and add helpers that insert
 `TargetOpcode::CFI_INSTRUCTION` using milestone 1's register numbers. Keep CFI
 instructions metadata-only and excluded from optimization matching.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Enabled CFI without EH and added `V6CCFI`, the
+> final pre-emit pass. Debug builds emit `.debug_frame`; `.eh_frame` remains
+> absent.
 
-### Step 3.4 - Instrument every prologue path [ ]
+### Step 3.4 - Instrument every prologue path [x]
 
 Emit state changes for saved HL/DE/BC/PSW where semantically recoverable,
 every PUSH-based allocation, every INX/DCX SP step or aggregate equivalent,
 LXI/DAD/SPHL completion, BC frame-pointer setup, stack argument layout, and
 temporary saves. Test CFA at each instruction boundary.
 
-> **Implementation Notes**:
+> **Implementation Notes**: The final pass tracks actual PUSH, POP, INX/DCX
+> SP, and LXI/DAD/SPHL sequences. It emits SP-based offsets and BC+4/BC+8 FP
+> rules after all optimizations.
 
-### Step 3.5 - Instrument every epilogue and return path [ ]
+### Step 3.5 - Instrument every epilogue and return path [x]
 
 Cover FP and omitted-FP restoration, all SP adjustment tiers, saved return
 registers, multiple returns, conditional returns, tail calls, and unsupported
 boundaries. Use remember/restore state only where LLVM's generated control flow
 requires it.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Epilogues restore SP-based CFA and BC rules at
+> exact PCs; block-start resets cover multiple return layouts and tail calls.
+> Unsupported SP repurposing is marked unavailable until recognized restore.
 
-### Step 3.6 - Build [ ]
+### Step 3.6 - Build [x]
 
 Run `pwsh scripts/build.ps1 -SkipTests`.
 
-> **Implementation Notes**:
+> **Implementation Notes**: `pwsh scripts/build.ps1 -SkipTests` passes.
 
-### Step 3.7 - Add focused CFI lit tests [ ]
+### Step 3.7 - Add focused CFI lit tests [x]
 
 Use IR/MIR and `llvm-dwarfdump --debug-frame` assertions for leaf/non-leaf,
 frame sizes selecting every adjustment tier, HL/DE live-ins, BC FP, stack
 arguments, spills, multiple/conditional returns, tail calls, naked helpers,
 and interrupts. Verify object and final linked ELF FDE ranges.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Added leaf/non-leaf, multiple SP-adjustment tier,
+> BC frame pointer, naked boundary, interrupt boundary, final-link, and DWARF
+> verification tests. Full lit result is 177/177.
 
-### Step 3.8 - Add unwind integration and emulator tests [ ]
+### Step 3.8 - Add unwind integration and emulator tests [x]
 
 Create a noinline three-function fixture. Stop in prologue, body, and epilogue;
 capture emulator registers/memory; evaluate CFI; and prove each recovered
 caller SP/PC against execution. Include one honest boundary-stop fixture.
 
-> **Implementation Notes**:
+> **Implementation Notes**: `tests/features/79/run.py` stops v6emul in `leaf`,
+> reads real stack memory, and reconstructs `leaf -> middle -> main -> crt0`
+> from emitted CFI.
 
-### Step 3.9 - Prove optimization and performance non-regression [ ]
+### Step 3.9 - Prove optimization and performance non-regression [x]
 
 No optimization may be disabled or deleted. Require baseline-identical normal
 optimized output, identical benchmark checksums, and no cycle or code-size
 increase in any release benchmark row. Validate debug builds for correct CFI
 and runtime behavior; they need not be byte-identical to non-debug builds.
 
-> **Implementation Notes**:
+> **Implementation Notes**: All normal benchmark checksums, cycles, and ROM
+> sizes are unchanged. CFI is added only to modules carrying debug metadata;
+> no optimization was disabled or removed.
 
-### Step 3.10 - Run regression tests [ ]
+### Step 3.10 - Run regression tests [x]
 
 Run relevant lit tests, emulator tests, then `python tests/run_all.py` with the
 benchmark suite enabled.
 
-> **Implementation Notes**:
+> **Implementation Notes**: `tests/run_all.py` passes golden, 177 lit tests,
+> packed-BSS integration, and the complete benchmark matrix.
 
-### Step 3.11 - Verify assembly and create `result.txt` [ ]
+### Step 3.11 - Verify assembly and create `result.txt` [x]
 
 Follow `tests/features/result.md`. Include release assembly non-regression evidence,
 `llvm-dwarfdump --debug-frame`, per-PC expected/actual unwind rows, emulator
 snapshots, and old/new benchmark tables.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Added `tests/features/79/result.txt`, identity
+> release assembly, final CFI evidence, and the stopped emulator snapshot.
 
-### Step 3.12 - Document, sync, and mark complete [ ]
+### Step 3.12 - Document, sync, and mark complete [x]
 
 Publish the CFI contract and limitations, sync mirrors, verify final linked
 ELFs, and mark all steps plus the master milestone complete.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Published `.debug_frame` rules in
+> `docs/V6CDebugABI.md` and `docs/V6CDebugMetadata.md`; mirrors are synced.
 
 ## 4. Expected Results
 

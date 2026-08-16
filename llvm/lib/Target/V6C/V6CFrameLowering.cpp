@@ -15,6 +15,7 @@
 #include "V6CFrameLowering.h"
 #include "V6C.h"
 #include "V6CInstrCost.h"
+#include "V6CMachineFunctionInfo.h"
 #include "MCTargetDesc/V6CMCTargetDesc.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -182,6 +183,7 @@ bool V6CFrameLowering::spAdjustClobbersHL(const MachineBasicBlock &MBB,
 void V6CFrameLowering::emitPrologue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
   MachineFrameInfo &MFI = MF.getFrameInfo();
+  auto *FuncInfo = MF.getInfo<V6CMachineFunctionInfo>();
   uint64_t StackSize = MFI.getStackSize();
   bool UseFP = hasFP(MF);
   V6COptMode Mode = getV6COptMode(MF);
@@ -210,8 +212,10 @@ void V6CFrameLowering::emitPrologue(MachineFunction &MF,
     uint64_t OrigStackSize = StackSize;
     StackSize += 4;
     MFI.setStackSize(StackSize);
+    FuncInfo->setPrologueArgSaveSize(4);
 
     if (UseFP) {
+      FuncInfo->setFrameCFAOffset(8);
       BuildMI(MBB, MBBI, DL, TII.get(V6C::PUSH)).addReg(V6C::BC);
       BuildMI(MBB, MBBI, DL, TII.get(V6C::LXI))
           .addReg(V6C::HL, RegState::Define).addImm(0);
@@ -281,6 +285,7 @@ void V6CFrameLowering::emitPrologue(MachineFunction &MF,
   }
 
   if (UseFP) {
+    FuncInfo->setFrameCFAOffset(4);
     BuildMI(MBB, MBBI, DL, TII.get(V6C::PUSH)).addReg(V6C::BC);
     BuildMI(MBB, MBBI, DL, TII.get(V6C::LXI))
         .addReg(V6C::HL, RegState::Define).addImm(0);
@@ -326,6 +331,7 @@ void V6CFrameLowering::emitPrologue(MachineFunction &MF,
 void V6CFrameLowering::emitEpilogue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
   MachineFrameInfo &MFI = MF.getFrameInfo();
+  auto *FuncInfo = MF.getInfo<V6CMachineFunctionInfo>();
   uint64_t StackSize = MFI.getStackSize();
   bool UseFP = hasFP(MF);
   V6COptMode Mode = getV6COptMode(MF);
@@ -373,6 +379,9 @@ void V6CFrameLowering::emitEpilogue(MachineFunction &MF,
     BuildMI(MBB, MBBI, DL, TII.get(V6C::SPHL));
     BuildMI(MBB, MBBI, DL, TII.get(V6C::POP))
         .addReg(V6C::BC, RegState::Define);
+    if (unsigned ArgSaveSize = FuncInfo->getPrologueArgSaveSize())
+      emitSPAdjustment(MBB, MBBI, static_cast<int64_t>(ArgSaveSize), DL,
+                       /*IsPrologue=*/false, Mode);
     if (NeedHLSave) {
       BuildMI(MBB, MBBI, DL, TII.get(V6C::MOVrr))
           .addReg(V6C::H, RegState::Define)

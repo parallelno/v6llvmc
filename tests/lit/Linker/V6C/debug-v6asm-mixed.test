@@ -3,7 +3,7 @@
 # RUN: %v6asm -g -f obj %t/asm-leaf.asm -o %t/asm-leaf.o
 # RUN: lld -flavor gnu -m elf32v6c -e c_entry -o %t/mixed.elf %t/c-entry.o %t/asm-leaf.o
 # RUN: llvm-readelf -S -s %t/mixed.elf | FileCheck %s --check-prefix=ELF
-# RUN: llvm-readelf -x .debug_line -x .debug_line_str %t/mixed.elf | FileCheck %s --check-prefix=LINES
+# RUN: llvm-dwarfdump --debug-line %t/mixed.elf | FileCheck %s --check-prefix=LINES
 # RUN: llvm-readelf -r %t/mixed.elf | FileCheck %s --check-prefix=RELOCS
 
 # ELF-DAG: .debug_info
@@ -13,9 +13,8 @@
 # ELF-DAG: c_entry
 # ELF-DAG: asm_leaf
 
-# LINES-DAG: 2d656e74 72792e63
-# LINES-DAG: 00010061 736d2d6c
-# LINES-DAG: 6561662e 61736d00
+# LINES-DAG: name: "c-entry.c"
+# LINES-DAG: name: "asm-leaf.asm"
 
 # RELOCS: There are no relocations in this file.
 

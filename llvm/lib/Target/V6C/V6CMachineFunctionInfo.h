@@ -31,6 +31,12 @@ class V6CMachineFunctionInfo : public MachineFunctionInfo {
   /// rewrite some slots away.
   DenseMap<int, int64_t> StaticSizes;
 
+  /// Bytes pushed to preserve live argument pairs before frame-pointer setup.
+  unsigned PrologueArgSaveSize = 0;
+
+  /// CFA offset from BC while the frame pointer is active.
+  int64_t FrameCFAOffset = 4;
+
 public:
   V6CMachineFunctionInfo() = default;
   V6CMachineFunctionInfo(const Function &F, const TargetSubtargetInfo *STI) {}
@@ -99,6 +105,12 @@ public:
     assert(StaticSlots.count(FI) && "Frame index not in static map");
     StaticSlots[FI] = Offset;
   }
+
+  void setPrologueArgSaveSize(unsigned Size) { PrologueArgSaveSize = Size; }
+  unsigned getPrologueArgSaveSize() const { return PrologueArgSaveSize; }
+
+  void setFrameCFAOffset(int64_t Offset) { FrameCFAOffset = Offset; }
+  int64_t getFrameCFAOffset() const { return FrameCFAOffset; }
 };
 
 } // namespace llvm

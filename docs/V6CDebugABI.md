@@ -55,8 +55,7 @@ The stack frame is selected from the actual machine function shape:
   incoming `BC`, captures the pre-local-allocation SP in `BC`, and the epilogue
   restores SP and then `BC`.
 - Prologues may temporarily save live `HL`/`DE` argument values while forming
-  addresses. Those saves are implementation details and are described by CFI
-  when unwind emission is enabled.
+  addresses. Final-stream CFI tracks every resulting SP change.
 - Static-stack allocation and alloca promotion may place locals or spills in
   per-function global storage rather than the runtime stack.
 - O61 may store spill values in the immediate bytes of patched reload
@@ -76,8 +75,31 @@ instruction patterns.
 - Interrupt/trampoline frames are not ordinary C frames. Unwinding stops at
   such a boundary unless the final ELF contains explicit rules for that exact
   frame shape.
-- Until `.debug_frame` support is implemented, absence of CFI means physical
-  caller unwinding is unavailable; it is not permission to scan stack words.
+- Naked and interrupt-marked functions use an undefined return-PC rule, which
+  is an explicit unwind boundary. Absence of usable CFI is not permission to
+  scan stack words.
+
+## Call-Frame Information
+
+Debug builds emit `.debug_frame`; V6C does not emit `.eh_frame` for this
+debugger-only contract. The CIE uses code alignment 1, data alignment -2,
+16-bit addresses, and return-address column 11 (`PC`).
+
+At ordinary function entry:
+
+- `CFA = SP + 2`.
+- `PC = [CFA - 2]`.
+
+For SP-based frames, each final PUSH, POP, INX/DCX SP, and recognized
+LXI/DAD/SPHL adjustment updates the CFA offset at the following PC. For
+frame-pointer functions, saved BC is described relative to the CFA and the
+body uses `CFA = BC + offset`; epilogues switch back to SP after restoring BC.
+The complex two-live-pair prologue uses `BC + 8`, while the ordinary FP shape
+uses `BC + 4`.
+
+When an optimization temporarily repurposes SP and the old CFA cannot be
+expressed safely, the return-PC rule becomes undefined. The recognized
+SP-trick restoration re-establishes the previous CFA and return-PC rule.
 
 ## DWARF Register Numbers
 

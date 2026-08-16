@@ -174,7 +174,8 @@ public:
   void addPreEmitPass() override {
     // Post-RA optimization pipeline per design §8.1 Phase 3.
     // Order: AccumulatorPlanning → Peephole → LoadImmCombine → LoadStoreOpt →
-    //        XchgOpt → BranchOpt → ZeroTestOpt → RedundantFlagElim → SPTrickOpt
+    //        XchgOpt → BranchOpt → ZeroTestOpt → RedundantFlagElim →
+    //        SPTrickOpt → CFI
     addPass(createV6CAccumulatorPlanningPass());
     addPass(createV6CPeepholePass());
     addPass(createV6CLoadImmCombinePass());
@@ -185,6 +186,8 @@ public:
     addPass(createV6CRegValueForwardingPass());
     addPass(createV6CRedundantFlagElimPass());
     addPass(createV6CSPTrickOptPass());
+    // Must run last: CFI describes the final optimized instruction stream.
+    addPass(createV6CCFIPass());
   }
 
   void addIRPasses() override {

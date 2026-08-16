@@ -30,6 +30,7 @@ V6CMCAsmInfo::V6CMCAsmInfo(const Triple &TT, const MCTargetOptions &Options) {
   HasDotTypeDotSizeDirective = false;
   HasSingleParameterDotFile = false;
   SupportsDebugInformation = true;
+  UsesCFIWithoutEH = true;
   IsLittleEndian = true;
 }
 

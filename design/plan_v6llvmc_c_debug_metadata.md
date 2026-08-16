@@ -73,7 +73,7 @@ These apply to every milestone:
 ## 3. Milestones
 
 1. [x] [Milestone 1: ABI, DWARF register map, and ELF integrity](plan_v6llvmc_c_debug_metadata_milestone1.md)
-2. [Milestone 2: Call-frame information and physical unwinding](plan_v6llvmc_c_debug_metadata_milestone2.md)
+2. [x] [Milestone 2: Call-frame information and physical unwinding](plan_v6llvmc_c_debug_metadata_milestone2.md)
 3. [Milestone 3: Baseline parameter and local locations](plan_v6llvmc_c_debug_metadata_milestone3.md)
 4. [Milestone 4: Optimized lifetimes and location lists](plan_v6llvmc_c_debug_metadata_milestone4.md)
 5. [Milestone 5: Lexical scopes, types, and inline metadata](plan_v6llvmc_c_debug_metadata_milestone5.md)

@@ -27,8 +27,9 @@ not retain the intermediate ELF.
 
 The companion ELF contains final symbols and standard DWARF v5 sections,
 including `.debug_info`, `.debug_abbrev`, `.debug_line`, indexed string and
-address tables, and range/location lists when required. It records source file
-names and instruction source locations for C and supported assembly inputs.
+address tables, range/location lists when required, and `.debug_frame` for C
+physical unwinding. It records source file names and instruction source
+locations for C and supported assembly inputs.
 
 ## C Programs
 
@@ -99,6 +100,9 @@ llvm-build/bin/llvm-objdump -d game.elf
 
 # Display the raw DWARF line-table payload when diagnosing metadata.
 llvm-build/bin/llvm-readelf -x .debug_line game.elf
+
+# Display CIE/FDE rules and per-PC unwind rows.
+llvm-build/bin/llvm-dwarfdump --debug-frame game.elf
 ```
 
 For source-to-address tools, use rows from the final ELF that belong to a
@@ -112,6 +116,9 @@ discarded code has no executable address and must not become a breakpoint.
 - The final ELF is authoritative. Its default virtual addresses are already
   16-bit CPU addresses; do not add the ROM base address again.
 - Metadata is non-loadable and does not become part of the flat ROM image.
+- Physical unwinding is available only where a valid `.debug_frame` FDE and
+  recoverable rule cover the stopped PC. Naked/interrupt boundaries stop
+  explicitly rather than guessing from stack contents.
 - This repository provides debug artifacts and inspection support. A DAP
   adapter that turns source lines into emulator breakpoints is not included
   here; it must consume the final ELF companion.

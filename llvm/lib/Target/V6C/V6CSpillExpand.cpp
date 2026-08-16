@@ -74,7 +74,10 @@ Register llvm::findDeadSpareGPR8(Register Excluded, const MachineInstr &MI,
                                  MachineBasicBlock &MBB,
                                  const TargetRegisterInfo *TRI) {
   static const MCPhysReg Candidates[] = {V6C::B, V6C::C, V6C::D, V6C::E};
+  BitVector Reserved = TRI->getReservedRegs(*MBB.getParent());
   for (MCPhysReg R : Candidates) {
+    if (Reserved.test(R))
+      continue;
     if (Excluded && TRI->regsOverlap(R, Excluded))
       continue;
     if (isRegDeadAfterMI(R, MI, MBB, TRI))

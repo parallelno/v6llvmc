@@ -50,6 +50,9 @@ FunctionPass *createV6CAccumulatorPlanningPass();
 FunctionPass *createV6CLoadImmCombinePass();
 FunctionPass *createV6CSPTrickOptPass();
 
+/// Final pass: emit precise DWARF call-frame rules from the optimized stream.
+FunctionPass *createV6CCFIPass();
+
 /// Post-RA pass: unified cross-BB physical-register value forwarding (O92).
 FunctionPass *createV6CRegValueForwardingPass();
 
