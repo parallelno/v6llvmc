@@ -241,17 +241,17 @@ The producer prerequisite is complete only when:
 
 - [x] Complete Milestone 1: ABI, DWARF register map, and ELF integrity.
 - [x] Complete Milestone 2: call-frame information and physical unwinding.
-- [ ] Complete Milestone 3: baseline parameter and local locations.
+- [x] Complete Milestone 3: baseline parameter and local locations.
 - [ ] Complete Milestone 4: optimized lifetimes and location lists.
 - [ ] Complete Milestone 5: lexical scopes, types, and inline metadata.
 - [ ] Complete Milestone 6: final-link and v6vscode consumer integration.
 
-- [ ] Document the debugger-relevant V6C ABI.
-- [ ] Freeze V6C DWARF register numbering.
-- [ ] Add backend tests for overlapping byte and word register locations.
-- [ ] Preserve debug values through custom V6C machine passes.
-- [ ] Emit formal-parameter and local-variable locations.
-- [ ] Emit valid frame-base expressions where required.
+- [x] Document the debugger-relevant V6C ABI.
+- [x] Freeze V6C DWARF register numbering.
+- [x] Add backend tests for overlapping byte and word register locations.
+- [x] Preserve debug values through custom V6C machine passes.
+- [x] Emit formal-parameter and local-variable locations.
+- [x] Emit valid frame-base expressions where required.
 - [ ] Emit `.debug_loclists` with accurate transitions and gaps.
 - [ ] Emit lexical-block and discontinuous function ranges.
 - [ ] Emit nested inline-subroutine DIEs and abstract origins.
@@ -259,6 +259,6 @@ The producer prerequisite is complete only when:
 - [x] Emit `.debug_frame` CIE/FDE data.
 - [x] Cover leaf/non-leaf, spills, stack arguments, frame-pointer modes, returns, tail calls, and unwind boundaries.
 - [x] Verify final linked addresses and relocations against ROM execution.
-- [ ] Run `-O0`, debug-friendly, `-O1`, and `-O2` metadata tests.
+- [x] Run `-O0`, debug-friendly, `-O1`, and `-O2` metadata tests.
 - [ ] Publish the supported forms, operations, register map, and known limitations.
 - [ ] Pass v6vscode parser and real-emulator consumer tests.

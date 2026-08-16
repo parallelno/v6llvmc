@@ -35,6 +35,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -149,6 +150,8 @@ bool V6CAllocaPromote::promoteAllocas(Function &F) {
   // loop) cannot be statically laid out.
   SmallVector<AllocaInst *, 8> Static;
   BasicBlock &Entry = F.getEntryBlock();
+  const bool HasDebugInfo =
+      F.getParent()->getNamedMetadata("llvm.dbg.cu") != nullptr;
   for (Instruction &I : Entry) {
     auto *AI = dyn_cast<AllocaInst>(&I);
     if (!AI)
@@ -197,11 +200,34 @@ bool V6CAllocaPromote::promoteAllocas(Function &F) {
 
   Type *I16 = Type::getInt16Ty(Ctx);
 
+  auto makeDebugHomeOrdered = [](AllocaInst *AI) {
+    SmallVector<Value *, 8> Worklist{AI};
+    SmallPtrSet<Value *, 8> Visited;
+    while (!Worklist.empty()) {
+      Value *V = Worklist.pop_back_val();
+      if (!Visited.insert(V).second)
+        continue;
+      for (User *U : V->users()) {
+        if (auto *LI = dyn_cast<LoadInst>(U)) {
+          LI->setVolatile(true);
+        } else if (auto *SI = dyn_cast<StoreInst>(U)) {
+          if (SI->getPointerOperand() == V)
+            SI->setVolatile(true);
+        } else if (isa<GetElementPtrInst>(U) || isa<BitCastInst>(U) ||
+                   isa<AddrSpaceCastInst>(U)) {
+          Worklist.push_back(cast<Value>(U));
+        }
+      }
+    }
+  };
+
   // Replace each alloca with `getelementptr inbounds [N x i8], ptr @gv,
   // i16 0, i16 offset`. The result type matches `alloca`'s ptr, so no
   // bitcast is needed in opaque-pointer IR.
   for (size_t I = 0, E = Static.size(); I < E; ++I) {
     AllocaInst *AI = Static[I];
+    if (HasDebugInfo)
+      makeDebugHomeOrdered(AI);
     Constant *Idx[] = {
         ConstantInt::get(I16, 0),
         ConstantInt::get(I16, Offsets[I]),

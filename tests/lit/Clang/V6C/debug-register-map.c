@@ -8,7 +8,7 @@
 // ELF: AddressSize: 32bit
 
 // DWARF: addr_size = 0x02
-// DWARF: DW_AT_frame_base{{.*}}DW_OP_reg10 SP
+// DWARF: DW_AT_frame_base{{.*}}DW_OP_call_frame_cfa
 // DWARF-DAG: DW_OP_reg0 A
 // DWARF-DAG: DW_OP_reg1 B
 // DWARF-DAG: DW_OP_reg2 C

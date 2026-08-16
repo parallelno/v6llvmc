@@ -21,6 +21,7 @@
 #include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -71,6 +72,15 @@ static bool isO61PatchedImm(const MachineInstr &MI) {
     return true;
   for (const MachineOperand &MO : MI.operands())
     if (MO.getTargetFlags() != 0)
+      return true;
+  return false;
+}
+
+static bool isDebugAllocaHome(const MachineInstr &MI) {
+  if (!MI.getParent()->getParent()->getMMI().hasDebugInfo())
+    return false;
+  for (const MachineOperand &MO : MI.operands())
+    if (MO.isGlobal() && MO.getGlobal()->getName().starts_with("__v6c_a."))
       return true;
   return false;
 }
@@ -824,6 +834,8 @@ bool V6CPeephole::foldShldLhldToPushPop(MachineBasicBlock &MBB) {
   for (auto I = MBB.begin(), E = MBB.end(); I != E; ++I) {
     if (I->getOpcode() != V6C::SHLD)
       continue;
+    if (isDebugAllocaHome(*I))
+      continue;
 
     const MachineOperand &ShldAddr = I->getOperand(1);
     int SPDelta = 0;
@@ -838,6 +850,10 @@ bool V6CPeephole::foldShldLhldToPushPop(MachineBasicBlock &MBB) {
       // Check for matching LHLD.
       if (J->getOpcode() == V6C::LHLD &&
           isSameAddress(ShldAddr, J->getOperand(1))) {
+        if (isDebugAllocaHome(*J)) {
+          Abort = true;
+          break;
+        }
         if (SPDelta == 0) {
           MatchIt = J;
           Found = true;

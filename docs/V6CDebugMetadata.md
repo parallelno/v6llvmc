@@ -125,6 +125,19 @@ discarded code has no executable address and must not become a breakpoint.
 - Optimized code can merge, move, or remove source statements. For predictable
   source-line inspection, begin with `-O0`.
 
+## Baseline C Variables
+
+At `-O0`, V6C emits tested parameter and local locations for byte/pair
+registers, stack-frame homes, promoted static homes, and proven constants.
+Frame-relative locations use `DW_OP_fbreg` from a CFA-derived
+`DW_AT_frame_base`. A promoted local uses its final linked address through
+`DW_OP_addr` or `DW_OP_addrx`, with `DW_OP_plus_uconst` for member offsets.
+
+These are locations valid for their emitted PC ranges, not a promise that all
+optimized variables remain available. Complex optimized lifetimes, spill and
+reload transitions, O61 patched-code values, pieces, and unavailable ranges
+remain unsupported baseline cases.
+
 ## Related Documentation
 
 - [V6CBuildGuide.md](V6CBuildGuide.md) for build setup and custom link flows.

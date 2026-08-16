@@ -30,6 +30,7 @@ public:
   void emitEpilogue(MachineFunction &MF,
                     MachineBasicBlock &MBB) const override;
   bool hasFP(const MachineFunction &MF) const override;
+  DwarfFrameBase getDwarfFrameBase(const MachineFunction &MF) const override;
 
   MachineBasicBlock::iterator
   eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,

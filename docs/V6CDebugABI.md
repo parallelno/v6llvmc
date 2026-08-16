@@ -66,6 +66,24 @@ The stack frame is selected from the actual machine function shape:
 must follow the emitted prologue variant. A consumer must not decode prologue
 instruction patterns.
 
+## Baseline Variable Locations
+
+At `-O0`, the compiler emits recoverable formal-parameter and local-variable
+locations using the final machine state. Byte and word registers use the
+numbers below; stack homes use `DW_OP_fbreg` from a CFA-derived
+`DW_AT_frame_base`; proven constants use `DW_AT_const_value`.
+
+V6C may promote a source alloca to a per-function `__v6c_a.*` global home.
+Its location is its final linked address, encoded as `DW_OP_addr` or
+`DW_OP_addrx` and, for a subobject, `DW_OP_plus_uconst`. In debug modules the
+compiler keeps these homes materialized. O43 remains active, but does not fold
+loads or stores of these debug homes into transient stack values. Non-debug
+code generation retains the normal promotion and O43 behavior.
+
+Location changes, spill/reload lifetimes, O61 patched reloads, split values,
+and unavailable-range gaps are outside this baseline and are specified by
+later milestones.
+
 ## Tail Calls and Special Frames
 
 - V6C post-RA optimization may replace a terminal `CALL; RET` shape with a

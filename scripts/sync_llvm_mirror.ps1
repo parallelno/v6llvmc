@@ -67,6 +67,12 @@ xcopy /Y /I "$root\llvm-project\llvm\lib\IR\Function.cpp" "$root\llvm\lib\IR\" >
 xcopy /Y /I "$root\llvm-project\llvm\include\llvm\CodeGen\TargetSubtargetInfo.h" "$root\llvm\include\llvm\CodeGen\" > $null
 xcopy /Y /I "$root\llvm-project\llvm\lib\CodeGen\MachineBlockPlacement.cpp" "$root\llvm\lib\CodeGen\" > $null
 
+# Debug metadata: relocatable global addresses in local DBG_VALUE locations.
+if (-not (Test-Path "$root\llvm\lib\CodeGen\AsmPrinter")) { New-Item -ItemType Directory -Path "$root\llvm\lib\CodeGen\AsmPrinter" -Force > $null }
+xcopy /Y /I "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\DebugLocEntry.h" "$root\llvm\lib\CodeGen\AsmPrinter\" > $null
+xcopy /Y /I "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\DwarfDebug.cpp" "$root\llvm\lib\CodeGen\AsmPrinter\" > $null
+xcopy /Y /I "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\DwarfCompileUnit.cpp" "$root\llvm\lib\CodeGen\AsmPrinter\" > $null
+
 # O-LLD: ld.lld native linker integration
 # EM_V6C machine ID added to ELF.h
 xcopy /Y /I "$root\llvm-project\llvm\include\llvm\BinaryFormat\ELF.h" "$root\llvm\include\llvm\BinaryFormat\" > $null

@@ -107,6 +107,13 @@ xcopy /Y /I "$root\llvm\include\llvm\CodeGen\TargetSubtargetInfo.h" "$root\llvm-
 xcopy /Y /I "$root\llvm\lib\CodeGen\MachineBlockPlacement.cpp" "$root\llvm-project\llvm\lib\CodeGen\" > $null
 Write-Host "  [OK] TargetSubtargetInfo.h, MachineBlockPlacement.cpp (enableLoopRotationInBlockPlacement)"
 
+# Debug metadata: relocatable global addresses in local DBG_VALUE locations.
+if (-not (Test-Path "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter")) { New-Item -ItemType Directory -Path "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter" -Force > $null }
+xcopy /Y /I "$root\llvm\lib\CodeGen\AsmPrinter\DebugLocEntry.h" "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\" > $null
+xcopy /Y /I "$root\llvm\lib\CodeGen\AsmPrinter\DwarfDebug.cpp" "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\" > $null
+xcopy /Y /I "$root\llvm\lib\CodeGen\AsmPrinter\DwarfCompileUnit.cpp" "$root\llvm-project\llvm\lib\CodeGen\AsmPrinter\" > $null
+Write-Host "  [OK] AsmPrinter relocatable local debug addresses"
+
 # O-LLD: V6C default linker script (data resource for the driver)
 if (-not (Test-Path "$root\llvm-project\clang\lib\Driver\ToolChains\V6C")) { New-Item -ItemType Directory -Path "$root\llvm-project\clang\lib\Driver\ToolChains\V6C" -Force > $null }
 xcopy /Y /I "$root\clang\lib\Driver\ToolChains\V6C\v6c.ld" "$root\llvm-project\clang\lib\Driver\ToolChains\V6C\" > $null

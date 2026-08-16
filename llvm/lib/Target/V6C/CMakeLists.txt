@@ -38,6 +38,7 @@ add_llvm_target(V6CCodeGen
   V6CRegisterInfo.cpp
   V6CRegValueForwarding.cpp
   V6CSPTrickOpt.cpp
+  V6CStaticDebugValues.cpp
   V6CSpillExpand.cpp
   V6CSpillForwarding.cpp
   V6CSpillPatchedReload.cpp

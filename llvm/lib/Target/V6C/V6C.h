@@ -50,6 +50,9 @@ FunctionPass *createV6CAccumulatorPlanningPass();
 FunctionPass *createV6CLoadImmCombinePass();
 FunctionPass *createV6CSPTrickOptPass();
 
+/// Final pass: salvage globals created by V6C alloca promotion as locations.
+FunctionPass *createV6CStaticDebugValuesPass();
+
 /// Final pass: emit precise DWARF call-frame rules from the optimized stream.
 FunctionPass *createV6CCFIPass();
 

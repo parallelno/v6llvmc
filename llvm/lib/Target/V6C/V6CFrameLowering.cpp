@@ -33,6 +33,17 @@ bool V6CFrameLowering::hasFP(const MachineFunction &MF) const {
          MFI.isFrameAddressTaken();
 }
 
+TargetFrameLowering::DwarfFrameBase
+V6CFrameLowering::getDwarfFrameBase(const MachineFunction &MF) const {
+  int64_t CFAOffset = 2 + static_cast<int64_t>(MF.getFrameInfo().getStackSize());
+  if (hasFP(MF))
+    CFAOffset = MF.getInfo<V6CMachineFunctionInfo>()->getFrameCFAOffset();
+  DwarfFrameBase Result;
+  Result.Kind = DwarfFrameBase::CFA;
+  Result.Location.Offset = static_cast<int>(-CFAOffset);
+  return Result;
+}
+
 // Pick a GR16All pair whose halves are dead at MBBI. PSW (A+FLAGS) is
 // preferred — at function boundaries A is typically dead unless it is
 // the i8 arg-1 / i8 return register, and FLAGS is always dead.
