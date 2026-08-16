@@ -12,7 +12,8 @@ Goal: **C source → Clang → LLVM IR → V6C backend → flat binary → Vecto
 |----------|-------------|
 | [V6CBuildGuide.md](V6CBuildGuide.md) | Prerequisites, build commands, mirror sync workflow, running tests, binary emission |
 | [V6CClangUsage.md](V6CClangUsage.md) | Clang frontend reference: type sizes, builtins, attributes, inline assembly, resource-dir headers |
-| [V6CDebugMetadata.md](V6CDebugMetadata.md) | Debug-build artifacts: DWARF v4, retained ELF companions, C/v6asm usage, and inspection |
+| [V6CDebugMetadata.md](V6CDebugMetadata.md) | Debug-build artifacts: DWARF v5, retained ELF companions, C/v6asm usage, and inspection |
+| [V6CDebugABI.md](V6CDebugABI.md) | Normative debugger ABI, stack contract, unwind boundaries, and DWARF register map |
 | [V6CCompilerOptions.md](V6CCompilerOptions.md) | Backend tuning flags and debug-output toggles (`-mv6c-annotate-pseudos`, `-mv6c-print-rt-helpers`, …) |
 | [V6CRelease.md](V6CRelease.md) | Release procedure: tagging, workflow trigger, rollback |
 | [V6CProjectStructure.md](V6CProjectStructure.md) | Directory layout and key paths |

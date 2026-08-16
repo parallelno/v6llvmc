@@ -34,7 +34,7 @@ MCInstrInfo *llvm::createV6CMCInstrInfo() {
 
 static MCRegisterInfo *createV6CMCRegisterInfo(const Triple &TT) {
   MCRegisterInfo *X = new MCRegisterInfo();
-  InitV6CMCRegisterInfo(X, 0);
+  InitV6CMCRegisterInfo(X, V6C::PC);
   return X;
 }
 

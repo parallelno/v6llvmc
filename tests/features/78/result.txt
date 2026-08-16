@@ -1,0 +1,121 @@
+Feature 78 - C Debug Metadata Milestone 1
+========================================
+
+Status
+------
+
+Implemented and validated locally:
+
+- V6C ELF objects report `elf32-v6c` and architecture `i8080`.
+- DWARF register contract v1 is implemented: A=0, B=1, C=2, D=3,
+  E=4, H=5, L=6, BC=7, DE=8, HL=9, SP=10, PC=11.
+- FLAGS and PSW intentionally have no DWARF number.
+- PC is modeled as a reserved, non-allocatable return-address register.
+- Discarded V6C debug relocations use the all-ones tombstone instead of zero.
+- Runtime-helper final ELFs pass `llvm-dwarfdump --verify` without retaining
+  dead helper text or symbols.
+- The public debug workflow and tests use DWARF v5.
+
+C Test Case
+-----------
+
+See `v6llvmc.c` and the c8080-compatible `c8080.c`. The test keeps a real
+`main -> middle -> leaf` call chain and one local value in `leaf`.
+
+v6llvmc Assembly
+----------------
+
+The feature is metadata-only. `v6llvmc_old.asm` and `v6llvmc_new01.asm` are
+byte-identical (SHA-256 files are identical). Relevant functions:
+
+    leaf:
+        INX  H
+        SHLD word_sink
+        RET
+
+    middle:
+        PUSH H
+        INX  H
+        INX  H
+        CALL leaf
+        POP  H
+        MOV  A, L
+        STA  byte_sink
+        RET
+
+    main:
+        MVI  A, 0x5a
+        STA  byte_sink
+        LXI  H, 3
+        CALL middle
+        LXI  H, 0
+        RET
+
+Final ELF Evidence
+------------------
+
+`elf-header.txt` records:
+
+    Format: elf32-v6c
+    Arch: i8080
+    AddressSize: 32bit
+
+The DWARF compile unit uses target `addr_size = 0x02`. `dwarf.txt` contains
+register names/numbers and final linked ranges. Verification result:
+
+    Verifying v6llvmc.elf: file format elf32-v6c
+    No errors.
+
+Permanent tests additionally prove all byte/pair/SP mappings with real
+`DW_OP_reg*` expressions and verify a driver-linked ELF containing discarded
+auto-included runtime helpers.
+
+Performance and Code-Size Comparison
+------------------------------------
+
+All 15 current benchmark ROMs (bsort, sieve, fib_crc, fannkuch, lfsr16 at
+O1/O2/Os) are byte-for-byte identical to the pre-existing baseline ROMs.
+Therefore normal benchmark instruction streams, ROM sizes, and cycle counts
+are unchanged by this milestone.
+
+| Program | Opt levels | Baseline ROM equals current ROM | Size regression |
+|---------|------------|----------------------------------|-----------------|
+| bsort | O1/O2/Os | yes | none |
+| sieve | O1/O2/Os | yes | none |
+| fib_crc | O1/O2/Os | yes | none |
+| fannkuch | O1/O2/Os | yes | none |
+| lfsr16 | O1/O2/Os | yes | none |
+
+Debug-build observation: `-g` currently changes static-stack/register
+allocation in four benchmarks. At O1, measured cycles are bsort 3,297,124,
+sieve 4,533,648, fib_crc 53,384, fannkuch 25,385,692, and lfsr16 730,452.
+This behavior is outside the Milestone 1 register/ELF plumbing; normal
+benchmark ROMs remain byte-identical. It is tracked for the optimized
+debug-lifetime/pass-preservation milestone. No optimization was disabled or
+weakened to hide it.
+
+External Tool Validation
+------------------------
+
+The separately installed tools were configured from sibling workspaces:
+
+- c8080 generated `c8080.asm` successfully.
+- v6emul ran this fixture to `HLT` at PC `0x011e`, SP `0x0000`, after 1,524
+    cycles; see `emulator.txt`.
+- The full benchmark matrix passed all expected checksums and retained the
+    established V6C cycle counts and ROM sizes.
+- v6asm mixed DWARF v4/v5 linking passed its lit regression.
+
+Z88DK was not configured and was skipped as an optional comparator.
+
+Known Limitation
+----------------
+
+Final object/ELF debug emission is supported and verified. Textual
+`clang -S -g` currently reaches a V6C MC streamer value form that cannot be
+printed; ordinary `clang -S` and `clang -c/-g` work. The debugger contract uses
+the final linked ELF, so this does not affect the produced debug companion.
+
+Debug tracking can currently perturb optimized static-stack/register
+allocation. Milestone 4 must make debug records metadata-only with respect to
+optimization decisions and restore `-g`/`-g0` executable identity.

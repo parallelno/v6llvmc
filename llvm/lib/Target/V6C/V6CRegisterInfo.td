@@ -36,13 +36,13 @@ class V6CReg<bits<16> Enc, string n> : Register<n> {
   let Namespace = "V6C";
 }
 
-def B : V6CReg<0, "B">;
-def C : V6CReg<1, "C">;
-def D : V6CReg<2, "D">;
-def E : V6CReg<3, "E">;
-def H : V6CReg<4, "H">;
-def L : V6CReg<5, "L">;
-def A : V6CReg<7, "A">;
+def B : V6CReg<0, "B">, DwarfRegNum<[1]>;
+def C : V6CReg<1, "C">, DwarfRegNum<[2]>;
+def D : V6CReg<2, "D">, DwarfRegNum<[3]>;
+def E : V6CReg<3, "E">, DwarfRegNum<[4]>;
+def H : V6CReg<4, "H">, DwarfRegNum<[5]>;
+def L : V6CReg<5, "L">, DwarfRegNum<[6]>;
+def A : V6CReg<7, "A">, DwarfRegNum<[0]>;
 
 // FLAGS register (not directly addressable by 8080 instructions).
 def FLAGS : V6CReg<6, "FLAGS">;
@@ -63,17 +63,22 @@ class V6CRegPair<bits<16> Enc, string n, list<Register> subregs>
 
 // Note: subregs = [lo, hi] following LLVM convention
 let RegAltNameIndices = [Pair8080] in {
-  def BC  : V6CRegPair<0, "BC",  [C, B]>     { let AltNames = ["B"];   }
-  def DE  : V6CRegPair<1, "DE",  [E, D]>     { let AltNames = ["D"];   }
-  def HL  : V6CRegPair<2, "HL",  [L, H]>     { let AltNames = ["H"];   }
+  def BC  : V6CRegPair<0, "BC",  [C, B]>, DwarfRegNum<[7]>
+                                                { let AltNames = ["B"];   }
+  def DE  : V6CRegPair<1, "DE",  [E, D]>, DwarfRegNum<[8]>
+                                                { let AltNames = ["D"];   }
+  def HL  : V6CRegPair<2, "HL",  [L, H]>, DwarfRegNum<[9]>
+                                                { let AltNames = ["H"];   }
   def PSW : V6CRegPair<3, "PSW", [FLAGS, A]> { let AltNames = ["PSW"]; }
 }
 
 // SP is a standalone 16-bit register (not a sub-register pair).
 let RegAltNameIndices = [Pair8080] in
-def SP : V6CReg<3, "SP"> { let AltNames = ["SP"]; }
+def SP : V6CReg<3, "SP">, DwarfRegNum<[10]> { let AltNames = ["SP"]; }
 
-// PC is implicit, not modeled as allocatable.
+// PC is implicit and non-allocatable. It exists so DWARF CFI has a stable
+// return-address column.
+def PC : V6CReg<0, "PC">, DwarfRegNum<[11]>;
 
 //===----------------------------------------------------------------------===//
 // Register Classes (per design §3.2)

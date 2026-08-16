@@ -195,12 +195,12 @@ llvm-build/bin/clang -target i8080-unknown-v6c -O2 input.c -o output.elf
 
 ### Debug ROM Companions
 
-Pass `-g -gdwarf-4` when producing a flat ROM to retain a sibling ELF with
-the final symbols and DWARF v4 line tables. The ROM is still derived from that
+Pass `-g` when producing a flat ROM to retain a sibling ELF with the final
+symbols and DWARF v5 metadata. The ROM is still derived from that
 same final ELF, so its runtime addresses and debug addresses agree.
 
 ```bash
-llvm-build/bin/clang -target i8080-unknown-v6c -g -gdwarf-4 \
+llvm-build/bin/clang -target i8080-unknown-v6c -g \
     input.c -o output.rom
 # Produces output.rom and output.elf.
 ```

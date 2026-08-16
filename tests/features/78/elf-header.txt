@@ -1,0 +1,31 @@
+
+File: .\tests\features\78\v6llvmc.elf
+Format: elf32-v6c
+Arch: i8080
+AddressSize: 32bit
+LoadName: <Not found>
+ElfHeader {
+  Ident {
+    Magic: (7F 45 4C 46)
+    Class: 32-bit (0x1)
+    DataEncoding: LittleEndian (0x1)
+    FileVersion: 1
+    OS/ABI: Standalone (0xFF)
+    ABIVersion: 0
+    Unused: (00 00 00 00 00 00 00)
+  }
+  Type: Executable (0x2)
+  Machine: 0x8080
+  Version: 1
+  Entry: 0x100
+  ProgramHeaderOffset: 0x34
+  SectionHeaderOffset: 0xB18
+  Flags [ (0x0)
+  ]
+  HeaderSize: 52
+  ProgramHeaderEntrySize: 32
+  ProgramHeaderCount: 5
+  SectionHeaderEntrySize: 40
+  SectionHeaderCount: 16
+  StringTableSectionIndex: 14
+}

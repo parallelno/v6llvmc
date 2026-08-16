@@ -238,7 +238,7 @@ The producer prerequisite is complete only when:
 
 ## 14. Implementation Checklist
 
-- [ ] Complete Milestone 1: ABI, DWARF register map, and ELF integrity.
+- [~] Complete Milestone 1: ABI, DWARF register map, and ELF integrity.
 - [ ] Complete Milestone 2: call-frame information and physical unwinding.
 - [ ] Complete Milestone 3: baseline parameter and local locations.
 - [ ] Complete Milestone 4: optimized lifetimes and location lists.

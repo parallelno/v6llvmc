@@ -72,6 +72,9 @@ xcopy /Y /I "$root\llvm-project\llvm\lib\CodeGen\MachineBlockPlacement.cpp" "$ro
 xcopy /Y /I "$root\llvm-project\llvm\include\llvm\BinaryFormat\ELF.h" "$root\llvm\include\llvm\BinaryFormat\" > $null
 # V6C relocation type names used by llvm-readelf and object tooling.
 xcopy /Y /I "$root\llvm-project\llvm\lib\Object\ELF.cpp" "$root\llvm\lib\Object\" > $null
+# V6C ELF format/architecture recognition used by llvm-readobj/dwarfdump.
+if (-not (Test-Path "$root\llvm\include\llvm\Object")) { New-Item -ItemType Directory -Path "$root\llvm\include\llvm\Object" -Force > $null }
+xcopy /Y /I "$root\llvm-project\llvm\include\llvm\Object\ELFObjectFile.h" "$root\llvm\include\llvm\Object\" > $null
 # V6C lld backend (modeled on lld/ELF/Arch/MSP430.cpp)
 if (-not (Test-Path "$root\lld\ELF\Arch")) { New-Item -ItemType Directory -Path "$root\lld\ELF\Arch" -Force > $null }
 xcopy /Y /I "$root\llvm-project\lld\ELF\Arch\V6C.cpp" "$root\lld\ELF\Arch\" > $null
@@ -83,6 +86,7 @@ xcopy /Y /I "$root\llvm-project\lld\ELF\MapFile.cpp" "$root\lld\ELF\" > $null
 xcopy /Y /I "$root\llvm-project\lld\ELF\Options.td" "$root\lld\ELF\" > $null
 xcopy /Y /I "$root\llvm-project\lld\ELF\CMakeLists.txt" "$root\lld\ELF\" > $null
 xcopy /Y /I "$root\llvm-project\lld\ELF\LinkerScript.cpp" "$root\lld\ELF\" > $null
+xcopy /Y /I "$root\llvm-project\lld\ELF\InputSection.cpp" "$root\lld\ELF\" > $null
 xcopy /Y /I "$root\llvm-project\lld\ELF\V6CPackedSections.cpp" "$root\lld\ELF\" > $null
 xcopy /Y /I "$root\llvm-project\lld\ELF\V6CPackedSections.h" "$root\lld\ELF\" > $null
 # V6C packed-section unit tests

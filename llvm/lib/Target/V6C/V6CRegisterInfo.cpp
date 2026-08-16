@@ -21,7 +21,7 @@
 
 using namespace llvm;
 
-V6CRegisterInfo::V6CRegisterInfo() : V6CGenRegisterInfo(/*RA=*/0) {}
+V6CRegisterInfo::V6CRegisterInfo() : V6CGenRegisterInfo(V6C::PC) {}
 
 static void markXchgUseUndef(MachineInstr *XchgMI, Register Reg) {
   if (MachineOperand *MO = XchgMI->findRegisterUseOperand(Reg,
@@ -47,6 +47,7 @@ V6CRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
 BitVector V6CRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   BitVector Reserved(getNumRegs());
   Reserved.set(V6C::SP);
+  Reserved.set(V6C::PC);
   Reserved.set(V6C::FLAGS);
   Reserved.set(V6C::PSW);
 

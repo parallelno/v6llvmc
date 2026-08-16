@@ -50,6 +50,10 @@ Write-Host "  [OK] Triple.h, Triple.cpp"
 xcopy /Y /I "$root\llvm\include\llvm\BinaryFormat\ELF.h" "$root\llvm-project\llvm\include\llvm\BinaryFormat\" > $null
 Write-Host "  [OK] BinaryFormat/ELF.h (EM_V6C)"
 
+# V6C ELF format/architecture recognition used by llvm-readobj/dwarfdump.
+xcopy /Y /I "$root\llvm\include\llvm\Object\ELFObjectFile.h" "$root\llvm-project\llvm\include\llvm\Object\" > $null
+Write-Host "  [OK] Object/ELFObjectFile.h (EM_V6C recognition)"
+
 # M9: Clang frontend integration
 # TargetInfo (Basic/Targets)
 xcopy /Y /I "$root\clang\lib\Basic\Targets\I8080.h" "$root\llvm-project\clang\lib\Basic\Targets\" > $null
@@ -119,6 +123,7 @@ xcopy /Y /I "$root\lld\ELF\MapFile.cpp" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\Options.td" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\CMakeLists.txt" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\LinkerScript.cpp" "$root\llvm-project\lld\ELF\" > $null
+xcopy /Y /I "$root\lld\ELF\InputSection.cpp" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\V6CPackedSections.cpp" "$root\llvm-project\lld\ELF\" > $null
 xcopy /Y /I "$root\lld\ELF\V6CPackedSections.h" "$root\llvm-project\lld\ELF\" > $null
 Write-Host "  [OK] lld/ELF V6C backend and packed-section layout"

@@ -6,27 +6,28 @@
 # RUN: llvm-readelf -S %t/out.elf | FileCheck %s --check-prefix=SECTIONS
 # RUN: llvm-readelf -r %t/out.elf | FileCheck %s --check-prefix=RELOCS
 # RUN: llvm-readelf -x .debug_line %t/out.elf | FileCheck %s --check-prefix=LINES
+# RUN: llvm-dwarfdump --verify %t/out.elf
 
 # SYMS-DAG: _start
 # SYMS-DAG: live
 # SYMS-NOT: dead
 
-# SECTIONS-DAG: .debug_info
-# SECTIONS-DAG: .debug_abbrev
-# SECTIONS-DAG: .debug_line
-# SECTIONS-DAG: .debug_str
+# SECTIONS-DAG: {{[[:space:]]}}.debug_info{{[[:space:]]}}
+# SECTIONS-DAG: {{[[:space:]]}}.debug_abbrev{{[[:space:]]}}
+# SECTIONS-DAG: {{[[:space:]]}}.debug_line{{[[:space:]]}}
+# SECTIONS-DAG: {{[[:space:]]}}.debug_str{{[[:space:]]}}
+# SECTIONS-DAG: {{[[:space:]]}}.debug_str_offsets{{[[:space:]]}}
+# SECTIONS-DAG: {{[[:space:]]}}.debug_line_str{{[[:space:]]}}
+# SECTIONS-DAG: {{[[:space:]]}}.debug_addr{{[[:space:]]}}
 # SECTIONS-NOT: .text.dead
 
 # RELOCS: There are no relocations in this file.
 
 # The non-allocating line section retains a contribution from dead.o, but its
-# DW_LNE_set_address operand is resolved to zero because .text.dead was
-# garbage-collected. Consumers must accept rows only inside a final executable
-# section, which preserves live.c mappings and rejects this dead.c row.
-# LINES: 006c6976
-# LINES: 652e6300
-# LINES: 00646561 642e6300
-# LINES: 03020000
+# DW_LNE_set_address operand is resolved to the V6C all-ones tombstone because
+# .text.dead was garbage-collected. Consumers accept rows only inside a final
+# executable section, preserving live.c mappings and rejecting this dead row.
+# LINES: ffff
 
 #--- live.ll
 target datalayout = "e-p:16:8-i1:8-i8:8-i16:8-i32:8-i64:8-n8:16-S8"
@@ -47,7 +48,7 @@ entry:
 !llvm.module.flags = !{!6, !7}
 !0 = distinct !DICompileUnit(language: DW_LANG_C11, file: !1, producer: "V6C test", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug)
 !1 = !DIFile(filename: "live.c", directory: "/")
-!6 = !{i32 2, !"Dwarf Version", i32 4}
+!6 = !{i32 2, !"Dwarf Version", i32 5}
 !7 = !{i32 2, !"Debug Info Version", i32 3}
 !10 = distinct !DISubprogram(name: "_start", scope: !1, file: !1, line: 1, type: !11, scopeLine: 1, spFlags: DISPFlagDefinition, unit: !0)
 !11 = !DISubroutineType(types: !12)
@@ -71,7 +72,7 @@ entry:
 !llvm.module.flags = !{!6, !7}
 !0 = distinct !DICompileUnit(language: DW_LANG_C11, file: !1, producer: "V6C test", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug)
 !1 = !DIFile(filename: "dead.c", directory: "/")
-!6 = !{i32 2, !"Dwarf Version", i32 4}
+!6 = !{i32 2, !"Dwarf Version", i32 5}
 !7 = !{i32 2, !"Debug Info Version", i32 3}
 !10 = distinct !DISubprogram(name: "dead", scope: !1, file: !1, line: 1, type: !11, scopeLine: 1, spFlags: DISPFlagDefinition, unit: !0)
 !11 = !DISubroutineType(types: !12)

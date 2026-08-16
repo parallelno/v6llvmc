@@ -266,12 +266,12 @@ Forced-live escapes when the relocation route is impractical:
 llvm-build/bin/clang -target i8080-unknown-v6c -O2 main.c -o out.rom
 ```
 
-For source debugging, add `-g -gdwarf-4`. A flat-ROM output retains a sibling
+For source debugging, add `-g`. A flat-ROM output retains a sibling DWARF v5
 final ELF containing the DWARF line tables and symbols; launch the emulator
 with the `.rom` and use the `.elf` as its debug companion.
 
 ```bash
-llvm-build/bin/clang -target i8080-unknown-v6c -g -gdwarf-4 \
+llvm-build/bin/clang -target i8080-unknown-v6c -g \
     main.c -o out.rom
 # Produces out.rom and out.elf.
 ```
