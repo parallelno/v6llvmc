@@ -163,6 +163,20 @@ stale value.
 The post-RA optimizer pipeline remains enabled in debug builds. Its final
 instruction stream is authoritative for location-list clobber boundaries.
 
+## Scopes, Types, and Inline Frames
+
+Final V6C ELFs preserve tested `DW_TAG_lexical_block` scopes and separate DIE
+identities for shadowed variables. Supported C type metadata includes signed
+and unsigned scalar types, `_Bool`/character forms emitted by Clang, enums,
+pointers and function pointers, arrays/subranges, structures, unions, members,
+typedefs, and const/volatile qualifiers. Offsets and byte sizes follow the
+16-bit V6C data layout.
+
+Optimized inline code uses `DW_TAG_inlined_subroutine` with abstract origins
+and call coordinates. Nested inline ranges use final linked 16-bit PCs. A
+debugger should select an inline frame only when the stopped PC lies within its
+emitted range; source entities absent after optimization remain unavailable.
+
 
 ## Related Documentation
 

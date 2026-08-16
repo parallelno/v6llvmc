@@ -1,0 +1,13 @@
+Feature 82 - C Debug Metadata Milestone 5: Type Layout and Inline Range
+=======================================================================
+
+This fixture validates final DWARF type-member offsets against asymmetric
+runtime bytes and confirms the emulator stops inside a final
+`DW_TAG_inlined_subroutine` PC range.
+
+Observed optimized runtime result:
+
+	layout address: 0x013D
+	bytes: tag=0xA5, value=0x1234, values=[0x0102, 0x3456, 0x789A], mode=7
+	HLT=0x012C
+	inline ranges: [0x011F, 0x012E), [0x0125, 0x012E)

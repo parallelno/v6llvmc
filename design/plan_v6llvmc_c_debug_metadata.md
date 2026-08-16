@@ -76,7 +76,7 @@ These apply to every milestone:
 2. [x] [Milestone 2: Call-frame information and physical unwinding](plan_v6llvmc_c_debug_metadata_milestone2.md)
 3. [x] [Milestone 3: Baseline parameter and local locations](plan_v6llvmc_c_debug_metadata_milestone3.md)
 4. [x] [Milestone 4: Optimized lifetimes and location lists](plan_v6llvmc_c_debug_metadata_milestone4.md)
-5. [Milestone 5: Lexical scopes, types, and inline metadata](plan_v6llvmc_c_debug_metadata_milestone5.md)
+5. [x] [Milestone 5: Lexical scopes, types, and inline metadata](plan_v6llvmc_c_debug_metadata_milestone5.md)
 6. [Milestone 6: Final-link and consumer integration](plan_v6llvmc_c_debug_metadata_milestone6.md)
 
 Dependencies are strict: milestone $n$ may rely only on completed milestones

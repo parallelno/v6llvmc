@@ -243,7 +243,7 @@ The producer prerequisite is complete only when:
 - [x] Complete Milestone 2: call-frame information and physical unwinding.
 - [x] Complete Milestone 3: baseline parameter and local locations.
 - [x] Complete Milestone 4: optimized lifetimes and location lists.
-- [ ] Complete Milestone 5: lexical scopes, types, and inline metadata.
+- [x] Complete Milestone 5: lexical scopes, types, and inline metadata.
 - [ ] Complete Milestone 6: final-link and v6vscode consumer integration.
 
 - [x] Document the debugger-relevant V6C ABI.
@@ -253,9 +253,9 @@ The producer prerequisite is complete only when:
 - [x] Emit formal-parameter and local-variable locations.
 - [x] Emit valid frame-base expressions where required.
 - [x] Emit `.debug_loclists` with accurate transitions and gaps.
-- [ ] Emit lexical-block and discontinuous function ranges.
-- [ ] Emit nested inline-subroutine DIEs and abstract origins.
-- [ ] Verify C scalar, pointer, array, structure, union, enum, typedef, and qualifier types.
+- [x] Emit lexical-block and discontinuous function ranges.
+- [x] Emit nested inline-subroutine DIEs and abstract origins.
+- [x] Verify C scalar, pointer, array, structure, union, enum, typedef, and qualifier types.
 - [x] Emit `.debug_frame` CIE/FDE data.
 - [x] Cover leaf/non-leaf, spills, stack arguments, frame-pointer modes, returns, tail calls, and unwind boundaries.
 - [x] Verify final linked addresses and relocations against ROM execution.
