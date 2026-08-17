@@ -8,6 +8,19 @@ Each program ends with bench_finish(checksum) which writes the byte to
 port 0xED and HLTs.  v6emul prints both the checksum and cycle count;
 we parse them and assemble a results table.
 
+Environment variables:
+    V6EMUL  (required) Path to the v6emul executable. Runs every ROM to
+            collect cycle counts and checksums; without it the whole
+            benchmark run fails.
+    C8080   (optional) Path to the c8080 reference compiler executable.
+            Enables the c8080 comparator column; skipped if unset.
+    Z88DK   (optional) Root of the z88dk installation (containing
+            bin/zcc.exe and lib/config). Enables the z88dk/sccz80
+            comparator column; skipped if unset.
+
+The v6llvmc baseline uses this repo's own clang (llvm-build/bin/clang.exe)
+and needs no environment variable.
+
 Run:    python tests/benchmarks_c/run_benchmarks.py
 Output: docs/benchmarks.md  (+ stdout summary)
 """
@@ -37,6 +50,19 @@ ZCC_CFG = Z88DK / "lib" / "config" if Z88DK else None
 PROGRAMS = ["bsort", "sieve", "fib_crc", "fannkuch", "lfsr16"]
 EXPECTED = {"bsort": 0x98, "sieve": 0xEC, "fib_crc": 0x2B, "fannkuch": 0x10,
             "lfsr16": 0x1D}
+# Environment variable each optional comparator depends on, and how to set it.
+COMPILER_ENV = {
+    "c8080": (
+        "C8080",
+        "path to the c8080 executable",
+        r"$env:C8080 = 'C:\path\to\c8080.exe'",
+    ),
+    "z88dk": (
+        "Z88DK",
+        "root of the z88dk installation (containing bin\\zcc.exe and lib\\config)",
+        r"$env:Z88DK = 'C:\path\to\z88dk'",
+    ),
+}
 # Generous safety cap: long enough for fannkuch-style N=9 runs (~50-100M cc
 # expected per the z88dk reference) without bailing too early. A real
 # emulator stall would still terminate the run via exit code; this just
@@ -310,6 +336,22 @@ def main() -> int:
                      "equivalent.")
         lines.append("")
         lines.append(f"Skipped comparator(s): {skipped_text} (toolchain unavailable during this run).")
+        lines.append("")
+        lines.append("### Environment setup for skipped comparators")
+        lines.append("")
+        lines.append("Set the following environment variable(s), then re-run the "
+                     "benchmark to include the missing comparator(s):")
+        lines.append("")
+        for compiler in skipped_compilers:
+            env = COMPILER_ENV.get(compiler)
+            if env is None:
+                continue
+            var, desc, example = env
+            lines.append(f"- **{compiler}** requires `{var}` ({desc}):")
+            lines.append("")
+            lines.append("  ```powershell")
+            lines.append(f"  {example}")
+            lines.append("  ```")
     else:
         lines.append("All compilers produced the same checksum byte per program "
                      f"({checksum_text}), confirming the ROMs are functionally "
