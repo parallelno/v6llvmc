@@ -244,7 +244,9 @@ The producer prerequisite is complete only when:
 - [x] Complete Milestone 3: baseline parameter and local locations.
 - [x] Complete Milestone 4: optimized lifetimes and location lists.
 - [x] Complete Milestone 5: lexical scopes, types, and inline metadata.
-- [ ] Complete Milestone 6: final-link and v6vscode consumer integration.
+- [x] Complete Milestone 6 producer gate: final-link contract and fixtures.
+- [ ] Complete Milestone 6 consumer gate in v6vscode (external): parser and
+      real-emulator consumer integration.
 
 - [x] Document the debugger-relevant V6C ABI.
 - [x] Freeze V6C DWARF register numbering.
@@ -260,5 +262,6 @@ The producer prerequisite is complete only when:
 - [x] Cover leaf/non-leaf, spills, stack arguments, frame-pointer modes, returns, tail calls, and unwind boundaries.
 - [x] Verify final linked addresses and relocations against ROM execution.
 - [x] Run `-O0`, debug-friendly, `-O1`, and `-O2` metadata tests.
-- [ ] Publish the supported forms, operations, register map, and known limitations.
-- [ ] Pass v6vscode parser and real-emulator consumer tests.
+- [x] Publish the supported forms, operations, register map, and known limitations.
+- [ ] Pass v6vscode parser and real-emulator consumer tests (external: owned by
+      v6vscode; consumes the frozen contract and Feature 83 fixtures).

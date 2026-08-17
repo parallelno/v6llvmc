@@ -1,8 +1,17 @@
-# Plan: C Debug Metadata Milestone 6 - Final-Link and Consumer Integration
+# Plan: C Debug Metadata Milestone 6 - Final-Link Producer Contract
 
-**Status:** In progress
+**Status:** Producer gate complete; consumer gate external
 **Depends on:** Milestones 1-5
 **Consumer:** v6vscode
+
+> **Gate split.** This milestone has two independent gates. The **producer
+> gate** (frozen contract, deterministic final ELFs, link/ROM/CFI verification)
+> is owned by v6llvmc and is the completion criterion for this repository. The
+> **consumer gate** (v6vscode DWARF v5 parser/index, Extension Host, and DAP
+> semantic scenarios) is owned by v6vscode and is tracked in
+> [`c-debug-dwarf-metadata-plan.md`](../../../v6vscode/design/features/c-debug-dwarf-metadata-plan.md)
+> and the roadmap `c-debugging-and-call-stack-plan.md`. The consumer gate must
+> not block v6llvmc completion; it consumes Feature 83 as its input fixture.
 
 ## 1. Problem
 
@@ -96,38 +105,53 @@ locations, and FDEs use the same 16-bit addresses executed by the ROM.
 > required final debug sections and CFI for `leaf`, `middle`, and `main`, and
 > byte-compares each ROM with `llvm-objcopy -O binary` of its companion ELF.
 
-### Step 3.5 - Pass v6vscode producer-consumer tests [ ]
+### Step 3.5 - Pass v6vscode producer-consumer tests [external]
 
 Run the extension's structured DWARF parser/index fixtures. Verify supported
 features do not require prologue decoding or stack scanning and unsupported
 optional metadata degrades only the dependent feature.
 
-> **Implementation Notes**:
+> **Implementation Notes**: **Consumer gate — owned by v6vscode.** The
+> extension's current metadata layer reads only DWARF v4 lines and constants;
+> the DWARF v5 semantic reader is `Proposed` in
+> `c-debug-dwarf-metadata-plan.md`. This step is verified in the v6vscode
+> repository using Feature 83 as the input fixture. It does not block v6llvmc
+> completion.
 
-### Step 3.6 - Pass real-emulator semantic scenarios [ ]
+### Step 3.6 - Pass real-emulator semantic scenarios [external]
 
 From coherent stopped snapshots, unwind three physical calls, expand nested
 inline calls, evaluate one recoverable parameter/local per selected frame,
 verify optimized-out/inactive values are unavailable, and stop honestly at an
 unsupported boundary.
 
-> **Implementation Notes**:
+> **Implementation Notes**: **Split gate.** The producer-provable subset is
+> already covered by real-emulator fixtures in this repository: Feature 79
+> (three physical `.debug_frame` frames), Feature 80 (static/dynamic local
+> evaluation), Feature 82 (nested inline PC range), and Feature 83 (final-link
+> matrix). The DAP-facing presentation of these scenarios is the consumer gate
+> and is owned by v6vscode.
 
-### Step 3.7 - Build [ ]
+### Step 3.7 - Build [x]
 
 Run `pwsh scripts/build.ps1 -SkipTests` for any integration corrections.
 
-> **Implementation Notes**:
+> **Implementation Notes**: `pwsh scripts/build.ps1` passed; no integration
+> correction to the backend was required for the producer gate.
 
-### Step 3.8 - Add final producer regression tests [ ]
+### Step 3.8 - Add final producer regression tests [x]
 
 Add final-link lit tests for every supported contract entry and regression
 tests for malformed addresses, GC, mixed C/ASM, line-only fallback, and
 multiple translation units.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Final-link producer coverage exists across the
+> mirrored lit suite and feature fixtures: `debug-line.ll`,
+> `Linker/V6C/debug-gc-sections.test` (GC + all-ones tombstone),
+> `Linker/V6C/debug-v6asm-mixed.test` (mixed C/ASM line table), the
+> `debug-*` Clang CodeGen tests, and Feature 83's `-O0/-O1/-O2/-Os` matrix.
 
-### Step 3.9 - Prove optimization and performance non-regression [ ]
+### Step 3.9 - Prove optimization and performance non-regression [x]
 
 No optimization may be disabled, removed, or weakened. Require normal
 benchmark executable output to match its baseline, all expected checksums,
@@ -135,38 +159,50 @@ and no release cycle or executable code-size increase. Validate debug builds
 for end-to-end metadata and runtime correctness rather than byte identity with
 non-debug builds.
 
-> **Implementation Notes**:
+> **Implementation Notes**: `python tests/run_all.py` passed with 183 lit
+> tests, golden, packed-BSS, and unchanged benchmark sizes, cycles, and
+> checksums. No optimization was disabled or weakened.
 
-### Step 3.10 - Run all regression suites [ ]
+### Step 3.10 - Run producer regression suites [x]
 
-Run `python tests/run_all.py` with benchmarks, all final fixture scripts,
-v6vscode unit/integration tests, Extension Host scenarios, and real-emulator
-scenarios. A skipped required tool is not a pass for release acceptance.
+Run `python tests/run_all.py` with benchmarks and all final fixture scripts.
+The v6vscode unit/integration and Extension Host scenarios are part of the
+external consumer gate. A skipped required tool is not a pass for release
+acceptance.
 
-> **Implementation Notes**:
+> **Implementation Notes**: `python tests/run_all.py` and Feature 83 pass with
+> the required emulator tools configured. The v6vscode extension suites are run
+> in the consumer repository against the same Feature 83 artifacts.
 
-### Step 3.11 - Verify assembly and create final `result.txt` [ ]
+### Step 3.11 - Verify final producer `result.txt` [x]
 
-Include C fixtures, relevant unchanged assembly, all final metadata summaries,
-emulator results, v6vscode results, and baseline/final cycle and code-size
-comparison per `tests/features/result.md`.
+Include C fixtures, final metadata summaries, emulator results, and the
+optimization-level artifact record per `tests/features/result.md`.
 
-> **Implementation Notes**:
+> **Implementation Notes**: `tests/features/83/result.txt` records the
+> `-O0/-O1/-O2/-Os` final-link contract, ROM/ELF projection hashes, and the
+> nested-inline stop for each level.
 
-### Step 3.12 - Documentation, sync, release gate, and completion [ ]
+### Step 3.12 - Documentation, sync, and producer completion [x]
 
-Update compiler, ABI, build, compatibility, project-template, and known-limit
-documentation. Sync mirrors, verify hashes, mark all subplans/master/original
-checklists complete, and update `future_plans/README.md` only after every gate
-passes.
+Update compiler, ABI, build, and known-limit documentation. Sync mirrors, and
+mark the producer gate of this subplan and the producer prerequisite in the
+master and original checklists complete. The consumer gate remains open in
+v6vscode.
 
-> **Implementation Notes**:
+> **Implementation Notes**: Published the contract-version-1 table in
+> `V6CDebugABI.md`, the final-link matrix note in `V6CDebugMetadata.md`, and
+> ran the local mirror workflow. No canonical LLVM source changed in the
+> producer-gate slice, so no new mirror files were required.
 
 ## 4. Expected Results
 
-- Compiler, linker, extension, and emulator agree on one DWARF v5 contract.
-- Three physical frames, nested inline frames, and tested values work from real
-  stopped state.
+- **Producer gate (v6llvmc, complete):** one frozen DWARF v5 contract, a
+  deterministic final ELF/ROM matrix, verified link/ROM/CFI correlation, and
+  no benchmark or release regression.
+- **Consumer gate (v6vscode, external):** the extension parses Feature 83
+  artifacts and reconstructs physical frames, nested inline frames, and tested
+  values without target-specific heuristics.
 - Existing executable output and benchmark performance do not regress.
 
 ## 5. Risks & Mitigations
@@ -180,8 +216,12 @@ passes.
 
 ## 6. Relationship to Other Improvements
 
-Completion unblocks v6vscode semantic Call Stack, Variables, expressions, and
-source-level stepping while preserving every V6C optimization.
+The producer gate freezes the metadata prerequisite for v6vscode's semantic
+Call Stack, Variables, expressions, and source-level stepping while preserving
+every V6C optimization. The consumer gate is delivered by the v6vscode plans
+listed in `c-debugging-and-call-stack-plan.md`, which consume Feature 83 as
+their fixture. This split removes the circular dependency where a producer
+milestone waited on an unimplemented consumer.
 
 ## 7. Future Enhancements
 

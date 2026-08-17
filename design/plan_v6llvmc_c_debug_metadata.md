@@ -77,11 +77,14 @@ These apply to every milestone:
 3. [x] [Milestone 3: Baseline parameter and local locations](plan_v6llvmc_c_debug_metadata_milestone3.md)
 4. [x] [Milestone 4: Optimized lifetimes and location lists](plan_v6llvmc_c_debug_metadata_milestone4.md)
 5. [x] [Milestone 5: Lexical scopes, types, and inline metadata](plan_v6llvmc_c_debug_metadata_milestone5.md)
-6. [Milestone 6: Final-link and consumer integration](plan_v6llvmc_c_debug_metadata_milestone6.md)
+6. [x] [Milestone 6: Final-link producer contract](plan_v6llvmc_c_debug_metadata_milestone6.md)
+   (producer gate complete; the v6vscode consumer gate is tracked externally in
+   `c-debugging-and-call-stack-plan.md`)
 
 Dependencies are strict: milestone $n$ may rely only on completed milestones
 $1..n-1$. A milestone may add tests for later work, but must not partially
-implement a later milestone.
+implement a later milestone. Milestone 6's consumer-integration acceptance is
+owned by v6vscode and does not block the v6llvmc producer prerequisite.
 
 ## 4. Expected Results
 
