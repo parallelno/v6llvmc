@@ -51,6 +51,19 @@ public:
 
 char V6CStaticDebugValues::ID = 0;
 
+static bool isWithinLexicalScope(const DIScope *Scope,
+                                 const DIScope *Ancestor) {
+  while (Scope) {
+    if (Scope == Ancestor)
+      return true;
+    const auto *LexicalBlock = dyn_cast<DILexicalBlockBase>(Scope);
+    if (!LexicalBlock)
+      return false;
+    Scope = LexicalBlock->getScope();
+  }
+  return false;
+}
+
 bool V6CStaticDebugValues::runOnMachineFunction(MachineFunction &MF) {
   if (!MF.getMMI().hasDebugInfo())
     return false;
@@ -109,32 +122,27 @@ bool V6CStaticDebugValues::runOnMachineFunction(MachineFunction &MF) {
 
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
   for (const StaticLocation &Loc : Locations) {
-    MachineBasicBlock *InsertMBB = &MF.front();
-    auto InsertAt = InsertMBB->begin();
-    const MDNode *Scope = Loc.DL.getScope();
-    if (Scope) {
-      bool FoundScope = false;
-      for (MachineBasicBlock &MBB : MF) {
-        for (auto It = MBB.begin(), End = MBB.end(); It != End; ++It) {
-          const DebugLoc InstrDL = It->getDebugLoc();
-          if (It->isDebugInstr() || !InstrDL ||
-              InstrDL.getScope() != Scope)
-            continue;
-          InsertMBB = &MBB;
-          InsertAt = It;
-          FoundScope = true;
-          break;
-        }
-        if (FoundScope)
-          break;
+    const auto *VariableScope = dyn_cast<DIScope>(Loc.Variable->getScope());
+    if (!VariableScope)
+      continue;
+
+    for (MachineBasicBlock &MBB : MF) {
+      for (auto It = MBB.begin(), End = MBB.end(); It != End; ++It) {
+        const DebugLoc InstrDL = It->getDebugLoc();
+        const auto *InstructionScope =
+            InstrDL ? dyn_cast<DIScope>(InstrDL.getScope()) : nullptr;
+        if (It->isDebugInstr() || !InstructionScope ||
+            !isWithinLexicalScope(InstructionScope, VariableScope))
+          continue;
+
+        BuildMI(MBB, It, Loc.DL, TII.get(TargetOpcode::DBG_VALUE))
+            .addGlobalAddress(Loc.GV, Loc.Offset)
+            .addImm(0)
+            .addMetadata(Loc.Variable)
+            .addMetadata(Loc.Expression);
+        break;
       }
     }
-
-    BuildMI(*InsertMBB, InsertAt, Loc.DL, TII.get(TargetOpcode::DBG_VALUE))
-        .addGlobalAddress(Loc.GV, Loc.Offset)
-        .addImm(0)
-        .addMetadata(Loc.Variable)
-        .addMetadata(Loc.Expression);
   }
 
   return true;

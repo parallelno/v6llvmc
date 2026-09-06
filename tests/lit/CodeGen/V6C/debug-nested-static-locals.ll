@@ -12,12 +12,15 @@
 ; RUN: llvm-dwarfdump --verify %t.o2.elf
 
 ; O0: DW_TAG_variable
+; O0: DW_AT_location{{.*}}DW_OP_addrx
 ; O0: DW_AT_name{{.*}}("outer")
 ; O0: DW_TAG_lexical_block
 ; O0: DW_TAG_variable
+; O0: DW_AT_location{{.*}}DW_OP_addrx
 ; O0: DW_AT_name{{.*}}("inner")
 ; O0: DW_TAG_lexical_block
 ; O0: DW_TAG_variable
+; O0: DW_AT_location{{.*}}DW_OP_addrx
 ; O0: DW_AT_name{{.*}}("block_local")
 
 ; O1: DW_AT_name{{.*}}("outer")
