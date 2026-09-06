@@ -22,6 +22,7 @@
 namespace clang {
 namespace targets {
 
+
 // Intel 8080 / Vector 06c Target
 class LLVM_LIBRARY_VISIBILITY I8080TargetInfo : public TargetInfo {
 public:

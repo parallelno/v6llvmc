@@ -107,13 +107,32 @@ bool V6CStaticDebugValues::runOnMachineFunction(MachineFunction &MF) {
     }
   }
 
-  MachineBasicBlock &Entry = MF.front();
-  auto InsertAt = Entry.begin();
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
   for (const StaticLocation &Loc : Locations) {
-    BuildMI(Entry, InsertAt, Loc.DL, TII.get(TargetOpcode::DBG_VALUE))
+    MachineBasicBlock *InsertMBB = &MF.front();
+    auto InsertAt = InsertMBB->begin();
+    const MDNode *Scope = Loc.DL.getScope();
+    if (Scope) {
+      bool FoundScope = false;
+      for (MachineBasicBlock &MBB : MF) {
+        for (auto It = MBB.begin(), End = MBB.end(); It != End; ++It) {
+          const DebugLoc InstrDL = It->getDebugLoc();
+          if (It->isDebugInstr() || !InstrDL ||
+              InstrDL.getScope() != Scope)
+            continue;
+          InsertMBB = &MBB;
+          InsertAt = It;
+          FoundScope = true;
+          break;
+        }
+        if (FoundScope)
+          break;
+      }
+    }
+
+    BuildMI(*InsertMBB, InsertAt, Loc.DL, TII.get(TargetOpcode::DBG_VALUE))
         .addGlobalAddress(Loc.GV, Loc.Offset)
-      .addImm(0)
+        .addImm(0)
         .addMetadata(Loc.Variable)
         .addMetadata(Loc.Expression);
   }
